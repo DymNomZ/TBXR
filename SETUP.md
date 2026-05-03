@@ -1,0 +1,110 @@
+## Setup
+
+### Prerequisites
+- Python 3.11+
+- Node.js 20+ and npm
+- PostgreSQL 15+
+- Git
+
+---
+
+### Backend Setup
+
+```bash
+# 1. Navigate into backend
+cd backend
+
+# 2. Create and activate virtual environment
+python -m venv venv
+source venv/bin/activate        # Linux/macOS
+venv\Scripts\activate           # Windows
+
+# 3. Install dependencies
+pip install -r requirements.txt
+
+# 4. Set up environment variables
+cp .env.example .env
+# Open .env and fill in DB credentials and SECRET_KEY
+
+# 5. Run migrations
+python manage.py migrate
+
+# 6. Create a superuser (for admin access)
+python manage.py createsuperuser
+
+# 7. Start the development server
+python manage.py runserver
+```
+
+The backend runs at `http://localhost:8000`
+
+> **Note:** All Django management commands (`migrate`, `createsuperuser`, `startapp`, etc.) are run from inside the `backend/` folder where `manage.py` lives.
+
+---
+
+### Frontend Setup
+
+```bash
+# 1. Navigate into frontend
+cd frontend
+
+# 2. Install dependencies
+npm install
+
+# 3. Start the development server
+npm run dev
+```
+
+The frontend runs at `http://localhost:5173`
+
+> **Note:** The frontend talks to the backend via Axios. API base URL is configured in `src/services/api.js`. Make sure the backend is running when testing the frontend.
+
+---
+
+### AI Setup (Seth)
+
+```bash
+# 1. Navigate into ai/
+cd ai
+
+# 2. Create a separate virtual environment (keep AI deps isolated)
+python -m venv venv
+source venv/bin/activate
+
+# 3. Install AI dependencies
+pip install -r requirements.txt
+
+# 4. Launch Jupyter
+jupyter notebook notebooks/
+```
+
+> **Note:** Trained model weights go in `ai/weights/`. Add large `.pt` files to `.gitignore` and share via Google Drive or a shared storage link instead.
+
+---
+
+## Branch Naming Convention
+
+| Branch | Purpose |
+|--------|---------|
+| `main` | Stable, demo-ready code only. Never commit directly here. |
+| `develop` | Integration branch. All feature branches merge here first. |
+| `feature/<initials>/<short-description>` | New feature work |
+| `fix/<short-description>` | Bug fixes |
+| `hotfix/<short-description>` | Urgent fixes on `main` |
+
+**Examples:**
+```
+feature/jd/database-schema
+feature/sn/mobilenetv3-training
+feature/ljl/patient-profile-ui
+feature/rs/image-validation
+feature/bm/auth-login
+fix/upload-form-validation
+```
+
+**Workflow:**
+1. Always branch off `develop`, never off `main`
+2. Keep branches focused — one feature per branch
+3. Open a Pull Request into `develop` when done
+4. Tag the relevant person to review before merging
+5. `main` only gets merged into at the end of each week's increment when everything is working
