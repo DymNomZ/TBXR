@@ -27,21 +27,21 @@ Track progress by checking off tasks below.
 
 ### Step 2 — Database Schema & Models
 
-- [ ] Create Django apps: `accounts`, `patients`, `imaging`
+- [x] Create Django apps: `accounts`, `patients`, `imaging`
   ```bash
   python manage.py startapp accounts
   python manage.py startapp patients
   python manage.py startapp imaging
   ```
-- [ ] `accounts/models.py` — Custom `User` model extending `AbstractUser`
+- [x] `accounts/models.py` — Custom `User` model extending `AbstractUser`
   - Fields: `role` (choices: `RADIOLOGIC_TECH`, `RADIOLOGIST`, `PHYSICIAN`)
-- [ ] `patients/models.py` — `Patient` model
+- [x] `patients/models.py` — `Patient` model
   - Fields: `patient_id` (auto), `first_name`, `last_name`, `date_of_birth`, `sex`, `contact_number`, `date_created`
-- [ ] `imaging/models.py` — `XrayRecord` and `ProcessedImage` models
+- [x] `imaging/models.py` — `XrayRecord` and `ProcessedImage` models
   - `XrayRecord`: `transaction_id` (UUID, auto), `patient` (FK), `raw_image`, `upload_timestamp`, `status` (Pending/In Review/Completed), `uploader` (FK to User), `file_format`
   - `ProcessedImage`: `xray_record` (OneToOne), `processed_image`, `preprocessing_metadata` (JSON)
-- [ ] Register models in `settings.py` under `INSTALLED_APPS`
-- [ ] Run `python manage.py makemigrations` and `python manage.py migrate`
+- [x] Register models in `settings.py` under `INSTALLED_APPS`
+- [x] Run `python manage.py makemigrations` and `python manage.py migrate`
 
 ---
 
