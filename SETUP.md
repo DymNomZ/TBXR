@@ -108,3 +108,35 @@ fix/upload-form-validation
 3. Open a Pull Request into `develop` when done
 4. Tag the relevant person to review before merging
 5. `main` only gets merged into at the end of each week's increment when everything is working
+
+---
+
+## Commit Message Convention
+ 
+```
+<type>(<scope>): <short description> #<issue-number>
+```
+ 
+| Type | When to use |
+|------|------------|
+| `feat` | Adding new functionality |
+| `fix` | Fixing a bug |
+| `chore` | Setup, config, dependencies — no production code change |
+| `refactor` | Restructuring existing code without changing behavior |
+| `docs` | Documentation changes only |
+| `test` | Adding or updating tests |
+ 
+**Scope** is the app or area of the codebase being touched: `accounts`, `patients`, `imaging`, `frontend`, `ai`, `db`, `auth`.
+ 
+**Examples:**
+```
+feat(imaging): add file type validation on upload #7
+feat(patients): implement patient search by name and ID #10
+fix(auth): redirect loop on radiologist login #5
+chore(db): add ProcessedImage model and run migrations #3
+refactor(imaging): extract DICOM conversion into utility function #12
+docs(ai): add preprocessing spec document #14
+feat(frontend): build static upload confirmation page #17
+```
+ 
+> **Note:** The `#issue-number` at the end automatically links the commit to its GitHub issue. The commit will appear in the issue's timeline, making it easy to trace exactly which commits closed which issue.
