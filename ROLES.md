@@ -12,7 +12,7 @@
 ---
 
 ## AI Engineer
-**Assigned to:**
+**Assigned to:** Seth
 
 **What:** Owns everything inside `ai/`. Responsible for dataset management, model architecture, training pipeline, evaluation metrics, and the final inference script that the rest of the backend calls. Produces the trained model weights and preprocessing spec that the backend consumes.
 
@@ -21,7 +21,7 @@
 ---
 
 ## Frontend Developer
-**Assigned to:**
+**Assigned to:** Dymes
 
 **What:** Owns everything inside `frontend/`. Responsible for all pages, components, and user-facing flows. Writes the Axios service calls that connect the UI to the backend API. Ensures the interface is intuitive for non-technical medical staff across all three user roles.
 
@@ -30,6 +30,8 @@
 ---
 
 ## Backend Developer
+**Assigned to:** Lance, Raimar
+
 **What:** Owns the Django app-level code inside `backend/`. Responsible for views, API endpoints, form validation, file I/O, and the image preprocessing pipeline. Works from the database schema defined by the Tech Lead and exposes the endpoints consumed by the frontend.
 
 **Why:** All data flowing through the system — uploads, patient records, annotations, AI results — passes through this role's code. Incorrect preprocessing at this layer corrupts the model's input; broken API contracts block the frontend. This role is the connective tissue between the database, the AI layer, and the UI.
@@ -37,6 +39,8 @@
 ---
 
 ## DevOps Engineer
-**What:** Owns the development environment, Git workflow, and quality assurance. Maintains `.gitignore`, `requirements.txt`, `.env.example`, and seed scripts. Writes and runs tests. Performs a "fresh machine" walkthrough from `DEMO.md` before every demo to catch integration failures. In later semesters, owns deployment configuration and the SUS evaluation setup.
+**Assigned to:** Brent
+
+**What:** Owns the development environment, Git workflow, and quality assurance. Maintains `.gitignore`, `requirements.txt`, `.env.example`, and seed scripts. Writes and runs tests. Performs a "fresh machine" walkthrough from `DEMO.md` before every demo to catch integration failures. In later semesters, owns the deployment configuration and the SUS evaluation setup.
 
 **Why:** Without this role, "it works on my machine" becomes the team's most common phrase the night before a demo. This role exists to ensure the project is reproducible, testable, and presentable on any machine at any time — not just the one it was last developed on.
