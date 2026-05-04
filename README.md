@@ -47,7 +47,7 @@ Track progress by checking off tasks below.
 
 ### Step 3 — Authentication & RBAC
 
-- [ ] Configure Django's auth backend in `settings.py`
+- [x] Configure Django's auth backend in `settings.py`
 - [ ] Create login view and template/page
 - [ ] Create logout endpoint
 - [ ] Implement role-based redirect after login:
