@@ -8,6 +8,7 @@ from rest_framework.reverse import reverse
 from .models import Patient
 from .serializers import PatientCreateSerializer, PatientSerializer
 
+# DRF's @api_view turns a function into an API view with request.data parsing and content negotiation.
 
 @extend_schema(
     request=PatientCreateSerializer,
@@ -31,10 +32,10 @@ def register_patient(request):
             request=request,
         )
     }
+    # DRF Response renders to JSON and handles status codes, similar to JsonResponse but API-aware.
     return Response(
         response_serializer.data, status=status.HTTP_201_CREATED, headers=headers
     )
-
 
 @extend_schema(responses={200: PatientSerializer})
 @api_view(["GET"])
