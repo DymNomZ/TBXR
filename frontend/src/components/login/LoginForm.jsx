@@ -1,6 +1,6 @@
 import { useState } from 'react'
-import InputField from './InputField'
-import ErrorBanner from './ErrorBanner'
+import InputField from '../ui/InputField'
+import ErrorBanner from '../ui/ErrorBanner'
 
 const LOGIN_URL = '/accounts/login/'
 
