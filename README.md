@@ -54,15 +54,15 @@ Track progress by checking off tasks below.
   - `RADIOLOGIC_TECH` → Technologist Dashboard
   - `RADIOLOGIST` → Radiologist Dashboard (placeholder for now)
   - `PHYSICIAN` → Physician Dashboard (placeholder for now)
-- [ ] Add `@login_required` and role permission decorators/mixins to protected views
+- [x] Add `@login_required` and role permission decorators/mixins to protected views
 - [ ] Seed test accounts for all three roles via `manage.py createsuperuser` or a seed script
 
 ---
 
 ### Step 4 — Patient Profile Module
 
-- [ ] `patients/views.py` — CRUD views: create patient, search patient, view patient detail
-- [ ] Patient creation form with field validation
+- [x] `patients/views.py` — CRUD views: create patient, search patient, view patient detail
+- [x] Patient creation form with field validation
 - [ ] Patient search by name or patient ID
 - [ ] Patient detail page showing basic info and (empty) upload history list
 - [ ] Wire up URLs in `patients/urls.py` and include in root `urls.py`
