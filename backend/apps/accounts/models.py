@@ -1,17 +1,13 @@
 from django.contrib.auth.models import AbstractUser
 from django.db import models
 
+from backend.apps.accounts.enums import UserRole
+
 class User(AbstractUser):
-    ROLE_CHOICES = [
-        ('RADIOLOGIC_TECH', 'Radiologic Technologist'),
-        ('RADIOLOGIST', 'Radiologist'),
-        ('PHYSICIAN', 'Physician'),
-    ]
-    
     role = models.CharField(
         max_length=20,
-        choices=ROLE_CHOICES,
-        default='RADIOLOGIC_TECH',
+        choices=UserRole,
+        default=UserRole.RADIOLOGIC_TECH,
     )
 
     def __str__(self):
