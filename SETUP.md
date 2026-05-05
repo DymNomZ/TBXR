@@ -20,7 +20,9 @@ source venv/bin/activate        # Linux/macOS
 venv\Scripts\activate           # Windows
 
 # 3. Install dependencies
-pip install -r requirements.txt
+python -m pip install -r requirements.txt
+or
+py -m pip install -r requirements.txt
 
 # 4. Set up environment variables
 cp .env.example .env
