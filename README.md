@@ -63,7 +63,7 @@ Track progress by checking off tasks below.
 
 - [x] `patients/views.py` — CRUD views: create patient, search patient, view patient detail
 - [x] Patient creation form with field validation
-- [ ] Patient search by name or patient ID
+- [x] Patient search by name or patient ID
 - [ ] Patient detail page showing basic info and (empty) upload history list
 - [ ] Wire up URLs in `patients/urls.py` and include in root `urls.py`
 

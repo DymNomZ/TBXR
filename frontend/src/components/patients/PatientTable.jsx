@@ -55,22 +55,33 @@ const MOCK_DATA = [
   { id: 3, patient_id: 'PT-0003', full_name: 'John Smith',      date_of_birth: '1997-11-23', sex: 'Male',   contact_number: '(789) 164-4876' },
 ];
 
-export default function PatientTable() {
+export default function PatientTable({ search = '' }) {
+
+  // 🔌 Replace this with your real fetch when backend is ready:
+  //
+  // const { data, isLoading } = useQuery({
+  //   queryKey: ['patients', search],
+  //   queryFn: () => fetch(`/api/patients/?search=${encodeURIComponent(search)}`).then(r => r.json()),
+  // });
+
+  // --- MOCK: filter locally until backend is wired ---
+  const filtered = MOCK_DATA.filter((p) => {
+    if (!search) return true;
+    const q = search.toLowerCase();
+    return (
+      p.full_name.toLowerCase().includes(q) ||
+      p.patient_id.toLowerCase().includes(q)
+    );
+  });
+
   const navigate = useNavigate();
-
-  // 🔌 Swap MOCK_DATA with real fetch once backend confirms response shape:
-  // const { data } = useQuery({ queryKey: ['patients'], queryFn: fetchPatients });
-
-  const handleRowClick = (row) => {
-    navigate(`/patients/${row.patient_id}`);
-  };
 
   return (
     <div className="bg-white rounded-2xl border border-[var(--border)] overflow-hidden shadow-sm">
       <Table
         columns={COLUMNS}
-        data={MOCK_DATA}
-        onRowClick={handleRowClick}
+        data={filtered}   // was MOCK_DATA, now filtered
+        onRowClick={(row) => navigate(`/patients/${row.patient_id}`)}
       />
     </div>
   );
