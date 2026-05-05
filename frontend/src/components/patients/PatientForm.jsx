@@ -1,7 +1,7 @@
 import { useState } from 'react'
-import InputField from './InputField'
-import SelectField from './SelectField'
-import ErrorBanner from './ErrorBanner'
+import InputField from '../ui/InputField'
+import SelectField from '../ui/SelectField'
+import ErrorBanner from '../ui/ErrorBanner'
 
 const CREATE_URL = '/patients/register/'
 

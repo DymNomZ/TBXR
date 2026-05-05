@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import LoginPage from './pages/LoginPage'
-import PatientCard from './components/PatientCard'
+import PatientsPage from './pages/PatientsPage'
+import PatientCard from './components/patients/PatientCard'
 
 function App() {
   return (
@@ -12,7 +13,9 @@ function App() {
         {/* Default redirect */}
         <Route path="*" element={<Navigate to="/login" replace />} />
 
-        <Route path="/register" element={<PatientCard />} />
+        {/* Patients */}
+        <Route path="/patients" element={<PatientsPage />} />
+        <Route path="/patients/register" element={<PatientCard />} />
       </Routes>
     </BrowserRouter>
   )
