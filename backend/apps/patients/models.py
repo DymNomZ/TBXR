@@ -15,5 +15,7 @@ class Patient(models.Model):
     contact_number = models.CharField(max_length=20, blank=True)
     date_created = models.DateTimeField(auto_now_add=True)
 
+    objects = models.Manager()
+
     def __str__(self):
         return f"{self.patient_id}: {self.first_name} {self.last_name}"

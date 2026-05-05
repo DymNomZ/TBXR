@@ -1,9 +1,10 @@
 from django.shortcuts import get_object_or_404
-from drf_spectacular.utils import OpenApiResponse, extend_schema
+from drf_spectacular.utils import OpenApiResponse, extend_schema, OpenApiParameter
 from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from rest_framework.reverse import reverse
+from django.db.models import Q
 
 from .models import Patient
 from .serializers import PatientCreateSerializer, PatientSerializer
@@ -42,4 +43,31 @@ def register_patient(request):
 def patient_detail(request, patient_id):
     patient = get_object_or_404(Patient, patient_id=patient_id)
     serializer = PatientSerializer(patient)
+    return Response(serializer.data)
+
+@extend_schema(
+    parameters=[
+        OpenApiParameter(
+            name="name",
+            description="Search by first name or last name",
+            required=False,
+            type=str
+        )
+    ],
+    responses={200: PatientSerializer(many=True)}
+)
+@api_view(["GET"])
+def search_patients(request):
+    # Get the 'name' search term from the URL
+    query = request.query_params.get('name', '').strip()
+
+    if query:
+        # Find patients where first OR last name matches the query (case-insensitive)
+        patients = Patient.objects.filter(
+            Q(first_name__icontains=query) | Q(last_name__icontains=query)
+        )
+    else:
+        patients = Patient.objects.all()
+
+    serializer = PatientSerializer(patients, many=True)
     return Response(serializer.data)
