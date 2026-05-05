@@ -1,4 +1,5 @@
 from django.shortcuts import get_object_or_404
+from backend.apps.accounts.decorators import role_required
 from drf_spectacular.utils import OpenApiResponse, extend_schema, OpenApiParameter
 from rest_framework import status
 from rest_framework.decorators import api_view
@@ -19,6 +20,9 @@ from .serializers import PatientCreateSerializer, PatientSerializer
     },
 )
 @api_view(["POST"])
+@role_required('RADIOLOGIC_TECH')
+# Why: They are the ones who intake patients and create records before uploading X-rays. 
+# Radiologists and Physicians only review, never register.
 def register_patient(request):
     serializer = PatientCreateSerializer(data=request.data)
     if not serializer.is_valid():
@@ -40,6 +44,8 @@ def register_patient(request):
 
 @extend_schema(responses={200: PatientSerializer})
 @api_view(["GET"])
+@role_required('RADIOLOGIC_TECH', 'RADIOLOGIST', 'PHYSICIAN')
+# All three roles need to view a patient's profile at different stages of the workflow.
 def patient_detail(request, patient_id):
     patient = get_object_or_404(Patient, patient_id=patient_id)
     serializer = PatientSerializer(patient)
@@ -57,6 +63,8 @@ def patient_detail(request, patient_id):
     responses={200: PatientSerializer(many=True)}
 )
 @api_view(["GET"])
+@role_required('RADIOLOGIC_TECH', 'RADIOLOGIST', 'PHYSICIAN')
+# Same reasoning. search is just the entry point to get to a patient detail, all roles need it.
 def search_patients(request):
     # Get the 'name' search term from the URL
     query = request.query_params.get('name', '').strip()
