@@ -3,7 +3,8 @@ import json
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.urls import reverse
-
+from apps.accounts.enums import UserRole
+from scripts.seed_users import seed_all
 
 class AccountAuthViewsTests(TestCase):
 	def setUp(self):
@@ -91,3 +92,78 @@ class AccountAuthViewsTests(TestCase):
 
 		self.assertEqual(response.status_code, 200)
 		self.assertContains(response, 'Technologist Dashboard')
+
+class RolePermissionTests(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        seeded = seed_all(include_sample_records=False)
+        cls.tech = seeded["users"][UserRole.RADIOLOGIC_TECH]
+        cls.rad = seeded["users"][UserRole.RADIOLOGIST]
+        cls.phys = seeded["users"][UserRole.PHYSICIAN]
+
+    def test_unauthenticated_user_is_redirected_to_login(self):
+        response = self.client.get(reverse("accounts:technologist-dashboard"))
+        self.assertEqual(response.status_code, 302)
+        self.assertIn("/login", response["Location"])
+
+    def test_authenticated_user_with_correct_role_can_access_view(self):
+        self.client.force_login(self.tech)
+        response = self.client.get(reverse("accounts:technologist-dashboard"))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Technologist Dashboard")
+
+    def test_authenticated_user_with_wrong_role_receives_403(self):
+        self.client.force_login(self.rad)
+        response = self.client.get(reverse("accounts:technologist-dashboard"))
+        self.assertEqual(response.status_code, 403)
+
+    def test_register_patient_allows_technologist(self):
+        self.client.force_login(self.tech)
+        response = self.client.post(
+            reverse("patients:register"),
+            data=json.dumps(
+                {
+                    "first_name": "Test",
+                    "last_name": "Patient",
+                    "date_of_birth": "1990-01-01",
+                    "sex": "M",
+                    "contact_number": "09171234567",
+                }
+            ),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 201)
+
+    def test_register_patient_is_inaccessible_to_radiologist(self):
+        self.client.force_login(self.rad)
+        response = self.client.post(
+            reverse("patients:register"),
+            data=json.dumps(
+                {
+                    "first_name": "Test",
+                    "last_name": "Patient",
+                    "date_of_birth": "1990-01-01",
+                    "sex": "M",
+                    "contact_number": "09171234567",
+                }
+            ),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 403)
+
+    def test_register_patient_is_inaccessible_to_physician(self):
+        self.client.force_login(self.phys)
+        response = self.client.post(
+            reverse("patients:register"),
+            data=json.dumps(
+                {
+                    "first_name": "Test",
+                    "last_name": "Patient",
+                    "date_of_birth": "1990-01-01",
+                    "sex": "M",
+                    "contact_number": "09171234567",
+                }
+            ),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 403)
