@@ -1,5 +1,5 @@
 from django.shortcuts import get_object_or_404
-from backend.apps.accounts.decorators import role_required
+from apps.accounts.decorators import role_required
 from drf_spectacular.utils import OpenApiResponse, extend_schema, OpenApiParameter
 from rest_framework import status
 from rest_framework.decorators import api_view
