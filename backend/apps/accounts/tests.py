@@ -4,7 +4,6 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.urls import reverse
 from apps.accounts.enums import UserRole
-from scripts.seed_users import seed_all
 
 class AccountAuthViewsTests(TestCase):
 	def setUp(self):
@@ -96,10 +95,16 @@ class AccountAuthViewsTests(TestCase):
 class RolePermissionTests(TestCase):
     @classmethod
     def setUpTestData(cls):
-        seeded = seed_all(include_sample_records=False)
-        cls.tech = seeded["users"][UserRole.RADIOLOGIC_TECH]
-        cls.rad = seeded["users"][UserRole.RADIOLOGIST]
-        cls.phys = seeded["users"][UserRole.PHYSICIAN]
+        user_model = get_user_model()
+        cls.tech = user_model.objects.create_user(
+        username='tech1', password='demo123', role=UserRole.RADIOLOGIC_TECH
+        )
+        cls.rad = user_model.objects.create_user(
+            username='rad1', password='demo123', role=UserRole.RADIOLOGIST
+        )
+        cls.phys = user_model.objects.create_user(
+            username='phys1', password='demo123', role=UserRole.PHYSICIAN
+        )
 
     def test_unauthenticated_user_is_redirected_to_login(self):
         response = self.client.get(reverse("accounts:technologist-dashboard"))
