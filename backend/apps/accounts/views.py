@@ -78,12 +78,11 @@ def login_view(request):
 		)
 
 	login(request, user)
-	request.user = user
 
-	dashboard_url_name = ROLE_DASHBOARD_URLS.get(request.user.role)
+	dashboard_url_name = ROLE_DASHBOARD_URLS.get(user.role)
 	if dashboard_url_name is None:
 		return JsonResponse(
-			{'error': f'No dashboard is configured for role "{request.user.role}".'},
+			{'error': f'No dashboard is configured for role "{user.role}".'},
 			status=400,
 		)
 
