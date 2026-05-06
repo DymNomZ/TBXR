@@ -12,7 +12,7 @@ class XrayRecord(models.Model):
     
     transaction_id = models.UUIDField(default=uuid.uuid4, editable=False, unique=True)
     patient = models.ForeignKey(Patient, on_delete=models.CASCADE)
-    raw_image = models.FileField(upload_to='xray_raw/')
+    raw_image = models.FileField(upload_to='raw/')
     upload_timestamp = models.DateTimeField(auto_now_add=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='PENDING')
     uploader = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
