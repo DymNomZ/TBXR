@@ -55,7 +55,7 @@ Track progress by checking off tasks below.
   - `RADIOLOGIST` → Radiologist Dashboard (placeholder for now)
   - `PHYSICIAN` → Physician Dashboard (placeholder for now)
 - [x] Add `@login_required` and role permission decorators/mixins to protected views
-- [ ] Seed test accounts for all three roles via `manage.py createsuperuser` or a seed script
+- [x] Seed test accounts for all three roles via `manage.py createsuperuser` or a seed script
 
 ---
 
