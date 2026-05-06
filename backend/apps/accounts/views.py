@@ -89,7 +89,7 @@ def login_view(request):
 	return redirect(dashboard_url_name)
 
 
-@require_http_methods(['GET', 'POST'])
+@require_http_methods(['POST'])
 def logout_view(request):
 	logout(request)
 	return redirect(settings.LOGIN_URL)
