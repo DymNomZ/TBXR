@@ -49,8 +49,8 @@ Track progress by checking off tasks below.
 
 - [x] Configure Django's auth backend in `settings.py`
 - [x] Create login view and template/page
-- [ ] Create logout endpoint
-- [ ] Implement role-based redirect after login:
+- [x] Create logout endpoint
+- [x] Implement role-based redirect after login:
   - `RADIOLOGIC_TECH` → Technologist Dashboard
   - `RADIOLOGIST` → Radiologist Dashboard (placeholder for now)
   - `PHYSICIAN` → Physician Dashboard (placeholder for now)
