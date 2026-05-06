@@ -92,7 +92,7 @@ cd backend
 
 # ignore if you have done this already
 source venv/bin/activate        # Linux/macOS
-venv\Scripts\activate           # Window
+venv\Scripts\activate           # Windows
 
 #ignore if you have done this already
 python -m pip install -r requirements.txt
