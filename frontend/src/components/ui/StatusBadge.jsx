@@ -1,11 +1,19 @@
 // ✏️ Add new statuses here as the project grows
 const STATUS_STYLES = {
-  'Non Urgent':    'bg-green-100 text-green-700',
-  'Urgent':        'bg-orange-100 text-orange-700',
-  'Emergency':     'bg-red-100 text-red-700',
-  'Resuscitation': 'bg-purple-100 text-purple-700',
-  'Pass Away':     'bg-gray-100 text-gray-500',
-};
+  // Triage
+  'Non Urgent':          'bg-green-100 text-green-700',
+  'Urgent':              'bg-orange-100 text-orange-700',
+  'Emergency':           'bg-red-100 text-red-700',
+  'Resuscitation':       'bg-purple-100 text-purple-700',
+  'Pass Away':           'bg-gray-100 text-gray-500',
+  // Upload / X-ray record
+  'Pending Review':      'bg-blue-100 text-blue-700',
+  'In Review':           'bg-orange-100 text-orange-700',
+  'Completed':           'bg-green-100 text-green-700',
+  'Reviewed - Normal':   'bg-green-100 text-green-700',
+  'Reviewed - Abnormal': 'bg-red-100 text-red-700',
+  'Pending AI Scoring':  'bg-blue-100 text-blue-700',
+}
 
 const DEFAULT_STYLE = 'bg-gray-100 text-gray-500';
 
