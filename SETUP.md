@@ -90,7 +90,7 @@ For testing Front and Back end manually.
 ``` bash
 cd backend
 
-#ignore if yoy ahve done this already
+# ignore if you have done this already
 source venv/bin/activate        # Linux/macOS
 venv\Scripts\activate           # Window
 
