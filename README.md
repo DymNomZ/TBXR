@@ -96,7 +96,7 @@ Track progress by checking off tasks below.
 
 ### Step 7 — Transaction ID & Upload Confirmation
 
-- [ ] `transaction_id` auto-generated as UUID on `XrayRecord` creation (use `uuid.uuid4`)
+- [x] `transaction_id` auto-generated as UUID on `XrayRecord` creation (use `uuid.uuid4`)
 - [ ] After successful upload, redirect to a confirmation page showing:
   - Transaction ID
   - Patient name
