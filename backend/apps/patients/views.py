@@ -19,8 +19,10 @@ from .serializers import PatientCreateSerializer, PatientSerializer
         400: OpenApiResponse(description="Validation error"),
     },
 )
+
 @api_view(["POST"])
 @role_required('RADIOLOGIC_TECH')
+# Only technologists should register patients, radiologists and physicians only review existing records.    
 # Why: They are the ones who intake patients and create records before uploading X-rays. 
 # Radiologists and Physicians only review, never register.
 def register_patient(request):

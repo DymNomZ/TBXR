@@ -84,6 +84,76 @@ jupyter notebook notebooks/
 
 ---
 
+### Front End and Back End Testing
+
+For testing Front and Back end manually.
+``` bash
+cd backend
+
+# ignore if you have done this already
+source venv/bin/activate        # Linux/macOS
+venv\Scripts\activate           # Windows
+
+#ignore if you have done this already
+python -m pip install -r requirements.txt
+or
+py -m pip install -r requirements.txt
+
+#ignore if you have done this already
+cp .env.example .env
+
+python manage.py migrate
+python manage.py shell
+```
+
+To seed account to test login functionality.
+``` bash
+from django.contrib.auth import get_user_model
+
+User = get_user_model()
+
+def create_role_user(username, password, role, email=""):
+    user, created = User.objects.get_or_create(
+        username=username,
+        defaults={
+            "email": email,
+            "role": role,
+        },
+    )
+    if not created:
+        user.role = role
+        if email:
+            user.email = email
+    user.set_password(password)
+    user.save()
+    return user
+
+create_role_user("tech1", "demo123", "RADIOLOGIC_TECH", "tech1@example.com")
+create_role_user("rad1", "demo123", "RADIOLOGIST", "rad1@example.com")
+create_role_user("phys1", "demo123", "PHYSICIAN", "phys1@example.com")
+```
+``` bash
+python manage.py runserver
+```
+
+Then set up the front end if you have not yet already.
+``` bash
+cd frontend
+npm install 
+# npm install vite lucide-react
+npm run dev
+```
+
+**Note**: If you want to check the database structure with GUI you can download DBeaver and connect the PostgreSQL there. Use the .env variables you have set.
+
+For testing Back end automatically.
+``` bash
+cd backend
+python manage.py test apps.accounts.tests
+```
+
+---
+
 ## Branch Naming Convention
 
 | Branch | Purpose |

@@ -1,8 +1,9 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import InputField from '../ui/InputField'
 import ErrorBanner from '../ui/ErrorBanner'
 
 const LOGIN_URL = '/accounts/login/'
+const CSRF_URL = '/accounts/csrf-token/'
 
 function getCsrfToken() {
   return document.cookie
@@ -16,6 +17,10 @@ function LoginForm() {
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
+
+  useEffect(() => {
+    fetch(CSRF_URL, { credentials: 'include' }).catch(() => {})
+  }, [])
 
   const handleSubmit = async (event) => {
     event.preventDefault()
@@ -48,8 +53,13 @@ function LoginForm() {
         return
       }
 
-      const data = await response.json()
-      setError(data.detail || data.error || data.errors || 'Login failed')
+      const contentType = response.headers.get('content-type') || ''
+      if (contentType.includes('application/json')) {
+        const data = await response.json()
+        setError(data.detail || data.error || data.errors || 'Login failed')
+      } else {
+        setError(await response.text())
+      }
     } catch (fetchError) {
       setError('Unable to reach the server. Please try again.')
     } finally {
