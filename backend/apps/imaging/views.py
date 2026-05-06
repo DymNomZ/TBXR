@@ -1,3 +1,4 @@
+from drf_spectacular.utils import extend_schema
 from pathlib import Path
 
 from django.shortcuts import get_object_or_404
@@ -7,13 +8,27 @@ from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.reverse import reverse
 
+
+
 from apps.accounts.decorators import role_required
 from apps.accounts.enums import UserRole
 from apps.patients.models import Patient
 from .models import XrayRecord
 from .serializers import XrayRecordUploadSerializer, XrayRecordSerializer
 
-
+@extend_schema(
+    request={
+        "multipart/form-data": {
+            "type": "object",
+            "properties": {
+                "raw_image": {
+                    "type": "string",
+                    "format": "binary"
+                }
+            }
+        }
+    }
+)
 @api_view(["POST"])
 @parser_classes([MultiPartParser, FormParser])
 @role_required(UserRole.RADIOLOGIC_TECH)
