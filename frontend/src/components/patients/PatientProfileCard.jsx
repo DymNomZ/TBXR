@@ -1,11 +1,5 @@
 import { User } from 'lucide-react';
-
-const FIELD_ROW = ({ label, value }) => (
-  <div className="flex items-center justify-between py-3 border-b border-[var(--border)] last:border-none">
-    <span className="text-sm text-[var(--text-muted)]">{label}</span>
-    <span className="text-sm font-medium text-[var(--text)]">{value ?? '—'}</span>
-  </div>
-);
+import DetailField from '../ui/DetailField'
 
 export default function PatientProfileCard({ patient }) {
   if (!patient) return null;
@@ -21,13 +15,13 @@ export default function PatientProfileCard({ patient }) {
       </div>
 
       {/* Fields */}
-      <FIELD_ROW label="Full Name"       value={`${patient.first_name} ${patient.last_name}`} />
-      <FIELD_ROW label="Patient ID"      value={patient.patient_id} />
-      <FIELD_ROW label="MRN"             value={patient.mrn} />
-      <FIELD_ROW label="Date of Birth"   value={patient.date_of_birth} />
-      <FIELD_ROW label="Sex"             value={patient.sex} />
-      <FIELD_ROW label="Contact Number"  value={patient.contact_number} />
-      <FIELD_ROW label="Total Records"   value={patient.total_records ?? 0} />
+      <DetailField label="Full Name"       value={`${patient.first_name} ${patient.last_name}`} />
+      <DetailField label="Patient ID"      value={patient.patient_id} />
+      <DetailField label="MRN"             value={patient.mrn} />
+      <DetailField label="Date of Birth"   value={patient.date_of_birth} />
+      <DetailField label="Sex"             value={patient.sex} />
+      <DetailField label="Contact Number"  value={patient.contact_number} />
+      <DetailField label="Total Records"   value={patient.total_records ?? 0} last />
     </div>
   );
 }

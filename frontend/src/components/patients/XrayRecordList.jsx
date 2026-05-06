@@ -1,15 +1,7 @@
 import { Clock } from 'lucide-react';
-
-// ✏️ Extend these as the backend adds more statuses
-const STATUS_STYLES = {
-  'Reviewed - Normal':   'bg-green-100 text-green-700',
-  'Reviewed - Abnormal': 'bg-red-100 text-red-700',
-  'Pending Review':      'bg-orange-100 text-orange-700',
-  'Pending AI Scoring':  'bg-blue-100 text-blue-700',
-};
+import StatusBadge from '../ui/StatusBadge'
 
 function XrayRecordItem({ record }) {
-  const statusStyle = STATUS_STYLES[record.status] ?? 'bg-gray-100 text-gray-500';
 
   return (
     <div className="flex flex-col gap-1.5 p-4 rounded-xl border border-[var(--border)] hover:bg-[var(--surface-soft)] transition-colors">
@@ -17,9 +9,7 @@ function XrayRecordItem({ record }) {
         <span className="text-sm font-semibold text-[var(--deep-navy)] font-mono">
           {record.transaction_id}
         </span>
-        <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${statusStyle}`}>
-          {record.status}
-        </span>
+        <StatusBadge status={record.status} />
       </div>
 
       <div className="flex items-center justify-between text-xs text-[var(--text-muted)]">

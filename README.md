@@ -97,12 +97,12 @@ Track progress by checking off tasks below.
 ### Step 7 — Transaction ID & Upload Confirmation
 
 - [x] `transaction_id` auto-generated as UUID on `XrayRecord` creation (use `uuid.uuid4`)
-- [ ] After successful upload, redirect to a confirmation page showing:
+- [x] After successful upload, redirect to a confirmation page showing:
   - Transaction ID
   - Patient name
   - Upload timestamp
   - Current status: "Pending Review"
-- [ ] Add toast/banner notification on success (or a styled confirmation card)
+- [x] Add toast/banner notification on success (or a styled confirmation card)
 
 ---
 
