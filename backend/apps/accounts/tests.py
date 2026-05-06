@@ -78,7 +78,7 @@ class AccountAuthViewsTests(TestCase):
 		self._create_user('tech', 'password123', 'RADIOLOGIC_TECH')
 		self.client.login(username='tech', password='password123')
 
-		response = self.client.get(reverse('accounts:logout'))
+		response = self.client.post(reverse('accounts:logout'))
 
 		self.assertRedirects(response, '/login', fetch_redirect_response=False)
 		self.assertNotIn('_auth_user_id', self.client.session)
