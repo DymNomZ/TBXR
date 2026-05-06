@@ -1,3 +1,5 @@
 from django.contrib import admin
+from .models import XrayRecord, ProcessedImage
 
-# Register your models here.
+admin.site.register(XrayRecord)
+admin.site.register(ProcessedImage)

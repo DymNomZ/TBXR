@@ -1,7 +1,7 @@
 from django.contrib.auth.models import AbstractUser
 from django.db import models
 
-from backend.apps.accounts.enums import UserRole
+from apps.accounts.enums import UserRole
 
 class User(AbstractUser):
     role = models.CharField(
