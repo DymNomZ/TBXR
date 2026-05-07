@@ -65,19 +65,19 @@ Track progress by checking off tasks below.
 - [x] Patient creation form with field validation
 - [x] Patient search by name or patient ID
 - [x] Patient detail page showing basic info and (empty) upload history list
-- [ ] Wire up URLs in `patients/urls.py` and include in root `urls.py`
+- [x] Wire up URLs in `patients/urls.py` and include in root `urls.py`
 
 ---
 
 ### Step 5 — X-ray Upload & File Validation
 
-- [ ] `imaging/views.py` — Upload view linked to a selected patient
+- [x] `imaging/views.py` — Upload view linked to a selected patient
 - [ ] Upload form: file picker + patient selector
-- [ ] Backend validation:
-  - [ ] Accept: `.jpg`, `.jpeg`, `.png`, `.dcm` only — reject all others with an error response
-  - [ ] File size limit: max 20MB
-- [ ] For `.dcm` (DICOM) files: use `pydicom` to read and convert pixel data to PNG for storage and display; keep original file
-- [ ] Return descriptive error messages for rejected uploads
+- [x] Backend validation:
+  - [x] Accept: `.jpg`, `.jpeg`, `.png`, `.dcm` only — reject all others with an error response
+  - [x] File size limit: max 20MB
+- [x] For `.dcm` (DICOM) files: use `pydicom` to read and convert pixel data to PNG for storage and display; keep original file
+- [x] Return descriptive error messages for rejected uploads
 
 ---
 
