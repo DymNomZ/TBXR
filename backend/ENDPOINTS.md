@@ -107,10 +107,12 @@ raw_image=@/path/to/file.png
 ## API Docs
 ### GET /api/schema/
 - Purpose: OpenAPI schema
+- Access: Public in DEBUG, staff-only otherwise
 - Response: JSON
 
 ### GET /api/docs/
 - Purpose: Swagger UI
+- Access: Public in DEBUG, staff-only otherwise
 - Response: HTML
 
 ## Media Files (dev only)
