@@ -8,13 +8,15 @@ from django.shortcuts import redirect
 from django.urls import reverse
 from django.views.decorators.http import require_http_methods
 
+from backend.apps.accounts.enums import UserRole
+
 from .decorators import role_required
 
 
 ROLE_DASHBOARD_URLS = {
-	'RADIOLOGIC_TECH': 'accounts:technologist-dashboard',
-	'RADIOLOGIST': 'accounts:radiologist-dashboard',
-	'PHYSICIAN': 'accounts:physician-dashboard',
+	UserRole.RADIOLOGIC_TECH: 'accounts:technologist-dashboard',
+	UserRole.RADIOLOGIST: 'accounts:radiologist-dashboard',
+	UserRole.PHYSICIAN: 'accounts:physician-dashboard',
 }
 
 
@@ -95,7 +97,7 @@ def logout_view(request):
 	return redirect(settings.LOGIN_URL)
 
 
-@role_required('RADIOLOGIC_TECH')
+@role_required(UserRole.RADIOLOGIC_TECH)
 def technologist_dashboard(request):
 	return _dashboard_response(
 		'Technologist Dashboard',
@@ -104,7 +106,7 @@ def technologist_dashboard(request):
 	)
 
 
-@role_required('RADIOLOGIST')
+@role_required(UserRole.RADIOLOGIST)
 def radiologist_dashboard(request):
 	return _dashboard_response(
 		'Radiologist Dashboard',
@@ -113,7 +115,7 @@ def radiologist_dashboard(request):
 	)
 
 
-@role_required('PHYSICIAN')
+@role_required(UserRole.PHYSICIAN)
 def physician_dashboard(request):
 	return _dashboard_response(
 		'Physician Dashboard',
