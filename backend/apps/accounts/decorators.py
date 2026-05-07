@@ -9,6 +9,9 @@
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
 from functools import wraps
+from django.http import JsonResponse
+from django.conf import settings
+from functools import wraps
 
 def role_required(*allowed_roles):
     def decorator(view_func):
@@ -27,3 +30,16 @@ def role_required(*allowed_roles):
             raise PermissionDenied
         return _wrapped_view
     return decorator
+
+def staff_or_debug_required(view_func):
+    @wraps(view_func)
+    def _wrapped_view(request, *args, **kwargs):
+        if settings.DEBUG:
+            return view_func(request, *args, **kwargs)
+        if not request.user.is_authenticated or not request.user.is_staff:
+            return JsonResponse(
+                {'error': 'You do not have permission to access this resource.'},
+                status=403
+            )
+        return view_func(request, *args, **kwargs)
+    return _wrapped_view
