@@ -1,5 +1,6 @@
 from django.shortcuts import get_object_or_404
 from apps.accounts.decorators import role_required
+from backend.apps.accounts.enums import UserRole
 from drf_spectacular.utils import OpenApiResponse, extend_schema, OpenApiParameter
 from rest_framework import status
 from rest_framework.decorators import api_view
@@ -19,6 +20,13 @@ from .serializers import PatientCreateSerializer, PatientSerializer
         400: OpenApiResponse(description="Validation error"),
     },
 )
+
+@api_view(['GET'])
+@role_required([UserRole.RADIOLOGIC_TECH, UserRole.RADIOLOGIST, UserRole.PHYSICIAN])
+def patient_list(request):
+    patients = Patient.objects.all().order_by('last_name', 'first_name')
+    serializer = PatientSerializer(patients, many=True)
+    return Response(serializer.data)
 
 @api_view(["POST"])
 @role_required('RADIOLOGIC_TECH')
