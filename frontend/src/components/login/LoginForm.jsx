@@ -58,7 +58,8 @@ function LoginForm() {
         const data = await response.json()
         setError(data.detail || data.error || data.errors || 'Login failed')
       } else {
-        setError(await response.text())
+        const text = (await response.text()).trim()
+        setError(text || 'Login failed. Please try again.')
       }
     } catch (fetchError) {
       setError('Unable to reach the server. Please try again.')
