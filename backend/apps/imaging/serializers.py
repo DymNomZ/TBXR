@@ -43,6 +43,14 @@ class XrayRecordUploadSerializer(serializers.ModelSerializer):
             try:
                 raw_file.seek(0)
                 dicom_data = pydicom.dcmread(raw_file)
+
+                # Check to confirm that the DICOM file contains pixel data
+                if not hasattr(dicom_data, 'pixel_array'):
+                    xray_record.delete()
+                    raise serializers.ValidationError(
+                        "File rejected: DICOM file does not contain image data."
+                    )
+
                 pixel_array = dicom_data.pixel_array.astype(float)
 
                 if 'RescaleSlope' in dicom_data and 'RescaleIntercept' in dicom_data:
@@ -80,6 +88,20 @@ class XrayRecordUploadSerializer(serializers.ModelSerializer):
                     image_scaled = 255.0 - image_scaled
 
                 image_uint8 = np.uint8(image_scaled)
+
+                # Handle multi-frame or single-frame 3D arrays e.g. (1, rows, cols)
+                if image_uint8.ndim == 3:
+                    if image_uint8.shape[0] == 1:
+                        # Single frame stored as (1, rows, cols) — safe to squeeze
+                        image_uint8 = image_uint8.squeeze(0)
+                    else:
+                        # Multi-frame — out of scope for chest X-ray screening
+                        xray_record.delete()
+                        raise serializers.ValidationError(
+                            "File rejected: Multi-frame DICOMs are not supported. "
+                            "TB-XR accepts single-frame chest X-ray images only."
+                        )
+
                 img = Image.fromarray(image_uint8)
 
                 buffer = BytesIO()
