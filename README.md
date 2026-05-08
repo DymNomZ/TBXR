@@ -72,7 +72,7 @@ Track progress by checking off tasks below.
 ### Step 5 — X-ray Upload & File Validation
 
 - [x] `imaging/views.py` — Upload view linked to a selected patient
-- [ ] Upload form: file picker + patient selector
+- [x] Upload form: file picker + patient selector
 - [x] Backend validation:
   - [x] Accept: `.jpg`, `.jpeg`, `.png`, `.dcm` only — reject all others with an error response
   - [x] File size limit: max 20MB
