@@ -14,9 +14,9 @@ from .decorators import role_required
 
 
 ROLE_DASHBOARD_URLS = {
-	UserRole.RADIOLOGIC_TECH: '/dashboard',
-	UserRole.RADIOLOGIST: '/dashboard',
-	UserRole.PHYSICIAN: '/dashboard',
+	UserRole.RADIOLOGIC_TECH: '/dashboard/technologist',
+	UserRole.RADIOLOGIST: '/dashboard/radiologist',
+	UserRole.PHYSICIAN: '/dashboard/physician',
 }
 
 
@@ -94,7 +94,6 @@ def login_view(request):
 def logout_view(request):
 	logout(request)
 	return redirect(settings.LOGIN_URL)
-
 
 @role_required(UserRole.RADIOLOGIC_TECH)
 def technologist_dashboard(request):
