@@ -60,7 +60,7 @@ Content-Type: application/json
 }
 ```
 
-### GET /api//patients/search/
+### GET /api/patients/search/
 - Purpose: Search patients by name.
 - Roles: RADIOLOGIC_TECH, RADIOLOGIST, PHYSICIAN
 - Query params:
@@ -72,7 +72,7 @@ Example:
 GET /patients/search/?name=smith
 ```
 
-### GET /api//patients/<patient_id>/
+### GET /api/patients/<patient_id>/
 - Purpose: Retrieve patient detail.
 - Roles: RADIOLOGIC_TECH, RADIOLOGIST, PHYSICIAN
 - Response: 200 JSON
@@ -101,7 +101,7 @@ raw_image=@/path/to/file.png
 
 ### GET /api/imaging/patients/<patient_id>/xray/
 - Purpose: Get all uploaded xrays (transactions) of the patient.
-- Roles: ALL
+- Roles: RADIOLOGIC_TECH, RADIOLOGIST, PHYSICIAN
 - Response: JSON
 
 ### GET /api/imaging/patients/<patient_id>/xray/upload/confirm/<transaction_id>/

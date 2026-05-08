@@ -21,8 +21,6 @@ export default function PatientDetailPage() {
   const [uploadResult, setUploadResult]   = useState(null)
   const [xrayRefreshKey, setXrayRefreshKey] = useState(0)
 
-  const xrayRecords = []
-
   useEffect(() => {
     fetch(`/api/patients/${patientId}/`, {
       credentials: 'include',
@@ -110,7 +108,7 @@ export default function PatientDetailPage() {
         {/* Two-column layout */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
           <PatientProfileCard patient={patient} />
-          <XrayRecordList records={xrayRecords} />
+          <XrayRecordList patientId={patientId} refreshKey={xrayRefreshKey} />
         </div>
  
       </div>
