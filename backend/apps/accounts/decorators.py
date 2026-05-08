@@ -1,7 +1,7 @@
 # This file contains decorators for role-based access control in the accounts app.
 # To use these decorators, simply import them and apply to your views. For example:
 # from .decorators import role_required
-# @role_required('RADIOLOGIC_TECH', 'RADIOLOGIST')
+# @role_required(UserRole.RADIOLOGIC_TECH, UserRole.RADIOLOGIST)
 # def my_view(request):
 #     ...
 # Ensure to use this decorator in conjunction with Django's built-in @login_required to all protected views.
