@@ -1,46 +1,13 @@
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Upload} from 'lucide-react';
 import { useState, useEffect } from 'react';
 import AppLayout from '../components/layout/AppLayout';
 import PatientProfileCard from '../components/patients/PatientProfileCard';
 import XrayRecordList from '../components/patients/XrayRecordList';
-
-// 🔌 Replace with real fetch once backend confirms shape:
-// GET /patients/:patientId  →  { patient, xray_records }
-const MOCK_PATIENT = {
-  patient_id:     'PT-0001',
-  mrn:            'MRN-12345',
-  first_name:     'Andrea',
-  last_name:      'Hiyahiya',
-  date_of_birth:  '1999-03-12',
-  sex:            'Female',
-  contact_number: '(280) 548-0124',
-  total_records:  3,
-};
-
-const MOCK_RECORDS = [
-  {
-    transaction_id:    'TXN-38291827',
-    date:              '2025-11-15 09:45:22',
-    view_type:         'X-Ray Chest PA',
-    status:            'Reviewed - Normal',
-    reviewing_doctor:  'Dr. Smith',
-  },
-  {
-    transaction_id:    'TXN-29384756',
-    date:              '2025-08-03 11:20:18',
-    view_type:         'X-Ray Chest PA',
-    status:            'Reviewed - Abnormal',
-    reviewing_doctor:  'Dr. Johnson',
-  },
-  {
-    transaction_id:    'TXN-19283746',
-    date:              '2025-03-22 15:35:41',
-    view_type:         'X-Ray Chest Lateral',
-    status:            'Reviewed - Normal',
-    reviewing_doctor:  'Dr. Smith',
-  },
-];
+import Button from '../components/ui/Button'
+import Modal from '../components/ui/Modal'
+import XrayUploadForm from '../components/upload/XrayUploadForm'
+import UploadConfirmation from '../components/upload/UploadConfirmation'
 
 export default function PatientDetailPage() {
   const { patientId } = useParams();
@@ -49,7 +16,10 @@ export default function PatientDetailPage() {
   const [patient, setPatient] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
-  const xrayRecords = MOCK_RECORDS; // replace later with real data from API
+  const [isUploadOpen, setIsUploadOpen] = useState(false)
+  const [isConfirmOpen, setIsConfirmOpen] = useState(false)
+  const [uploadResult, setUploadResult]   = useState(null)
+  const [xrayRefreshKey, setXrayRefreshKey] = useState(0)
 
   useEffect(() => {
     fetch(`/api/patients/${patientId}/`, {
@@ -70,6 +40,24 @@ export default function PatientDetailPage() {
       })
   }, [patientId])
 
+  const handleUploadSuccess = (data) => {
+    setUploadResult(data)           // set data first
+    setXrayRefreshKey((k) => k + 1)
+    setIsUploadOpen(false)          // close upload modal
+    setTimeout(() => setIsConfirmOpen(true), 250)  // open confirm after animation
+  }
+
+  const handleDashboard = () => {
+    setIsConfirmOpen(false)
+    navigate('/dashboard')
+  }
+ 
+  const handleUploadAnother = () => {
+    setIsConfirmOpen(false)
+    // Wait for confirmation modal exit animation before reopening upload
+    setTimeout(() => setIsUploadOpen(true), 250)
+  }
+
   if (loading) return (
     <AppLayout>
       <div className="flex items-center justify-center py-24 text-sm text-[var(--text-muted)]">
@@ -86,35 +74,75 @@ export default function PatientDetailPage() {
     </AppLayout>
   )
 
-  return (
+  const patientName = `${patient.first_name} ${patient.last_name}`
+
+   return (
     <AppLayout>
       <div className="flex flex-col gap-6">
-
-        {/* Back nav + page title */}
-        <div className="flex items-center gap-3">
-          <button
-            onClick={() => navigate('/patients')}
-            className="w-9 h-9 flex items-center justify-center rounded-xl border border-[var(--border)] hover:bg-[var(--surface-soft)] transition-colors"
-          >
-            <ArrowLeft size={16} className="text-[var(--text-muted)]" />
-          </button>
-          <div>
-            <h1 className="text-2xl font-bold text-[var(--deep-navy)] tracking-tight">
-              {patient.first_name} {patient.last_name}
-            </h1>
-            <p className="text-sm text-[var(--text-muted)]">
-              Patient ID: {patient.patient_id}
-            </p>
+ 
+        {/* Back nav + page title + Upload button */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => navigate('/patients')}
+              className="w-9 h-9 flex items-center justify-center rounded-xl border border-[var(--border)] hover:bg-[var(--surface-soft)] transition-colors"
+            >
+              <ArrowLeft size={16} className="text-[var(--text-muted)]" />
+            </button>
+            <div>
+              <h1 className="text-2xl font-bold text-[var(--deep-navy)] tracking-tight">
+                {patientName}
+              </h1>
+              <p className="text-sm text-[var(--text-muted)]">
+                Patient ID: {patient.patient_id}
+              </p>
+            </div>
           </div>
+ 
+          <Button onClick={() => setIsUploadOpen(true)}>
+            <Upload size={15} />
+            Upload X-ray
+          </Button>
         </div>
-
+ 
         {/* Two-column layout */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
           <PatientProfileCard patient={patient} />
-          <XrayRecordList records={xrayRecords} />
+          <XrayRecordList patientId={patientId} refreshKey={xrayRefreshKey} />
         </div>
-
+ 
       </div>
+ 
+      {/* Upload X-ray modal */}
+      <Modal
+        isOpen={isUploadOpen}
+        onClose={() => setIsUploadOpen(false)}
+        title="Upload X-ray"
+      >
+        <XrayUploadForm
+          patientId={patientId}
+          patientName={patientName}
+          onSuccess={handleUploadSuccess}
+        />
+      </Modal>
+
+      {/* Upload confirmation modal */}
+      <Modal
+        isOpen={isConfirmOpen}
+        onClose={() => setIsConfirmOpen(false)}
+        noPadding
+        hideClose
+      >
+        {uploadResult && (
+          <UploadConfirmation
+            data={uploadResult}
+            patientName={patientName}
+            onDashboard={handleDashboard}
+            onUploadAnother={handleUploadAnother}
+          />
+        )}
+      </Modal>
+ 
     </AppLayout>
-  );
+  )
 }

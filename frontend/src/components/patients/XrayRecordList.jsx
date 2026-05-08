@@ -1,4 +1,5 @@
 import { Clock } from 'lucide-react';
+import { useState, useEffect } from 'react'
 import StatusBadge from '../ui/StatusBadge'
 
 function XrayRecordItem({ record }) {
@@ -13,20 +14,45 @@ function XrayRecordItem({ record }) {
       </div>
 
       <div className="flex items-center justify-between text-xs text-[var(--text-muted)]">
-        <span>{record.date}</span>
-        <span>{record.view_type}</span>
+        <span>{new Date(record.upload_timestamp).toLocaleString('en-PH')}</span>
+        {/* <span>{record.view_type}</span> */}
       </div>
 
       {record.reviewing_doctor && (
         <div className="text-xs text-[var(--text-muted)] text-right">
-          {record.reviewing_doctor}
+          {/* {record.reviewing_doctor} */}
         </div>
       )}
     </div>
   );
 }
 
-export default function XrayRecordList({ records = [] }) {
+export default function XrayRecordList({ patientId, refreshKey = 0 }) {
+  const [records, setRecords] = useState([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    if (!patientId) return
+    setLoading(true)
+    fetch(`/api/imaging/patients/${patientId}/xray/`, {
+      credentials: 'include',
+    })
+      .then((res) => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+        return res.json()
+      })
+      .then((data) => { setRecords(data); setLoading(false) })
+      .catch(() => setLoading(false))
+  }, [patientId, refreshKey])
+
+  if (loading) return (
+    <div className="bg-white rounded-2xl border border-[var(--border)] shadow-sm p-6">
+      <p className="text-sm text-[var(--text-muted)] text-center py-8">
+        Loading records...
+      </p>
+    </div>
+  )
+
   return (
     <div className="bg-white rounded-2xl border border-[var(--border)] shadow-sm p-6 flex flex-col gap-4">
       {/* Card header */}

@@ -33,7 +33,7 @@ Required headers for session-authenticated POST requests:
 - Response: 302 redirect to /admin/
 
 ## Patients
-### POST /patients/register/
+### POST /api/patients/register/
 - Purpose: Create a patient.
 - Roles: RADIOLOGIC_TECH
 - Headers:
@@ -48,7 +48,7 @@ Required headers for session-authenticated POST requests:
 
 Example:
 ```
-POST /patients/register/
+POST /api/patients/register/
 Content-Type: application/json
 
 {
@@ -60,7 +60,7 @@ Content-Type: application/json
 }
 ```
 
-### GET /patients/search/
+### GET /api/patients/search/
 - Purpose: Search patients by name.
 - Roles: RADIOLOGIC_TECH, RADIOLOGIST, PHYSICIAN
 - Query params:
@@ -72,13 +72,13 @@ Example:
 GET /patients/search/?name=smith
 ```
 
-### GET /patients/<patient_id>/
+### GET /api/patients/<patient_id>/
 - Purpose: Retrieve patient detail.
 - Roles: RADIOLOGIC_TECH, RADIOLOGIST, PHYSICIAN
 - Response: 200 JSON
 
 ## Imaging
-### POST /imaging/patients/<patient_id>/xray/upload/
+### POST /api/imaging/patients/<patient_id>/xray/upload/
 - Purpose: Upload a raw X-ray file and create an XrayRecord.
 - Roles: RADIOLOGIC_TECH
 - Headers:
@@ -86,20 +86,25 @@ GET /patients/search/?name=smith
   - Cookie + X-CSRFToken (session auth)
 - Body (multipart):
   - raw_image (file)
-- Response: 303 redirect to confirmation endpoint
+- Response: 200 JSON
 - Side effects:
   - File saved to media/raw/
   - XrayRecord created with status PENDING (Pending Review)
 
 Example:
 ```
-POST /imaging/patients/1/xray/upload/
+POST /api//imaging/patients/1/xray/upload/
 Content-Type: multipart/form-data
 
 raw_image=@/path/to/file.png
 ```
 
-### GET /imaging/patients/<patient_id>/xray/upload/confirm/<transaction_id>/
+### GET /api/imaging/patients/<patient_id>/xray/
+- Purpose: Get all uploaded xrays (transactions) of the patient.
+- Roles: RADIOLOGIC_TECH, RADIOLOGIST, PHYSICIAN
+- Response: JSON
+
+### GET /api/imaging/patients/<patient_id>/xray/upload/confirm/<transaction_id>/
 - Purpose: Confirm upload and return XrayRecord details.
 - Roles: RADIOLOGIC_TECH
 - Response: 200 JSON
