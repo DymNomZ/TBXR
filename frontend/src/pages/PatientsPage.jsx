@@ -1,15 +1,23 @@
-import { useSearchParams } from 'react-router-dom';
-import AppLayout from '../components/layout/AppLayout';
-import PatientTable from '../components/patients/PatientTable';
-import PatientSearchBar from '../components/patients/PatientSearchBar';
+import { useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
+import { Plus } from 'lucide-react'
+import AppLayout from '../components/layout/AppLayout'
+import PatientTable from '../components/patients/PatientTable'
+import PatientSearchBar from '../components/patients/PatientSearchBar'
+import Button from '../components/ui/Button'
+import Modal from '../components/ui/Modal'
+import PatientCard from '../components/patients/PatientCard'
 
 export default function PatientsPage() {
-  const [searchParams] = useSearchParams();
-  const search = searchParams.get('search') ?? '';
+  const [searchParams] = useSearchParams()
+  const search = searchParams.get('search') ?? ''
+  const [isModalOpen, setIsModalOpen] = useState(false)
+  const [refreshKey, setRefreshKey] = useState(0)
 
   return (
     <AppLayout>
       <div className="flex flex-col gap-6">
+
         {/* Page header */}
         <div className="flex items-center justify-between">
           <div>
@@ -20,7 +28,15 @@ export default function PatientsPage() {
               All registered patient records
             </p>
           </div>
-          <PatientSearchBar />
+
+          {/* Search + New Patient — grouped on the right */}
+          <div className="flex items-center gap-3">
+            <Button onClick={() => setIsModalOpen(true)}>
+              <Plus size={16} />
+              New Patient
+            </Button>
+            <PatientSearchBar />
+          </div>
         </div>
 
         {/* Active search indicator */}
@@ -31,8 +47,19 @@ export default function PatientsPage() {
           </p>
         )}
 
-        <PatientTable search={search} />
+        <PatientTable search={search} refreshKey={refreshKey} />
       </div>
+
+      {/* New Patient modal */}
+      <Modal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+      >
+        <PatientCard onSuccess={() => {
+          setIsModalOpen(false)
+          setRefreshKey((k) => k + 1)
+        }} />
+      </Modal>
     </AppLayout>
-  );
+  )
 }

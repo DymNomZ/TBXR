@@ -27,8 +27,8 @@ docs_view   = staff_or_debug_required(SpectacularSwaggerView.as_view(url_name='s
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('accounts/', include('apps.accounts.urls')),
-    path('patients/', include('apps.patients.urls')),
-    path('imaging/', include('apps.imaging.urls')),
+    path('api/patients/', include('apps.patients.urls')),
+    path('api/imaging/', include('apps.imaging.urls')),
     path('api/schema/', schema_view, name='schema'),
     path('api/docs/', docs_view, name='swagger-ui'),
 ]

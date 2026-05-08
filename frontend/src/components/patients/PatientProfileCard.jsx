@@ -4,6 +4,12 @@ import DetailField from '../ui/DetailField'
 export default function PatientProfileCard({ patient }) {
   if (!patient) return null;
 
+  const sexMap = {
+    M: 'Male',
+    F: 'Female',
+    O: 'Other',
+  };
+
   return (
     <div className="bg-white rounded-2xl border border-[var(--border)] shadow-sm p-6 flex flex-col gap-1">
       {/* Card header */}
@@ -19,7 +25,7 @@ export default function PatientProfileCard({ patient }) {
       <DetailField label="Patient ID"      value={patient.patient_id} />
       <DetailField label="MRN"             value={patient.mrn} />
       <DetailField label="Date of Birth"   value={patient.date_of_birth} />
-      <DetailField label="Sex"             value={patient.sex} />
+      <DetailField label="Sex"             value={sexMap[patient.sex] || 'Unknown'} />
       <DetailField label="Contact Number"  value={patient.contact_number} />
       <DetailField label="Total Records"   value={patient.total_records ?? 0} last />
     </div>

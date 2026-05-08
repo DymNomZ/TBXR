@@ -1,7 +1,7 @@
 # This file contains decorators for role-based access control in the accounts app.
 # To use these decorators, simply import them and apply to your views. For example:
 # from .decorators import role_required
-# @role_required('RADIOLOGIC_TECH', 'RADIOLOGIST')
+# @role_required(UserRole.RADIOLOGIC_TECH, UserRole.RADIOLOGIST)
 # def my_view(request):
 #     ...
 # Ensure to use this decorator in conjunction with Django's built-in @login_required to all protected views.
@@ -12,6 +12,8 @@ from functools import wraps
 from django.http import JsonResponse
 from django.conf import settings
 from functools import wraps
+
+from apps.accounts.enums import UserRole
 
 def role_required(*allowed_roles):
     def decorator(view_func):
@@ -24,10 +26,11 @@ def role_required(*allowed_roles):
         @wraps(view_func)
         def _wrapped_view(request, *args, **kwargs):
             # Check role
-            if request.user.role in allowed_roles:
-                return view_func(request, *args, **kwargs)
-            # Raise 403 if role doesn't match
-            raise PermissionDenied
+            user_role = request.user.role
+            normalized_roles = [r.value if hasattr(r, 'value') else r for r in UserRole]
+            if user_role not in normalized_roles:
+                raise PermissionDenied
+            return view_func(request, *args, **kwargs)
         return _wrapped_view
     return decorator
 
