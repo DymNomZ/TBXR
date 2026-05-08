@@ -33,7 +33,7 @@ Required headers for session-authenticated POST requests:
 - Response: 302 redirect to /admin/
 
 ## Patients
-### POST /patients/register/
+### POST /api/patients/register/
 - Purpose: Create a patient.
 - Roles: RADIOLOGIC_TECH
 - Headers:
@@ -48,7 +48,7 @@ Required headers for session-authenticated POST requests:
 
 Example:
 ```
-POST /patients/register/
+POST /api/patients/register/
 Content-Type: application/json
 
 {
@@ -78,7 +78,7 @@ GET /patients/search/?name=smith
 - Response: 200 JSON
 
 ## Imaging
-### POST /imaging/patients/<patient_id>/xray/upload/
+### POST /api/imaging/patients/<patient_id>/xray/upload/
 - Purpose: Upload a raw X-ray file and create an XrayRecord.
 - Roles: RADIOLOGIC_TECH
 - Headers:
@@ -99,7 +99,7 @@ Content-Type: multipart/form-data
 raw_image=@/path/to/file.png
 ```
 
-### GET /imaging/patients/<patient_id>/xray/upload/confirm/<transaction_id>/
+### GET /api/imaging/patients/<patient_id>/xray/upload/confirm/<transaction_id>/
 - Purpose: Confirm upload and return XrayRecord details.
 - Roles: RADIOLOGIC_TECH
 - Response: 200 JSON
