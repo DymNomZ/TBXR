@@ -1,6 +1,7 @@
 const VARIANTS = {
   primary:   'bg-[var(--deep-navy)] text-white hover:opacity-90',
   secondary: 'bg-transparent text-[var(--text)] border border-[var(--border)] hover:bg-[var(--surface-soft)]',
+  accent:    'bg-[var(--accent)] text-white hover:opacity-90',
   danger:    'bg-[var(--danger)] text-white hover:opacity-90',
 }
 
@@ -18,6 +19,7 @@ export default function Button({
   type      = 'button',
   disabled  = false,
   fullWidth = false,
+  className = '',  
 }) {
   return (
     <button
@@ -31,6 +33,7 @@ export default function Button({
         ${SIZES[size]}
         ${fullWidth ? 'w-full' : ''}
         ${disabled ? 'opacity-40 cursor-not-allowed pointer-events-none' : ''}
+        ${className}
       `}
     >
       {children}

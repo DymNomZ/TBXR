@@ -14,12 +14,12 @@ function XrayRecordItem({ record }) {
 
       <div className="flex items-center justify-between text-xs text-[var(--text-muted)]">
         <span>{record.date}</span>
-        <span>{record.view_type}</span>
+        {/* <span>{record.view_type}</span> */}
       </div>
 
       {record.reviewing_doctor && (
         <div className="text-xs text-[var(--text-muted)] text-right">
-          {record.reviewing_doctor}
+          {/* {record.reviewing_doctor} */}
         </div>
       )}
     </div>
