@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import InputField from '../ui/InputField'
 import ErrorBanner from '../ui/ErrorBanner'
+import Button from '../ui/Button'
 
 const LOGIN_URL = '/accounts/login/'
 const CSRF_URL = '/accounts/csrf-token/'
@@ -90,13 +91,9 @@ function LoginForm() {
         autoComplete="current-password"
       />
 
-      <button
-        className="flex w-full items-center justify-center rounded-3xl bg-slate-indigo px-4 py-3 text-sm font-semibold text-white opacity-50 transition duration-200 hover:bg-slate-indigo hover:opacity-100 disabled:cursor-not-allowed disabled:opacity-80"
-        type="submit"
-        disabled={isSubmitting}
-      >
+      <Button type="submit" fullWidth disabled={isSubmitting}>
         {isSubmitting ? 'Signing in...' : 'Sign in'}
-      </button>
+      </Button>
     </form>
   )
 }

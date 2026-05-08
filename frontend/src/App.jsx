@@ -14,7 +14,6 @@ function App() {
 
         {/* Patients */}
         <Route path="/patients" element={<PatientsPage />} />
-        <Route path="/patients/register" element={<PatientCard />} />
         <Route path="/patients/:patientId" element={<PatientDetailPage />} />
 
         {/* Upload */}

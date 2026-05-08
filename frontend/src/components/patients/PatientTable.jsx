@@ -56,7 +56,7 @@ const COLUMNS = [
   // },
 ];
 
-export default function PatientTable({ search = '' }) {
+export default function PatientTable({ search = '', refreshKey = 0 }) {
   const navigate = useNavigate()
   const [patients, setPatients] = useState([])
   const [loading, setLoading] = useState(true)
@@ -89,7 +89,7 @@ export default function PatientTable({ search = '' }) {
       })
 
     return () => controller.abort()
-  }, [search])
+  }, [search, refreshKey])
 
   if (loading) return (
     <div className="bg-white rounded-2xl border border-[var(--border)] p-12 text-center text-sm text-[var(--text-muted)]">
