@@ -45,13 +45,19 @@ function LoginForm() {
       }
 
       if (response.ok) {
-        const location = response.headers.get('Location')
-        if (location) {
-          window.location.href = location
-          return
+        console.log("Succeeded! Checking for JSON data...");
+        const data = await response.json();
+        console.log("Data received from backend:", data);
+        
+        if (data.redirect) {
+          console.log("Redirecting to:", data.redirect);
+          window.location.href = data.redirect;
+          return;
         }
-        window.location.reload()
-        return
+        
+        console.log("No redirect key found, reloading...");
+        window.location.reload();
+        return;
       }
 
       const contentType = response.headers.get('content-type') || ''

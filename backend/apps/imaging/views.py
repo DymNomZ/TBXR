@@ -65,7 +65,7 @@ def upload_confirm(request, patient_id, transaction_id):
     return Response(serializer.data)
 
 @api_view(["GET"])
-@role_required([UserRole.RADIOLOGIC_TECH, UserRole.RADIOLOGIST, UserRole.PHYSICIAN])
+@role_required(UserRole.RADIOLOGIC_TECH, UserRole.RADIOLOGIST, UserRole.PHYSICIAN)
 def patient_xrays(request, patient_id):
     patient = get_object_or_404(Patient, patient_id=patient_id)
     records = XrayRecord.objects.filter(

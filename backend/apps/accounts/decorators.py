@@ -27,8 +27,8 @@ def role_required(*allowed_roles):
         def _wrapped_view(request, *args, **kwargs):
             # Check role
             user_role = request.user.role
-            normalized_roles = [r.value if hasattr(r, 'value') else r for r in UserRole]
-            if user_role not in normalized_roles:
+            allowed_values = [r.value if hasattr(r, 'value') else r for r in allowed_roles]
+            if user_role not in allowed_values:
                 raise PermissionDenied
             return view_func(request, *args, **kwargs)
         return _wrapped_view

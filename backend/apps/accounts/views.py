@@ -14,9 +14,9 @@ from .decorators import role_required
 
 
 ROLE_DASHBOARD_URLS = {
-	UserRole.RADIOLOGIC_TECH: '/dashboard',
-	UserRole.RADIOLOGIST: '/dashboard',
-	UserRole.PHYSICIAN: '/dashboard',
+    UserRole.RADIOLOGIC_TECH: 'accounts:technologist-dashboard',
+    UserRole.RADIOLOGIST: 'accounts:radiologist-dashboard',
+    UserRole.PHYSICIAN: 'accounts:physician-dashboard',
 }
 
 
@@ -88,13 +88,12 @@ def login_view(request):
 			status=400,
 		)
 
-	return JsonResponse({'redirect': dashboard_url_name}, status=200)
+	return JsonResponse({'redirect': reverse(dashboard_url_name)}, status=200)
 
 @require_http_methods(['POST'])
 def logout_view(request):
 	logout(request)
 	return redirect(settings.LOGIN_URL)
-
 
 @role_required(UserRole.RADIOLOGIC_TECH)
 def technologist_dashboard(request):

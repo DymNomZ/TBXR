@@ -135,6 +135,7 @@ dmypy.json
 .idea/
 *.swp
 *.swo
+.continue
 *~
 
 # OS
