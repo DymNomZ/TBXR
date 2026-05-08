@@ -1,4 +1,5 @@
 import { useNavigate } from 'react-router-dom';
+import { useState, useEffect } from 'react';
 import Table from '../ui/Table';
 import StatusBadge from '../ui/StatusBadge';
 
@@ -18,10 +19,17 @@ const COLUMNS = [
     ),
   },
   {
-    key: 'full_name',
-    header: 'Full Name',
+    key: 'first_name',
+    header: 'First Name',
     render: (row) => (
-      <span className="font-medium text-[var(--text)]">{row.full_name}</span>
+      <span className="font-medium text-[var(--text)]">{row.first_name}</span>
+    ),
+  },
+  {
+    key: 'last_name',
+    header: 'Last Name',
+    render: (row) => (
+      <span className="font-medium text-[var(--text)]">{row.last_name}</span>
     ),
   },
   {
@@ -48,41 +56,60 @@ const COLUMNS = [
   // },
 ];
 
-// Placeholder until GET /patients/ is confirmed with backend
-const MOCK_DATA = [
-  { id: 1, patient_id: 'PT-0001', full_name: 'Andrea Hiyahiya', date_of_birth: '1999-03-12', sex: 'Female', contact_number: '(280) 548-0124' },
-  { id: 2, patient_id: 'PT-0002', full_name: 'Bianca Lalema',   date_of_birth: '1982-07-04', sex: 'Female', contact_number: '(124) 864-1794' },
-  { id: 3, patient_id: 'PT-0003', full_name: 'John Smith',      date_of_birth: '1997-11-23', sex: 'Male',   contact_number: '(789) 164-4876' },
-];
-
 export default function PatientTable({ search = '' }) {
+  const navigate = useNavigate()
+  const [patients, setPatients] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
 
-  // 🔌 Replace this with your real fetch when backend is ready:
-  //
-  // const { data, isLoading } = useQuery({
-  //   queryKey: ['patients', search],
-  //   queryFn: () => fetch(`/api/patients/?search=${encodeURIComponent(search)}`).then(r => r.json()),
-  // });
+  useEffect(() => {
+    const controller = new AbortController()
+    setLoading(true)
 
-  // --- MOCK: filter locally until backend is wired ---
-  const filtered = MOCK_DATA.filter((p) => {
-    if (!search) return true;
-    const q = search.toLowerCase();
-    return (
-      p.full_name.toLowerCase().includes(q) ||
-      p.patient_id.toLowerCase().includes(q)
-    );
-  });
+    const url = search.trim()
+      ? `/api/patients/search/?name=${encodeURIComponent(search.trim())}`
+      : '/api/patients/'
 
-  const navigate = useNavigate();
+    fetch(url, {
+      credentials: 'include',         // sends session cookie
+      signal: controller.signal,
+    })
+      .then((res) => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+        return res.json()
+      })
+      .then((data) => {
+        setPatients(data)
+        setLoading(false)
+      })
+      .catch((err) => {
+        if (err.name === 'AbortError') return
+        setError(err.message)
+        setLoading(false)
+      })
+
+    return () => controller.abort()
+  }, [search])
+
+  if (loading) return (
+    <div className="bg-white rounded-2xl border border-[var(--border)] p-12 text-center text-sm text-[var(--text-muted)]">
+      Loading patients...
+    </div>
+  )
+
+  if (error) return (
+    <div className="bg-white rounded-2xl border border-[var(--border)] p-12 text-center text-sm text-[var(--danger)]">
+      Failed to load patients: {error}
+    </div>
+  )
 
   return (
     <div className="bg-white rounded-2xl border border-[var(--border)] overflow-hidden shadow-sm">
       <Table
         columns={COLUMNS}
-        data={filtered}   // was MOCK_DATA, now filtered
+        data={patients}
         onRowClick={(row) => navigate(`/patients/${row.patient_id}`)}
       />
     </div>
-  );
+  )
 }
