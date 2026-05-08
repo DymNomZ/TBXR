@@ -1,6 +1,6 @@
 from django.shortcuts import get_object_or_404
 from apps.accounts.decorators import role_required
-from backend.apps.accounts.enums import UserRole
+from apps.accounts.enums import UserRole
 from drf_spectacular.utils import OpenApiResponse, extend_schema, OpenApiParameter
 from rest_framework import status
 from rest_framework.decorators import api_view

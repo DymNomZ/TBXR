@@ -8,15 +8,15 @@ from django.shortcuts import redirect
 from django.urls import reverse
 from django.views.decorators.http import require_http_methods
 
-from backend.apps.accounts.enums import UserRole
+from apps.accounts.enums import UserRole
 
 from .decorators import role_required
 
 
 ROLE_DASHBOARD_URLS = {
-	UserRole.RADIOLOGIC_TECH: 'accounts:technologist-dashboard',
-	UserRole.RADIOLOGIST: 'accounts:radiologist-dashboard',
-	UserRole.PHYSICIAN: 'accounts:physician-dashboard',
+	UserRole.RADIOLOGIC_TECH: '/dashboard',
+	UserRole.RADIOLOGIST: '/dashboard',
+	UserRole.PHYSICIAN: '/dashboard',
 }
 
 
@@ -88,8 +88,7 @@ def login_view(request):
 			status=400,
 		)
 
-	return redirect(dashboard_url_name)
-
+	return JsonResponse({'redirect': dashboard_url_name}, status=200)
 
 @require_http_methods(['POST'])
 def logout_view(request):
