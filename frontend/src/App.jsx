@@ -12,9 +12,6 @@ function App() {
         {/* Auth */}
         <Route path="/login" element={<LoginPage />} />
 
-        {/* Default redirect */}
-        <Route path="*" element={<Navigate to="/login" replace />} />
-
         {/* Patients */}
         <Route path="/patients" element={<PatientsPage />} />
         <Route path="/patients/register" element={<PatientCard />} />
@@ -22,6 +19,9 @@ function App() {
 
         {/* Upload */}
         <Route path="/upload/confirmation" element={<UploadConfirmationPage />} />
+
+        {/* Default redirect */}
+        <Route path="*" element={<Navigate to="/login" replace />} />
       </Routes>
     </BrowserRouter>
   )
