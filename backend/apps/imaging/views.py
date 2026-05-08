@@ -49,16 +49,8 @@ def upload_xray(request, patient_id):
         file_format=file_format,
     )
 
-    confirm_url = reverse(
-        "imaging:upload_confirm",
-        kwargs={
-            "patient_id": patient.patient_id,
-            "transaction_id": xray_record.transaction_id,
-        },
-        request=request,
-    )
-    headers = {"Location": confirm_url}
-    return Response(status=status.HTTP_303_SEE_OTHER, headers=headers)
+    serializer = XrayRecordSerializer(xray_record)
+    return Response(serializer.data, status=status.HTTP_200_OK)
 
 
 @api_view(["GET"])
@@ -70,4 +62,14 @@ def upload_confirm(request, patient_id, transaction_id):
         patient__patient_id=patient_id,
     )
     serializer = XrayRecordSerializer(xray_record)
+    return Response(serializer.data)
+
+@api_view(["GET"])
+@role_required([UserRole.RADIOLOGIC_TECH, UserRole.RADIOLOGIST, UserRole.PHYSICIAN])
+def patient_xrays(request, patient_id):
+    patient = get_object_or_404(Patient, patient_id=patient_id)
+    records = XrayRecord.objects.filter(
+        patient=patient
+    ).order_by('-upload_timestamp')
+    serializer = XrayRecordSerializer(records, many=True)
     return Response(serializer.data)

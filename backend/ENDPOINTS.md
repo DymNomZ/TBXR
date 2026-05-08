@@ -60,7 +60,7 @@ Content-Type: application/json
 }
 ```
 
-### GET /patients/search/
+### GET /api//patients/search/
 - Purpose: Search patients by name.
 - Roles: RADIOLOGIC_TECH, RADIOLOGIST, PHYSICIAN
 - Query params:
@@ -72,7 +72,7 @@ Example:
 GET /patients/search/?name=smith
 ```
 
-### GET /patients/<patient_id>/
+### GET /api//patients/<patient_id>/
 - Purpose: Retrieve patient detail.
 - Roles: RADIOLOGIC_TECH, RADIOLOGIST, PHYSICIAN
 - Response: 200 JSON
@@ -86,18 +86,23 @@ GET /patients/search/?name=smith
   - Cookie + X-CSRFToken (session auth)
 - Body (multipart):
   - raw_image (file)
-- Response: 303 redirect to confirmation endpoint
+- Response: 200 JSON
 - Side effects:
   - File saved to media/raw/
   - XrayRecord created with status PENDING (Pending Review)
 
 Example:
 ```
-POST /imaging/patients/1/xray/upload/
+POST /api//imaging/patients/1/xray/upload/
 Content-Type: multipart/form-data
 
 raw_image=@/path/to/file.png
 ```
+
+### GET /api/imaging/patients/<patient_id>/xray/
+- Purpose: Get all uploaded xrays (transactions) of the patient.
+- Roles: ALL
+- Response: JSON
 
 ### GET /api/imaging/patients/<patient_id>/xray/upload/confirm/<transaction_id>/
 - Purpose: Confirm upload and return XrayRecord details.

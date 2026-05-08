@@ -15,4 +15,9 @@ urlpatterns = [
         views.upload_confirm,
         name="upload_confirm",
     ),
+    path(
+        "patients/<int:patient_id>/xray/",
+        views.patient_xrays,
+        name="patient_xrays",
+    ),
 ]
