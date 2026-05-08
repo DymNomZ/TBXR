@@ -20,14 +20,6 @@ from .serializers import PatientCreateSerializer, PatientSerializer
         400: OpenApiResponse(description="Validation error"),
     },
 )
-
-@api_view(['GET'])
-@role_required([UserRole.RADIOLOGIC_TECH, UserRole.RADIOLOGIST, UserRole.PHYSICIAN])
-def patient_list(request):
-    patients = Patient.objects.all().order_by('last_name', 'first_name')
-    serializer = PatientSerializer(patients, many=True)
-    return Response(serializer.data)
-
 @api_view(["POST"])
 @role_required(UserRole.RADIOLOGIC_TECH)
 # Only technologists should register patients, radiologists and physicians only review existing records.    
@@ -87,5 +79,12 @@ def search_patients(request):
     else:
         patients = Patient.objects.all()
 
+    serializer = PatientSerializer(patients, many=True)
+    return Response(serializer.data)
+
+@api_view(['GET'])
+@role_required([UserRole.RADIOLOGIC_TECH, UserRole.RADIOLOGIST, UserRole.PHYSICIAN])
+def patient_list(request):
+    patients = Patient.objects.all().order_by('last_name', 'first_name')
     serializer = PatientSerializer(patients, many=True)
     return Response(serializer.data)

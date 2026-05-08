@@ -13,6 +13,8 @@ from django.http import JsonResponse
 from django.conf import settings
 from functools import wraps
 
+from apps.accounts.enums import UserRole
+
 def role_required(*allowed_roles):
     def decorator(view_func):
         # Yours delegates the unauthenticated case to Django's built-in @login_required.
@@ -24,10 +26,11 @@ def role_required(*allowed_roles):
         @wraps(view_func)
         def _wrapped_view(request, *args, **kwargs):
             # Check role
-            if request.user.role in allowed_roles:
-                return view_func(request, *args, **kwargs)
-            # Raise 403 if role doesn't match
-            raise PermissionDenied
+            user_role = request.user.role
+            normalized_roles = [r.value if hasattr(r, 'value') else r for r in UserRole]
+            if user_role not in normalized_roles:
+                raise PermissionDenied
+            return view_func(request, *args, **kwargs)
         return _wrapped_view
     return decorator
 
