@@ -1,5 +1,6 @@
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
+import { useState, useEffect } from 'react';
 import AppLayout from '../components/layout/AppLayout';
 import PatientProfileCard from '../components/patients/PatientProfileCard';
 import XrayRecordList from '../components/patients/XrayRecordList';
@@ -45,15 +46,45 @@ export default function PatientDetailPage() {
   const { patientId } = useParams();
   const navigate = useNavigate();
 
-  // 🔌 Swap mocks with real data:
-  // const { data, isLoading } = useQuery({
-  //   queryKey: ['patient', patientId],
-  //   queryFn: () => fetch(`/api/patients/${patientId}/`).then(r => r.json()),
-  // });
-  // const { patient, xray_records } = data ?? {};
+  const [patient, setPatient] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
+  const xrayRecords = MOCK_RECORDS; // replace later with real data from API
 
-  const patient = MOCK_PATIENT;
-  const xrayRecords = MOCK_RECORDS;
+  useEffect(() => {
+    fetch(`/api/patients/${patientId}/`, {
+      credentials: 'include',
+    })
+      .then((res) => {
+        if (res.status === 404) throw new Error('Patient not found.')
+        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+        return res.json()
+      })
+      .then((data) => {
+        setPatient(data)
+        setLoading(false)
+      })
+      .catch((err) => {
+        setError(err.message)
+        setLoading(false)
+      })
+  }, [patientId])
+
+  if (loading) return (
+    <AppLayout>
+      <div className="flex items-center justify-center py-24 text-sm text-[var(--text-muted)]">
+        Loading patient...
+      </div>
+    </AppLayout>
+  )
+
+  if (error) return (
+    <AppLayout>
+      <div className="flex items-center justify-center py-24 text-sm text-[var(--danger)]">
+        {error}
+      </div>
+    </AppLayout>
+  )
 
   return (
     <AppLayout>
