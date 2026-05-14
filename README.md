@@ -83,7 +83,7 @@ Track progress by checking off tasks below.
 
 ### Step 6 — Image Standardization Pipeline
 
-- [ ] Create `imaging/preprocessing.py` as a standalone utility module
+- [x] Create `imaging/preprocessing.py` as a standalone utility module
 - [ ] Pipeline function that runs on every accepted upload:
   - [ ] Resize to 224×224 (match Seth's model input exactly)
   - [ ] Convert to grayscale then back to 3-channel RGB
