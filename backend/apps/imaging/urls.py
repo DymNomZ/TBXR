@@ -20,4 +20,9 @@ urlpatterns = [
         views.patient_xrays,
         name="patient_xrays",
     ),
+    path(
+        "dashboard/technologist/",
+        views.technologist_dashboard,
+        name="technologist_dashboard",
+    ),
 ]

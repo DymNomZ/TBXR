@@ -7,6 +7,7 @@ from rest_framework.decorators import api_view, parser_classes
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.reverse import reverse
+from rest_framework.pagination import PageNumberPagination
 
 
 
@@ -73,3 +74,17 @@ def patient_xrays(request, patient_id):
     ).order_by('-upload_timestamp')
     serializer = XrayRecordSerializer(records, many=True)
     return Response(serializer.data)
+
+@api_view(["GET"])
+@role_required(UserRole.RADIOLOGIC_TECH)
+def technologist_dashboard(request):
+    records = XrayRecord.objects.filter(
+        uploader=request.user
+    ).order_by('-upload_timestamp')
+
+    paginator = PageNumberPagination()
+    paginator.page_size = 20
+
+    page = paginator.paginate_queryset(records, request)
+    serializer = XrayRecordSerializer(page, many=True)
+    return paginator.get_paginated_response(serializer.data)
