@@ -1,6 +1,9 @@
+import { useAuth } from '../../context/AuthContext'
 import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import InputField from '../ui/InputField'
 import ErrorBanner from '../ui/ErrorBanner'
+import Button from '../ui/Button'
 
 const LOGIN_URL = '/accounts/login/'
 const CSRF_URL = '/accounts/csrf-token/'
@@ -13,6 +16,8 @@ function getCsrfToken() {
 }
 
 function LoginForm() {
+  const navigate = useNavigate()
+  const { login } = useAuth()
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
@@ -38,18 +43,10 @@ function LoginForm() {
         body: JSON.stringify({ username, password }),
       })
 
-      if (response.redirected) {
-        window.location.href = response.url
-        return
-      }
-
       if (response.ok) {
-        const location = response.headers.get('Location')
-        if (location) {
-          window.location.href = location
-          return
-        }
-        window.location.reload()
+        const data = await response.json()
+        login({ role: data.role })
+        navigate(data.redirect ?? '/dashboard/')
         return
       }
 
@@ -58,7 +55,8 @@ function LoginForm() {
         const data = await response.json()
         setError(data.detail || data.error || data.errors || 'Login failed')
       } else {
-        setError(await response.text())
+        const text = (await response.text()).trim()
+        setError(text || 'Login failed. Please try again.')
       }
     } catch (fetchError) {
       setError('Unable to reach the server. Please try again.')
@@ -90,13 +88,9 @@ function LoginForm() {
         autoComplete="current-password"
       />
 
-      <button
-        className="flex w-full items-center justify-center rounded-3xl bg-slate-indigo px-4 py-3 text-sm font-semibold text-white opacity-50 transition duration-200 hover:bg-slate-indigo hover:opacity-100 disabled:cursor-not-allowed disabled:opacity-80"
-        type="submit"
-        disabled={isSubmitting}
-      >
+      <Button type="submit" fullWidth disabled={isSubmitting}>
         {isSubmitting ? 'Signing in...' : 'Sign in'}
-      </button>
+      </Button>
     </form>
   )
 }

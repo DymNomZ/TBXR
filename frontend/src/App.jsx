@@ -1,29 +1,31 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { AuthProvider } from './context/AuthContext'
 import LoginPage from './pages/LoginPage'
 import PatientsPage from './pages/PatientsPage'
 import PatientCard from './components/patients/PatientCard'
 import PatientDetailPage from './pages/PatientDetailPage';
-import UploadConfirmationPage from './pages/UploadConfirmationPage'
+import TechDashboardPage from './pages/dashboard/TechDashboardPage'
 
 function App() {
   return (
-    <BrowserRouter>
-      <Routes>
-        {/* Auth */}
-        <Route path="/login" element={<LoginPage />} />
+    <AuthProvider>
+      <BrowserRouter>
+        <Routes>
+          {/* Auth */}
+          <Route path="/login" element={<LoginPage />} />
 
-        {/* Default redirect */}
-        <Route path="*" element={<Navigate to="/login" replace />} />
+          {/* Dashboard */}
+          <Route path="/dashboard/technologist" element={<TechDashboardPage />} />
 
-        {/* Patients */}
-        <Route path="/patients" element={<PatientsPage />} />
-        <Route path="/patients/register" element={<PatientCard />} />
-        <Route path="/patients/:patientId" element={<PatientDetailPage />} />
+          {/* Patients */}
+          <Route path="/patients" element={<PatientsPage />} />
+          <Route path="/patients/:patientId" element={<PatientDetailPage />} />
 
-        {/* Upload */}
-        <Route path="/upload/confirmation" element={<UploadConfirmationPage />} />
-      </Routes>
-    </BrowserRouter>
+          {/* Default redirect */}
+          <Route path="*" element={<Navigate to="/login" replace />} />
+        </Routes>
+      </BrowserRouter>
+    </AuthProvider>
   )
 }
 

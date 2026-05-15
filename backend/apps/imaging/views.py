@@ -11,6 +11,7 @@ from rest_framework.decorators import api_view, parser_classes
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.reverse import reverse
+from rest_framework.pagination import PageNumberPagination
 
 from apps.accounts.decorators import role_required
 from apps.accounts.enums import UserRole
@@ -18,7 +19,8 @@ from apps.patients.models import Patient
 
 from .preprocessing import preprocess_xray
 from .models import XrayRecord, ProcessedImage
-from .serializers import XrayRecordUploadSerializer, XrayRecordSerializer
+from django.db import models
+from .serializers import XrayRecordUploadSerializer, XrayRecordSerializer, TechDashboardRecordSerializer
 
 @extend_schema(
     request={
@@ -100,16 +102,8 @@ def upload_xray(request, patient_id):
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
 
-    confirm_url = reverse(
-        "imaging:upload_confirm",
-        kwargs={
-            "patient_id": patient.patient_id,
-            "transaction_id": xray_record.transaction_id,
-        },
-        request=request,
-    )
-    headers = {"Location": confirm_url}
-    return Response(status=status.HTTP_303_SEE_OTHER, headers=headers)
+    serializer = XrayRecordSerializer(xray_record)
+    return Response(serializer.data, status=status.HTTP_200_OK)
 
 
 @api_view(["GET"])
@@ -122,3 +116,41 @@ def upload_confirm(request, patient_id, transaction_id):
     )
     serializer = XrayRecordSerializer(xray_record)
     return Response(serializer.data)
+
+@api_view(["GET"])
+@role_required(UserRole.RADIOLOGIC_TECH, UserRole.RADIOLOGIST, UserRole.PHYSICIAN)
+def patient_xrays(request, patient_id):
+    patient = get_object_or_404(Patient, patient_id=patient_id)
+    records = XrayRecord.objects.filter(
+        patient=patient
+    ).order_by('-upload_timestamp')
+    serializer = XrayRecordSerializer(records, many=True)
+    return Response(serializer.data)
+
+@api_view(["GET"])
+@role_required(UserRole.RADIOLOGIC_TECH)
+def technologist_dashboard(request):
+    records = XrayRecord.objects.filter(
+        uploader=request.user
+    ).order_by('-upload_timestamp')
+
+    # --- Search ---
+    search = request.query_params.get('search', '').strip()
+    if search:
+        records = records.filter(
+            models.Q(patient__first_name__icontains=search) |
+            models.Q(patient__last_name__icontains=search)  |
+            models.Q(transaction_id__icontains=search)
+        )
+
+    # --- Status filter ---
+    status_filter = request.query_params.get('status', '').strip()
+    if status_filter:
+        records = records.filter(status=status_filter)
+
+    paginator = PageNumberPagination()
+    paginator.page_size = 20
+
+    page = paginator.paginate_queryset(records, request)
+    serializer = TechDashboardRecordSerializer(page, many=True)
+    return paginator.get_paginated_response(serializer.data)

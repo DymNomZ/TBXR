@@ -2,8 +2,9 @@ import { useState } from 'react'
 import InputField from '../ui/InputField'
 import SelectField from '../ui/SelectField'
 import ErrorBanner from '../ui/ErrorBanner'
+import Button from '../ui/Button'
 
-const CREATE_URL = '/patients/register/'
+const CREATE_URL = '/api/patients/register/'
 
 const SEX_OPTIONS = [
   { value: 'M', label: 'Male' },
@@ -18,7 +19,7 @@ function getCsrfToken() {
     ?.split('=')[1]
 }
 
-function PatientForm() {
+function PatientForm({ onSuccess }) {
   const [fields, setFields] = useState({
     first_name: '',
     last_name: '',
@@ -52,18 +53,8 @@ function PatientForm() {
         body: JSON.stringify(fields),
       })
 
-      if (response.redirected) {
-        window.location.href = response.url
-        return
-      }
-
       if (response.ok) {
-        const location = response.headers.get('Location')
-        if (location) {
-          window.location.href = location
-          return
-        }
-        window.location.reload()
+        onSuccess?.()
         return
       }
 
@@ -142,13 +133,9 @@ function PatientForm() {
         error={fieldErrors.contact_number}
       />
 
-      <button
-        className="flex w-full items-center justify-center rounded-3xl bg-slate-indigo px-4 py-3 text-sm font-semibold text-white opacity-50 transition duration-200 hover:bg-slate-indigo hover:opacity-100 disabled:cursor-not-allowed disabled:opacity-80"
-        type="submit"
-        disabled={isSubmitting}
-      >
+      <Button type="submit" fullWidth disabled={isSubmitting}>
         {isSubmitting ? 'Saving...' : 'Create Patient'}
-      </button>
+      </Button>
     </form>
   )
 }

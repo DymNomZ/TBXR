@@ -8,13 +8,15 @@ from django.shortcuts import redirect
 from django.urls import reverse
 from django.views.decorators.http import require_http_methods
 
+from apps.accounts.enums import UserRole
+
 from .decorators import role_required
 
 
-ROLE_DASHBOARD_URLS = {
-	'RADIOLOGIC_TECH': 'accounts:technologist-dashboard',
-	'RADIOLOGIST': 'accounts:radiologist-dashboard',
-	'PHYSICIAN': 'accounts:physician-dashboard',
+ROLE_FRONTEND_URLS = {
+    UserRole.RADIOLOGIC_TECH: '/dashboard/technologist',
+    UserRole.RADIOLOGIST:     '/dashboard/radiologist',
+    UserRole.PHYSICIAN:       '/dashboard/physician',
 }
 
 
@@ -79,23 +81,23 @@ def login_view(request):
 
 	login(request, user)
 
-	dashboard_url_name = ROLE_DASHBOARD_URLS.get(user.role)
-	if dashboard_url_name is None:
+	frontend_url = ROLE_FRONTEND_URLS.get(user.role)
+	if frontend_url is None:
 		return JsonResponse(
-			{'error': f'No dashboard is configured for role "{user.role}".'},
+			{'error': f'No dashboard configured for role "{user.role}".'},
 			status=400,
 		)
-
-	return redirect(dashboard_url_name)
-
+	return JsonResponse({
+		'redirect': frontend_url,
+		'role': user.role,
+	}, status=200)
 
 @require_http_methods(['POST'])
 def logout_view(request):
 	logout(request)
 	return redirect(settings.LOGIN_URL)
 
-
-@role_required('RADIOLOGIC_TECH')
+@role_required(UserRole.RADIOLOGIC_TECH)
 def technologist_dashboard(request):
 	return _dashboard_response(
 		'Technologist Dashboard',
@@ -104,7 +106,7 @@ def technologist_dashboard(request):
 	)
 
 
-@role_required('RADIOLOGIST')
+@role_required(UserRole.RADIOLOGIST)
 def radiologist_dashboard(request):
 	return _dashboard_response(
 		'Radiologist Dashboard',
@@ -113,7 +115,7 @@ def radiologist_dashboard(request):
 	)
 
 
-@role_required('PHYSICIAN')
+@role_required(UserRole.PHYSICIAN)
 def physician_dashboard(request):
 	return _dashboard_response(
 		'Physician Dashboard',
