@@ -75,9 +75,9 @@ export const DASHBOARD_COLUMNS = [
 
 // ✏️ Update action map if new statuses are added
 const ACTION_MAP = {
-  'PENDING':    { label: 'Review →',   variant: 'primary'   },
-  'IN_REVIEW':  { label: 'Continue →', variant: 'accent'    },
-  'COMPLETED':  { label: 'View',       variant: 'secondary' },
+  'PENDING':    { label: 'View', variant: 'primary'   },
+  'IN_REVIEW':  { label: 'View', variant: 'accent'    },
+  'COMPLETED':  { label: 'View', variant: 'secondary' },
 }
 
 function DashboardActionButton({ record }) {
@@ -90,7 +90,7 @@ function DashboardActionButton({ record }) {
       variant={action.variant}
       onClick={(e) => {
         e.stopPropagation() // prevent row click double-fire
-        navigate(`/transactions/${record.transaction_id}`)
+        navigate(`/transactions/${record.transaction_id}`) // <--- Link to actual transaction detail view
       }}
     >
       {action.label}
