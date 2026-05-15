@@ -13,10 +13,10 @@ from apps.accounts.enums import UserRole
 from .decorators import role_required
 
 
-ROLE_DASHBOARD_URLS = {
-    UserRole.RADIOLOGIC_TECH: 'accounts:technologist-dashboard',
-    UserRole.RADIOLOGIST: 'accounts:radiologist-dashboard',
-    UserRole.PHYSICIAN: 'accounts:physician-dashboard',
+ROLE_FRONTEND_URLS = {
+    UserRole.RADIOLOGIC_TECH: '/dashboard/technologist',
+    UserRole.RADIOLOGIST:     '/dashboard/radiologist',
+    UserRole.PHYSICIAN:       '/dashboard/physician',
 }
 
 
@@ -81,14 +81,13 @@ def login_view(request):
 
 	login(request, user)
 
-	dashboard_url_name = ROLE_DASHBOARD_URLS.get(user.role)
-	if dashboard_url_name is None:
+	frontend_url = ROLE_FRONTEND_URLS.get(user.role)
+	if frontend_url is None:
 		return JsonResponse(
-			{'error': f'No dashboard is configured for role "{user.role}".'},
+			{'error': f'No dashboard configured for role "{user.role}".'},
 			status=400,
 		)
-
-	return JsonResponse({'redirect': reverse(dashboard_url_name)}, status=200)
+	return JsonResponse({'redirect': frontend_url}, status=200)
 
 @require_http_methods(['POST'])
 def logout_view(request):

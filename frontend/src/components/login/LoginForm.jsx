@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import InputField from '../ui/InputField'
 import ErrorBanner from '../ui/ErrorBanner'
 import Button from '../ui/Button'
@@ -14,6 +15,7 @@ function getCsrfToken() {
 }
 
 function LoginForm() {
+  const navigate = useNavigate()
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
@@ -39,25 +41,10 @@ function LoginForm() {
         body: JSON.stringify({ username, password }),
       })
 
-      if (response.redirected) {
-        window.location.href = response.url
-        return
-      }
-
       if (response.ok) {
-        console.log("Succeeded! Checking for JSON data...");
-        const data = await response.json();
-        console.log("Data received from backend:", data);
-        
-        if (data.redirect) {
-          console.log("Redirecting to:", data.redirect);
-          window.location.href = data.redirect;
-          return;
-        }
-        
-        console.log("No redirect key found, reloading...");
-        window.location.reload();
-        return;
+        const data = await response.json()
+        navigate(data.redirect ?? '/dashboard/technologist')
+        return
       }
 
       const contentType = response.headers.get('content-type') || ''

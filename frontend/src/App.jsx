@@ -3,6 +3,7 @@ import LoginPage from './pages/LoginPage'
 import PatientsPage from './pages/PatientsPage'
 import PatientCard from './components/patients/PatientCard'
 import PatientDetailPage from './pages/PatientDetailPage';
+import TechDashboardPage from './pages/dashboard/TechDashboardPage'
 
 function App() {
   return (
@@ -10,6 +11,9 @@ function App() {
       <Routes>
         {/* Auth */}
         <Route path="/login" element={<LoginPage />} />
+
+        {/* Dashboard */}
+        <Route path="/dashboard/technologist" element={<TechDashboardPage />} />
 
         {/* Patients */}
         <Route path="/patients" element={<PatientsPage />} />
