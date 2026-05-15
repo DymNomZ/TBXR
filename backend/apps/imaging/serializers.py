@@ -6,11 +6,16 @@ from PIL import Image
 from django.core.files.base import ContentFile
 from rest_framework import serializers
 
-from .models import XrayRecord, ProcessedImage
+from .models import Annotation, XrayRecord, ProcessedImage
 from apps.patients.models import Patient
 from django.contrib.auth import get_user_model
 
 User = get_user_model()
+
+class PatientBriefSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Patient
+        fields = ['patient_id', 'first_name', 'last_name']
 
 class RadiologistBriefSerializer(serializers.ModelSerializer):
     """Minimal radiologist info for annotation authorship."""
@@ -49,11 +54,6 @@ class XrayRecordDetailSerializer(serializers.ModelSerializer):
             'file_format',
             'annotations',
         ]
-
-class PatientBriefSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Patient
-        fields = ['patient_id', 'first_name', 'last_name']
 
 class TechDashboardRecordSerializer(serializers.ModelSerializer):
     # Nests the patient fields instead of just returning the FK
