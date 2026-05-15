@@ -16,6 +16,11 @@ urlpatterns = [
         name="upload_confirm",
     ),
     path(
+        "xray/<uuid:transaction_id>/annotate/",
+        views.annotate_xray,
+        name="annotate_xray",
+    ),
+    path(
         "patients/<int:patient_id>/xray/",
         views.patient_xrays,
         name="patient_xrays",

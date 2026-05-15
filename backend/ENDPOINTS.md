@@ -32,7 +32,33 @@ Required headers for session-authenticated POST requests:
   - csrfmiddlewaretoken
 - Response: 302 redirect to /admin/
 
+## Accounts
+### GET /accounts/csrf-token/
+- Purpose: Set CSRF cookie for session-authenticated requests.
+- Auth: None
+- Response: 200 JSON
+
+### POST /accounts/login/
+- Purpose: Login and obtain session cookie.
+- Auth: None
+- Headers:
+  - Content-Type: application/json
+- Body (JSON):
+  - username
+  - password
+- Response: 200 JSON
+
+### POST /accounts/logout/
+- Purpose: Logout and clear session.
+- Auth: Session
+- Response: 302 redirect to /login
+
 ## Patients
+### GET /api/patients/
+- Purpose: List all patients.
+- Roles: RADIOLOGIC_TECH, RADIOLOGIST, PHYSICIAN
+- Response: 200 JSON list
+
 ### POST /api/patients/register/
 - Purpose: Create a patient.
 - Roles: RADIOLOGIC_TECH
@@ -69,7 +95,7 @@ Content-Type: application/json
 
 Example:
 ```
-GET /patients/search/?name=smith
+GET /api/patients/search/?name=smith
 ```
 
 ### GET /api/patients/<patient_id>/
@@ -93,7 +119,7 @@ GET /patients/search/?name=smith
 
 Example:
 ```
-POST /api//imaging/patients/1/xray/upload/
+POST /api/imaging/patients/1/xray/upload/
 Content-Type: multipart/form-data
 
 raw_image=@/path/to/file.png
@@ -109,21 +135,42 @@ raw_image=@/path/to/file.png
 - Roles: RADIOLOGIC_TECH
 - Response: 200 JSON
 
-### GET /api/imaging/dashboard/technologist
-- Purpose: Returns all x-ray transactions of all patients uploaded by the technologist
+### POST /api/imaging/xray/<transaction_id>/annotate/
+- Purpose: Create or update a radiologist annotation for an X-ray.
+- Roles: RADIOLOGIST
+- Headers:
+  - Content-Type: application/json
+  - Cookie + X-CSRFToken (session auth)
+- Body (JSON):
+  - bounding_boxes (array, required)
+  - notes (string, optional)
+- Response: 200/201 JSON
+
+### GET /api/imaging/dashboard/technologist/
+- Purpose: Paginated list of X-rays uploaded by the current technologist.
 - Roles: RADIOLOGIC_TECH
-- Response: 200 JSON
+- Query params (optional):
+  - search (patient first/last name or transaction ID)
+  - status (PENDING|IN_REVIEW|COMPLETED)
+- Response: 200 JSON (paginated)
 ```
 {
-  "transaction_id": "...",
-  "patient": {
-    "patient_id": "...",
-    "first_name": "Juan",
-    "last_name": "Dela Cruz"
-  },
-  "upload_timestamp": "...",
-  "status": "PENDING",
-  "file_format": "jpg"
+  "count": 1,
+  "next": null,
+  "previous": null,
+  "results": [
+    {
+      "transaction_id": "...",
+      "patient": {
+        "patient_id": "...",
+        "first_name": "Juan",
+        "last_name": "Dela Cruz"
+      },
+      "upload_timestamp": "...",
+      "status": "PENDING",
+      "file_format": "jpg"
+    }
+  ]
 }
 ```
 
