@@ -110,7 +110,7 @@ raw_image=@/path/to/file.png
 - Response: 200 JSON
 
 ### GET /api/imaging/dashboard/technologist
-- Purpose: Returns
+- Purpose: Returns all x-ray transactions of all patients uploaded by the technologist
 - Roles: RADIOLOGIC_TECH
 - Response: 200 JSON
 ```
