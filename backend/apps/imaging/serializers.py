@@ -8,6 +8,48 @@ from rest_framework import serializers
 
 from .models import XrayRecord, ProcessedImage
 from apps.patients.models import Patient
+from django.contrib.auth import get_user_model
+
+User = get_user_model()
+
+class RadiologistBriefSerializer(serializers.ModelSerializer):
+    """Minimal radiologist info for annotation authorship."""
+    class Meta:
+        model = User
+        fields = ['id', 'first_name', 'last_name', 'username']
+
+
+class AnnotationSerializer(serializers.ModelSerializer):
+    radiologist = RadiologistBriefSerializer(read_only=True)
+
+    class Meta:
+        model = Annotation
+        fields = [
+            'id',
+            'radiologist',
+            'bounding_boxes',
+            'notes',
+            'submitted_at',
+        ]
+        # xray_record is intentionally excluded — redundant inside a nested response
+
+
+class XrayRecordDetailSerializer(serializers.ModelSerializer):
+    patient     = PatientBriefSerializer(read_only=True)
+    annotations = AnnotationSerializer(many=True, read_only=True)  # plural, many=True
+
+    class Meta:
+        model = XrayRecord
+        fields = [
+            'transaction_id',
+            'patient',
+            'raw_image',
+            'upload_timestamp',
+            'status',
+            'file_format',
+            'annotations',
+        ]
+
 class PatientBriefSerializer(serializers.ModelSerializer):
     class Meta:
         model = Patient
