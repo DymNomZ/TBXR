@@ -174,6 +174,41 @@ raw_image=@/path/to/file.png
 }
 ```
 
+### GET /api/imaging/xray/<transaction_id>/
+- Purpose: Returns the xray details with annotations
+- Roles: RADIOLOGIC_TECH
+- Response: 200 JSON
+```
+{
+  "transaction_id": "...",
+  "patient": {
+    "patient_id": "...",
+    "first_name": "Juan",
+    "last_name": "Dela Cruz"
+  },
+  "raw_image": "/media/xrays/TXN-2026-0041.jpg",
+  "upload_timestamp": "2026-04-18T08:14:00Z",
+  "status": "PENDING",
+  "file_format": "jpg",
+  "annotations": [
+    {
+      "id": 1,
+      "radiologist": {
+        "id": 3,
+        "first_name": "Maria",
+        "last_name": "Santos",
+        "username": "dr.santos"
+      },
+      "bounding_boxes": [
+        { "x": 120, "y": 340, "width": 60, "height": 80, "label": "nodule" }
+      ],
+      "notes": "Suspicious opacity in right upper lobe.",
+      "submitted_at": "2026-04-19T10:22:00Z"
+    }
+  ]
+}
+```
+
 ## API Docs
 ### GET /api/schema/
 - Purpose: OpenAPI schema
