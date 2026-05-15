@@ -17,12 +17,37 @@ class PatientBriefSerializer(serializers.ModelSerializer):
         model = Patient
         fields = ['patient_id', 'first_name', 'last_name']
 
+class UploaderBriefSerializer(serializers.ModelSerializer):
+    """Technologist who uploaded the xray."""
+    class Meta:
+        model = User
+        fields = ['username', 'first_name', 'last_name']
+
 class RadiologistBriefSerializer(serializers.ModelSerializer):
     """Minimal radiologist info for annotation authorship."""
     class Meta:
         model = User
         fields = ['id', 'first_name', 'last_name', 'username']
 
+class RadiologistQueueSerializer(serializers.ModelSerializer):
+    """
+    Used by: radiologist_queue (GET /api/imaging/queue/).
+    Includes raw_image so the radiologist can open the file from the queue.
+    """
+    patient = PatientBriefSerializer(read_only=True)
+    uploader = UploaderBriefSerializer(read_only=True)
+
+    class Meta:
+        model = XrayRecord
+        fields = [
+            'transaction_id',
+            'patient',
+            'uploader',  
+            'raw_image',
+            'upload_timestamp',
+            'status',
+            'file_format',
+        ]
 
 class AnnotationSerializer(serializers.ModelSerializer):
     radiologist = RadiologistBriefSerializer(read_only=True)
@@ -193,24 +218,6 @@ class XrayRecordSerializer(serializers.ModelSerializer):
             "upload_timestamp",
             "status",
             "file_format",
-        ]
-
-class RadiologistQueueSerializer(serializers.ModelSerializer):
-    """
-    Used by: radiologist_queue (GET /api/imaging/queue/).
-    Includes raw_image so the radiologist can open the file from the queue.
-    """
-    patient = PatientBriefSerializer(read_only=True)
-
-    class Meta:
-        model = XrayRecord
-        fields = [
-            'transaction_id',
-            'patient',
-            'raw_image',
-            'upload_timestamp',
-            'status',
-            'file_format',
         ]
 
 class XrayRecordDetailSerializer(serializers.ModelSerializer):
