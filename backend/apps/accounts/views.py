@@ -87,7 +87,10 @@ def login_view(request):
 			{'error': f'No dashboard configured for role "{user.role}".'},
 			status=400,
 		)
-	return JsonResponse({'redirect': frontend_url}, status=200)
+	return JsonResponse({
+		'redirect': frontend_url,
+		'role': user.role,
+	}, status=200)
 
 @require_http_methods(['POST'])
 def logout_view(request):
