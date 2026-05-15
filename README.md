@@ -109,10 +109,10 @@ Track progress by checking off tasks below.
 ### Step 8 — Technologist Dashboard
 
 - [x] Dashboard view for `RADIOLOGIC_TECH` role
-- [ ] Table listing all `XrayRecord` entries uploaded by the logged-in user
-- [ ] Columns: Transaction ID · Patient Name · Upload Date · Status
-- [ ] Basic pagination or limit to last 20 records for MVP
-- [ ] Each row links to the upload confirmation/detail page
+- [x] Table listing all `XrayRecord` entries uploaded by the logged-in user
+- [x] Columns: Transaction ID · Patient Name · Upload Date · Status
+- [x] Basic pagination or limit to last 20 records for MVP
+- [x] Each row links to the upload confirmation/detail page
 
 ---
 
