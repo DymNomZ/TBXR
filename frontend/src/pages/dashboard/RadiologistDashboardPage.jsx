@@ -1,0 +1,112 @@
+import { useState, useEffect } from 'react'
+import { ChevronLeft, ChevronRight } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import AppLayout from '../../components/layout/AppLayout'
+import StatCard from '../../components/ui/StatCard'
+import FilterBar from '../../components/dashboard/FilterBar'
+import RadiologistDashboardTable, { QUEUE_COLUMNS } from '../../components/dashboard/RadiologistDashboardTable'
+
+const FILTERABLE_COLS = QUEUE_COLUMNS.filter((c) => c.filterable)
+const PAGE_SIZE = 20
+
+export default function RadiologistDashboardPage() {
+  const navigate = useNavigate()
+  const [page, setPage]             = useState(1)
+  const [activeFilters, setFilters] = useState({ search: '', status: '' })
+  const [records, setRecords]       = useState([])
+  const [count, setCount]           = useState(0)
+  const [loading, setLoading]       = useState(false)
+
+  useEffect(() => {
+    const params = new URLSearchParams({ page })
+    if (activeFilters.search) params.set('search', activeFilters.search)
+    if (activeFilters.status) params.set('status', activeFilters.status)
+
+    setLoading(true)
+    fetch(`/api/imaging/queue/?${params}`, { credentials: 'include' })
+      .then((r) => r.json())
+      .then((data) => {
+        setRecords(data.results ?? [])
+        setCount(data.count ?? 0)
+      })
+      .finally(() => setLoading(false))
+  }, [page, activeFilters])
+
+  const totalPages = Math.ceil(count / PAGE_SIZE)
+
+  const handleFilterChange = (newFilters) => {
+    setFilters(newFilters)
+    setPage(1)
+  }
+
+  return (
+    <AppLayout>
+      <div className="flex flex-col gap-6">
+
+        <div>
+          <h1 className="text-2xl font-bold text-[var(--deep-navy)] tracking-tight">
+            Radiology Review Queue
+          </h1>
+          <p className="text-sm text-[var(--text-muted)] mt-1">
+            All pending X-ray records awaiting radiologist review
+          </p>
+        </div>
+
+        {/* Stat cards */}
+        <div className="flex gap-4">
+          <StatCard label="Pending Review" value={count} />
+          <StatCard
+            label="In Review"
+            value={records.filter((r) => r.status === 'IN_REVIEW').length}
+          />
+          <StatCard
+            label="Completed (This Page)"
+            value={records.filter((r) => r.status === 'COMPLETED').length}
+          />
+        </div>
+
+        <FilterBar
+          filterableCols={FILTERABLE_COLS}
+          onFilterChange={handleFilterChange}
+        />
+
+        {loading ? (
+          <div className="text-sm text-[var(--text-muted)] py-8 text-center">
+            Loading...
+          </div>
+        ) : (
+          <RadiologistDashboardTable data={records} />
+        )}
+
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between text-sm text-[var(--text-muted)]">
+            <span>
+              Showing {(page - 1) * PAGE_SIZE + 1}-{Math.min(page * PAGE_SIZE, count)} of {count} records
+            </span>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={page === 1}
+                className="flex items-center gap-1 px-3 py-2 rounded-xl border border-[var(--border)] hover:bg-[var(--surface-soft)] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              >
+                <ChevronLeft size={15} /> Previous
+              </button>
+              <span className="px-3 py-2 font-medium text-[var(--text)]">
+                {page} / {totalPages}
+              </span>
+              <button
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                disabled={page === totalPages}
+                className="flex items-center gap-1 px-3 py-2 rounded-xl border border-[var(--border)] hover:bg-[var(--surface-soft)] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              >
+                Next <ChevronRight size={15} />
+              </button>
+            </div>
+          </div>
+        )}
+
+      </div>
+    </AppLayout>
+  )
+}

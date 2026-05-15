@@ -242,6 +242,18 @@ def radiologist_queue(request):
         status="PENDING"
     ).order_by('upload_timestamp')  # ascending — oldest first
 
+    search = request.query_params.get('search', '').strip()
+    if search:
+        records = records.filter(
+            models.Q(patient__first_name__icontains=search) |
+            models.Q(patient__last_name__icontains=search)  |
+            models.Q(transaction_id__icontains=search)
+        )
+
+    status_filter = request.query_params.get('status', '').strip()
+    if status_filter:
+        records = records.filter(status=status_filter)
+
     paginator = PageNumberPagination()
     paginator.page_size = 20
 

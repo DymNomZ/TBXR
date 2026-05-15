@@ -3,10 +3,8 @@ import Table from '../ui/Table'
 import StatusBadge from '../ui/StatusBadge'
 import Button from '../ui/Button'
 
-// ✏️ Tag a column as filterable to automatically add it to the filter bar
-// filterable: true  →  FilterBar generates a dropdown for this column
-// filterOptions     →  the options in that dropdown
-export const DASHBOARD_COLUMNS = [
+// ✏️ Tag filterable: true to auto-add a filter dropdown for that column
+export const QUEUE_COLUMNS = [
   {
     key: 'transaction_id',
     header: 'Transaction ID',
@@ -55,58 +53,59 @@ export const DASHBOARD_COLUMNS = [
     ),
   },
   {
+    key: 'uploader',
+    header: 'Uploader',
+    filterable: false,
+    width: '140px',
+    render: (row) => (
+      <span className="text-sm text-[var(--text)]">
+        {row.uploader?.username ?? '—'}
+      </span>
+    ),
+  },
+  {
     key: 'status',
     header: 'Status',
     label: 'Statuses',
     filterable: true,
-    // ✏️ Keep in sync with backend statuses
     filterOptions: ['PENDING', 'IN_REVIEW', 'COMPLETED'],
-    width: '140px',
+    width: '130px',
     render: (row) => <StatusBadge status={row.status} />,
   },
   {
     key: 'action',
     header: 'Action',
     filterable: false,
-    width: '130px',
-    render: (row) => <DashboardActionButton record={row} />,
+    width: '120px',
+    render: (row) => <ReviewButton record={row} />,
   },
 ]
 
-// ✏️ Update action map if new statuses are added
-const ACTION_MAP = {
-  'PENDING':    { label: 'Review →',   variant: 'primary'   },
-  'IN_REVIEW':  { label: 'Continue →', variant: 'accent'    },
-  'COMPLETED':  { label: 'View',       variant: 'secondary' },
-}
-
-function DashboardActionButton({ record }) {
+function ReviewButton({ record }) {
   const navigate = useNavigate()
-  const action = ACTION_MAP[record.status] ?? { label: 'View', variant: 'secondary' }
-
   return (
     <Button
       size="sm"
-      variant={action.variant}
+      variant="primary"
       onClick={(e) => {
-        e.stopPropagation() // prevent row click double-fire
-        navigate(`/transactions/${record.transaction_id}`)
+        e.stopPropagation()
+        navigate(`/radiologist/review/${record.transaction_id}`)
       }}
     >
-      {action.label}
+      Review →
     </Button>
   )
 }
 
-export default function TechDashboardTable({ data = [] }) {
+export default function RadiologistDashboardTable({ data = [] }) {
   const navigate = useNavigate()
 
   return (
     <div className="bg-white rounded-2xl border border-[var(--border)] shadow-sm overflow-hidden">
       <Table
-        columns={DASHBOARD_COLUMNS}
+        columns={QUEUE_COLUMNS}
         data={data}
-        onRowClick={(row) => navigate(`/transactions/${row.transaction_id}`)}
+        onRowClick={(row) => navigate(`/radiologist/review/${row.transaction_id}`)}
       />
     </div>
   )
