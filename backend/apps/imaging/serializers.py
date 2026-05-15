@@ -7,6 +7,25 @@ from django.core.files.base import ContentFile
 from rest_framework import serializers
 
 from .models import XrayRecord, ProcessedImage
+from apps.patients.models import Patient
+class PatientBriefSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Patient
+        fields = ['patient_id', 'first_name', 'last_name']
+
+class TechDashboardRecordSerializer(serializers.ModelSerializer):
+    # Nests the patient fields instead of just returning the FK
+    patient = PatientBriefSerializer(read_only=True)
+
+    class Meta:
+        model = XrayRecord
+        fields = [
+            'transaction_id',
+            'patient',           # now { patient_id, first_name, last_name }
+            'upload_timestamp',
+            'status',
+            'file_format',
+        ]
 
 
 class XrayRecordUploadSerializer(serializers.ModelSerializer):
