@@ -3,7 +3,7 @@ import { ChevronLeft, ChevronRight } from 'lucide-react'
 import AppLayout from '../../components/layout/AppLayout'
 import StatCard from '../../components/ui/StatCard'
 import FilterBar from '../../components/dashboard/FilterBar'
-import TechDashboardTable, { DASHBOARD_COLUMNS } from '../../components/dashboard/TechDashboardTable'
+import TechnologistDashboardTable, { DASHBOARD_COLUMNS } from '../../components/dashboard/TechnologistDashboardTable'
 
 // Pull only the filterable columns to pass to FilterBar
 const FILTERABLE_COLS = DASHBOARD_COLUMNS.filter((c) => c.filterable)
@@ -69,13 +69,13 @@ export default function TechDashboardPage() {
         {loading ? (
           <div className="text-sm text-[var(--text-muted)] py-8 text-center">Loading...</div>
         ) : (
-          <TechDashboardTable data={records} />
+          <TechnologistDashboardTable data={records} />
         )}
 
         {totalPages > 1 && (
           <div className="flex items-center justify-between text-sm text-[var(--text-muted)]">
             <span>
-              Showing {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, count)} of {count} records
+              Showing {(page - 1) * PAGE_SIZE + 1}-{Math.min(page * PAGE_SIZE, count)} of {count} records
             </span>
             <div className="flex items-center gap-2">
               <button

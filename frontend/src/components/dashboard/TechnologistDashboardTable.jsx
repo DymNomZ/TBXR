@@ -75,14 +75,14 @@ export const DASHBOARD_COLUMNS = [
 
 // ✏️ Update action map if new statuses are added
 const ACTION_MAP = {
-  'PENDING':    { label: 'View', variant: 'primary'   },
-  'IN_REVIEW':  { label: 'View', variant: 'accent'    },
-  'COMPLETED':  { label: 'View', variant: 'secondary' },
+  'PENDING': 'primary',
+  'IN_REVIEW': 'accent',
+  'COMPLETED': 'secondary',
 }
 
 function DashboardActionButton({ record }) {
   const navigate = useNavigate()
-  const action = ACTION_MAP[record.status] ?? { label: 'View', variant: 'secondary' }
+  const action = { label: 'View →', variant: ACTION_MAP[record.status] ?? 'primary' }
 
   return (
     <Button
@@ -98,7 +98,7 @@ function DashboardActionButton({ record }) {
   )
 }
 
-export default function TechDashboardTable({ data = [] }) {
+export default function TechnologistDashboardTable({ data = [] }) {
   const navigate = useNavigate()
 
   return (
