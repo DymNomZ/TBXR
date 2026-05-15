@@ -25,4 +25,5 @@ urlpatterns = [
         views.technologist_dashboard,
         name="technologist_dashboard",
     ),
+    path('queue/', views.radiologist_queue, name='radiologist-queue'),
 ]
