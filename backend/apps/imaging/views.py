@@ -9,13 +9,12 @@ from rest_framework.response import Response
 from rest_framework.reverse import reverse
 from rest_framework.pagination import PageNumberPagination
 
-
-
 from apps.accounts.decorators import role_required
 from apps.accounts.enums import UserRole
 from apps.patients.models import Patient
 from .models import XrayRecord
-from .serializers import XrayRecordUploadSerializer, XrayRecordSerializer
+from django.db import models
+from .serializers import XrayRecordUploadSerializer, XrayRecordSerializer, TechDashboardRecordSerializer
 
 @extend_schema(
     request={
@@ -82,9 +81,23 @@ def technologist_dashboard(request):
         uploader=request.user
     ).order_by('-upload_timestamp')
 
+    # --- Search ---
+    search = request.query_params.get('search', '').strip()
+    if search:
+        records = records.filter(
+            models.Q(patient__first_name__icontains=search) |
+            models.Q(patient__last_name__icontains=search)  |
+            models.Q(transaction_id__icontains=search)
+        )
+
+    # --- Status filter ---
+    status_filter = request.query_params.get('status', '').strip()
+    if status_filter:
+        records = records.filter(status=status_filter)
+
     paginator = PageNumberPagination()
     paginator.page_size = 20
 
     page = paginator.paginate_queryset(records, request)
-    serializer = XrayRecordSerializer(page, many=True)
+    serializer = TechDashboardRecordSerializer(page, many=True)
     return paginator.get_paginated_response(serializer.data)
