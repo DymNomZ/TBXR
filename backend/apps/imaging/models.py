@@ -28,3 +28,28 @@ class ProcessedImage(models.Model):
 
     def __str__(self):
         return f"Processed image for {self.xray_record}"
+
+class Annotation(models.Model):
+    xray_record   = models.ForeignKey(
+        XrayRecord,
+        on_delete=models.CASCADE,
+        related_name='annotations',
+    )
+    radiologist   = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name='annotations',
+    )
+    bounding_boxes = models.JSONField(
+        default=list,
+        help_text='Array of {x, y, width, height, label} objects.'
+    )
+    notes          = models.TextField(blank=True, default='')
+    submitted_at   = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-submitted_at']
+
+    def __str__(self):
+        return f'Annotation for {self.xray_record.transaction_id} by {self.radiologist}'
