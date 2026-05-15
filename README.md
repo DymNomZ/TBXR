@@ -19,108 +19,61 @@ Members: Borgonia, J.D. · Emia, S.N. · Enario, L.J.L. · Epan, R.S. · Tolenti
 
 ---
 
-## Week 1 — Increment 1: X-ray Ingestion & Data Management
+## Branch Naming Convention
 
-Track progress by checking off tasks below.
+| Branch | Purpose |
+|--------|---------|
+| `main` | Stable, demo-ready code only. Never commit directly here. |
+| `develop` | Integration branch. All feature branches merge here first. |
+| `feature/<initials>/<short-description>` | New feature work |
+| `fix/<short-description>` | Bug fixes |
+| `hotfix/<short-description>` | Urgent fixes on `main` |
 
----
+**Examples:**
+```
+feature/jd/database-schema
+feature/sn/mobilenetv3-training
+feature/ljl/patient-profile-ui
+feature/rs/image-validation
+feature/bm/auth-login
+fix/upload-form-validation
+```
 
-### Step 2 — Database Schema & Models
-
-- [x] Create Django apps: `accounts`, `patients`, `imaging`
-  ```bash
-  python manage.py startapp accounts
-  python manage.py startapp patients
-  python manage.py startapp imaging
-  ```
-- [x] `accounts/models.py` — Custom `User` model extending `AbstractUser`
-  - Fields: `role` (choices: `RADIOLOGIC_TECH`, `RADIOLOGIST`, `PHYSICIAN`)
-- [x] `patients/models.py` — `Patient` model
-  - Fields: `patient_id` (auto), `first_name`, `last_name`, `date_of_birth`, `sex`, `contact_number`, `date_created`
-- [x] `imaging/models.py` — `XrayRecord` and `ProcessedImage` models
-  - `XrayRecord`: `transaction_id` (UUID, auto), `patient` (FK), `raw_image`, `upload_timestamp`, `status` (Pending/In Review/Completed), `uploader` (FK to User), `file_format`
-  - `ProcessedImage`: `xray_record` (OneToOne), `processed_image`, `preprocessing_metadata` (JSON)
-- [x] Register models in `settings.py` under `INSTALLED_APPS`
-- [x] Run `python manage.py makemigrations` and `python manage.py migrate`
-
----
-
-### Step 3 — Authentication & RBAC
-
-- [x] Configure Django's auth backend in `settings.py`
-- [x] Create login view and template/page
-- [x] Create logout endpoint
-- [x] Implement role-based redirect after login:
-  - `RADIOLOGIC_TECH` → Technologist Dashboard
-  - `RADIOLOGIST` → Radiologist Dashboard (placeholder for now)
-  - `PHYSICIAN` → Physician Dashboard (placeholder for now)
-- [x] Add `@login_required` and role permission decorators/mixins to protected views
-- [x] Seed test accounts for all three roles via `manage.py createsuperuser` or a seed script
+**Workflow:**
+1. Always branch off `develop`, never off `main`
+2. Keep branches focused — one feature per branch
+3. Open a Pull Request into `develop` when done
+4. Tag the relevant person to review before merging
+5. `main` only gets merged into at the end of each week's increment when everything is working
 
 ---
 
-### Step 4 — Patient Profile Module
-
-- [x] `patients/views.py` — CRUD views: create patient, search patient, view patient detail
-- [x] Patient creation form with field validation
-- [x] Patient search by name or patient ID
-- [x] Patient detail page showing basic info and (empty) upload history list
-- [x] Wire up URLs in `patients/urls.py` and include in root `urls.py`
-
----
-
-### Step 5 — X-ray Upload & File Validation
-
-- [x] `imaging/views.py` — Upload view linked to a selected patient
-- [x] Upload form: file picker + patient selector
-- [x] Backend validation:
-  - [x] Accept: `.jpg`, `.jpeg`, `.png`, `.dcm` only — reject all others with an error response
-  - [x] File size limit: max 20MB
-- [x] For `.dcm` (DICOM) files: use `pydicom` to read and convert pixel data to PNG for storage and display; keep original file
-- [x] Return descriptive error messages for rejected uploads
-
----
-
-### Step 6 — Image Standardization Pipeline
-
-- [x] Create `imaging/preprocessing.py` as a standalone utility module
-- [ ] Pipeline function that runs on every accepted upload:
-  - [ ] Resize to 224×224 (match Seth's model input exactly)
-  - [ ] Convert to grayscale then back to 3-channel RGB
-  - [ ] Apply CLAHE contrast enhancement (`cv2.createCLAHE` or `PIL.ImageOps.equalize`)
-  - [ ] Save processed image to a separate `processed/` media subfolder
-- [ ] Link processed image to `ProcessedImage` model and save preprocessing metadata as JSON
-- [ ] Call this pipeline automatically inside the upload view after validation passes
-
----
-
-### Step 7 — Transaction ID & Upload Confirmation
-
-- [x] `transaction_id` auto-generated as UUID on `XrayRecord` creation (use `uuid.uuid4`)
-- [x] After successful upload, redirect to a confirmation page showing:
-  - Transaction ID
-  - Patient name
-  - Upload timestamp
-  - Current status: "Pending Review"
-- [x] Add toast/banner notification on success (or a styled confirmation card)
-
----
-
-### Step 8 — Technologist Dashboard
-
-- [x] Dashboard view for `RADIOLOGIC_TECH` role
-- [x] Table listing all `XrayRecord` entries uploaded by the logged-in user
-- [x] Columns: Transaction ID · Patient Name · Upload Date · Status
-- [x] Basic pagination or limit to last 20 records for MVP
-- [x] Each row links to the upload confirmation/detail page
-
----
-
-## Week 2 — Increment 2: Radiologist Annotation Module
-*(Tasks to be added)*
-
-## Week 3 — Increment 3: AI Integration & Longitudinal Monitoring
-*(Tasks to be added)*
-
-## Week 4 — Increment 4: Role-Based Dashboards & Reporting
-*(Tasks to be added)*
+## Commit Message Convention
+ 
+```
+<type>(<scope>): <short description> #<issue-number>
+```
+ 
+| Type | When to use |
+|------|------------|
+| `feat` | Adding new functionality |
+| `fix` | Fixing a bug |
+| `chore` | Setup, config, dependencies — no production code change |
+| `refactor` | Restructuring existing code without changing behavior |
+| `docs` | Documentation changes only |
+| `test` | Adding or updating tests |
+ 
+**Scope** is the app or area of the codebase being touched: `accounts`, `patients`, `imaging`, `frontend`, `ai`, `db`, `auth`.
+ 
+**Examples:**
+```
+feat(imaging): add file type validation on upload #7
+feat(patients): implement patient search by name and ID #10
+fix(auth): redirect loop on radiologist login #5
+chore(db): add ProcessedImage model and run migrations #3
+refactor(imaging): extract DICOM conversion into utility function #12
+docs(ai): add preprocessing spec document #14
+feat(frontend): build static upload confirmation page #17
+```
+ 
+> **Note:** The `#issue-number` at the end automatically links the commit to its GitHub issue. The commit will appear in the issue's timeline, making it easy to trace exactly which commits closed which issue.
