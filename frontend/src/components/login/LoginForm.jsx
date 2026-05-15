@@ -1,3 +1,4 @@
+import { useAuth } from '../../context/AuthContext'
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import InputField from '../ui/InputField'
@@ -16,6 +17,7 @@ function getCsrfToken() {
 
 function LoginForm() {
   const navigate = useNavigate()
+  const { login } = useAuth()
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
@@ -43,7 +45,8 @@ function LoginForm() {
 
       if (response.ok) {
         const data = await response.json()
-        navigate(data.redirect ?? '/dashboard/technologist')
+        login({ role: data.role })
+        navigate(data.redirect ?? '/dashboard/')
         return
       }
 
