@@ -109,6 +109,24 @@ raw_image=@/path/to/file.png
 - Roles: RADIOLOGIC_TECH
 - Response: 200 JSON
 
+### GET /api/imaging/dashboard/technologist
+- Purpose: Returns
+- Roles: RADIOLOGIC_TECH
+- Response: 200 JSON
+```
+{
+  "transaction_id": "...",
+  "patient": {
+    "patient_id": "...",
+    "first_name": "Juan",
+    "last_name": "Dela Cruz"
+  },
+  "upload_timestamp": "...",
+  "status": "PENDING",
+  "file_format": "jpg"
+}
+```
+
 ## API Docs
 ### GET /api/schema/
 - Purpose: OpenAPI schema

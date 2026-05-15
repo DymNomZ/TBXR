@@ -1,24 +1,31 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { AuthProvider } from './context/AuthContext'
 import LoginPage from './pages/LoginPage'
 import PatientsPage from './pages/PatientsPage'
 import PatientCard from './components/patients/PatientCard'
 import PatientDetailPage from './pages/PatientDetailPage';
+import TechDashboardPage from './pages/dashboard/TechDashboardPage'
 
 function App() {
   return (
-    <BrowserRouter>
-      <Routes>
-        {/* Auth */}
-        <Route path="/login" element={<LoginPage />} />
+    <AuthProvider>
+      <BrowserRouter>
+        <Routes>
+          {/* Auth */}
+          <Route path="/login" element={<LoginPage />} />
 
-        {/* Patients */}
-        <Route path="/patients" element={<PatientsPage />} />
-        <Route path="/patients/:patientId" element={<PatientDetailPage />} />
+          {/* Dashboard */}
+          <Route path="/dashboard/technologist" element={<TechDashboardPage />} />
 
-        {/* Default redirect */}
-        <Route path="*" element={<Navigate to="/login" replace />} />
-      </Routes>
-    </BrowserRouter>
+          {/* Patients */}
+          <Route path="/patients" element={<PatientsPage />} />
+          <Route path="/patients/:patientId" element={<PatientDetailPage />} />
+
+          {/* Default redirect */}
+          <Route path="*" element={<Navigate to="/login" replace />} />
+        </Routes>
+      </BrowserRouter>
+    </AuthProvider>
   )
 }
 

@@ -1,3 +1,4 @@
+import { useAuth } from '../../context/AuthContext'
 import {
   LayoutDashboard,
   CalendarDays,
@@ -8,17 +9,19 @@ import {
 } from 'lucide-react';
 import SidebarItem from './SidebarItem';
 
-// ✏️ Add, remove, or reorder items here, nothing else needs to change
-const NAV_ITEMS = [
-  { label: 'Dashboard',    icon: LayoutDashboard, to: '/dashboard' },
-  { label: 'Appointments', icon: CalendarDays,    to: '/appointments' },
-  { label: 'Doctor',       icon: UserRound,       to: '/doctors' },
-  { label: 'Patients',     icon: Users,           to: '/patients' },
-  { label: 'Messages',     icon: MessageSquare,   to: '/messages' },
-  { label: 'Settings',     icon: Settings,        to: '/settings' },
-];
-
 export default function Sidebar() {
+  const { user, ROLE_DASHBOARD } = useAuth()
+
+  // ✏️ Add, remove, or reorder items here, nothing else needs to change
+  const NAV_ITEMS = [
+    { label: 'Dashboard', icon: LayoutDashboard, to: ROLE_DASHBOARD[user?.role] ?? '/dashboard' },
+    { label: 'Appointments', icon: CalendarDays,    to: '/appointments' },
+    { label: 'Doctor',       icon: UserRound,       to: '/doctors' },
+    { label: 'Patients',     icon: Users,           to: '/patients' },
+    { label: 'Messages',     icon: MessageSquare,   to: '/messages' },
+    { label: 'Settings',     icon: Settings,        to: '/settings' },
+  ];
+
   return (
     <aside className="w-52 shrink-0 min-h-screen bg-white border-r border-[var(--border)] flex flex-col px-3 py-6 gap-1">
       {/* App title */}

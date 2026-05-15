@@ -1,3 +1,4 @@
+import { useAuth } from '../context/AuthContext'
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Upload} from 'lucide-react';
 import { useState, useEffect } from 'react';
@@ -12,6 +13,7 @@ import UploadConfirmation from '../components/upload/UploadConfirmation'
 export default function PatientDetailPage() {
   const { patientId } = useParams();
   const navigate = useNavigate();
+  const { user, ROLE_DASHBOARD } = useAuth()
 
   const [patient, setPatient] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -49,7 +51,7 @@ export default function PatientDetailPage() {
 
   const handleDashboard = () => {
     setIsConfirmOpen(false)
-    navigate('/dashboard')
+    navigate(ROLE_DASHBOARD[user?.role] ?? '/dashboard')
   }
  
   const handleUploadAnother = () => {
