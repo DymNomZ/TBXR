@@ -20,7 +20,13 @@ from apps.patients.models import Patient
 from .preprocessing import preprocess_xray
 from .models import XrayRecord, ProcessedImage
 from django.db import models
-from .serializers import XrayRecordUploadSerializer, XrayRecordSerializer, TechDashboardRecordSerializer
+from .serializers import (
+    XrayRecordUploadSerializer,
+    XrayRecordSerializer,
+    TechDashboardRecordSerializer,
+    RadiologistQueueSerializer,
+    XrayRecordDetailSerializer,
+)
 
 @extend_schema(
     request={
@@ -153,4 +159,18 @@ def technologist_dashboard(request):
 
     page = paginator.paginate_queryset(records, request)
     serializer = TechDashboardRecordSerializer(page, many=True)
+    return paginator.get_paginated_response(serializer.data)
+
+@api_view(["GET"])
+@role_required(UserRole.RADIOLOGIST)
+def radiologist_queue(request):
+    records = XrayRecord.objects.filter(
+        status="PENDING"
+    ).order_by('upload_timestamp')  # ascending — oldest first
+
+    paginator = PageNumberPagination()
+    paginator.page_size = 20
+
+    page = paginator.paginate_queryset(records, request)
+    serializer = RadiologistQueueSerializer(page, many=True)
     return paginator.get_paginated_response(serializer.data)

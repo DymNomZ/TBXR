@@ -152,3 +152,40 @@ class XrayRecordSerializer(serializers.ModelSerializer):
             "status",
             "file_format",
         ]
+
+class RadiologistQueueSerializer(serializers.ModelSerializer):
+    """
+    Used by: radiologist_queue (GET /api/imaging/queue/).
+    Includes raw_image so the radiologist can open the file from the queue.
+    """
+    patient = PatientBriefSerializer(read_only=True)
+
+    class Meta:
+        model = XrayRecord
+        fields = [
+            'transaction_id',
+            'patient',
+            'raw_image',
+            'upload_timestamp',
+            'status',
+            'file_format',
+        ]
+
+class XrayRecordDetailSerializer(serializers.ModelSerializer):
+    """
+    Used by: future radiologist review/detail endpoint.
+    """
+    patient = PatientBriefSerializer(read_only=True)
+
+    class Meta:
+        model = XrayRecord
+        fields = [
+            'transaction_id',
+            'patient',
+            'raw_image',
+            'upload_timestamp',
+            'status',
+            'file_format',
+            # Add AI score, findings, radiologist notes here when those
+            # fields exist on the model
+        ]
