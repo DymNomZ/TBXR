@@ -186,7 +186,7 @@ raw_image=@/path/to/file.png
     "first_name": "Juan",
     "last_name": "Dela Cruz"
   },
-  "raw_image": "/media/xrays/TXN-2026-0041.jpg",
+  "raw_image": "/media/raw/TXN-2026-0041.jpg",
   "upload_timestamp": "2026-04-18T08:14:00Z",
   "status": "PENDING",
   "file_format": "jpg",
