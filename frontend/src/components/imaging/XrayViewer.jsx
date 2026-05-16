@@ -247,10 +247,10 @@ export default function XrayViewer({ transactionId }) {
         {fetchError && <XrayViewerError message={fetchError} />}
 
         {/* Image */}
-        {xray?.raw_image && (
+        {xray?.display_image && (
           <img
-            key={xray.raw_image}   // remount if URL changes
-            src={xray.raw_image}
+            key={xray.display_image}   // remount if URL changes
+            src={xray.display_image}
             alt={`X-Ray ${transactionId}`}
             onLoad={() => setImageReady(true)}
             draggable={false}

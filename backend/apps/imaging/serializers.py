@@ -225,16 +225,35 @@ class XrayRecordDetailSerializer(serializers.ModelSerializer):
     Used by: future radiologist review/detail endpoint.
     """
     patient = PatientBriefSerializer(read_only=True)
+    annotations = AnnotationSerializer(many=True, read_only=True)
+    display_image = serializers.SerializerMethodField()
+
+    def get_display_image(self, obj):
+        request = self.context.get('request')
+
+        # Prefer the processed/converted image as this is what DCM files need,
+        # and it's also the CLAHE-enhanced version for all other formats
+        processed = ProcessedImage.objects.filter(xray_record=obj).first()
+        if processed and processed.processed_image:
+            url = processed.processed_image.url
+            return request.build_absolute_uri(url) if request else url
+
+        # Fallback to raw image (JPG/PNG uploads with no processed version)
+        if obj.raw_image:
+            url = obj.raw_image.url
+            return request.build_absolute_uri(url) if request else url
+
+        return None
 
     class Meta:
         model = XrayRecord
         fields = [
             'transaction_id',
             'patient',
-            'raw_image',
+            'raw_image',       # keep, useful for download/reference
+            'display_image',   # what the viewer should actually render
             'upload_timestamp',
             'status',
             'file_format',
-            # Add AI score, findings, radiologist notes here when those
-            # fields exist on the model
+            'annotations',
         ]
