@@ -56,7 +56,7 @@ function ToolbarButton({ onClick, title, children, active = false }) {
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
-export default function XrayViewer({ transactionId }) {
+export default function XrayViewer({ transactionId, onTransformChange, overlay }) {
   const [xray, setXray]           = useState(null)
   const [fetchLoading, setFetchLoading] = useState(true)
   const [fetchError, setFetchError]     = useState(null)
@@ -65,6 +65,10 @@ export default function XrayViewer({ transactionId }) {
   // Transform state
   const [scale, setScale]         = useState(1)
   const [translate, setTranslate] = useState({ x: 0, y: 0 })
+
+  useEffect(() => {
+    onTransformChange?.({ scale, translate })
+  }, [scale, translate])   // fires whenever zoom/pan changes
 
   // Panning refs — using refs instead of state avoids re-renders mid-drag
   const containerRef      = useRef(null)
@@ -273,6 +277,9 @@ export default function XrayViewer({ transactionId }) {
             {Math.round(scale * 100)}%
           </div>
         )}
+
+        {/* AnnotationCanvas renders here, inside the same container */}
+        {overlay}
       </div>
     </div>
   )
