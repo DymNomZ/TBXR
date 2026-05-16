@@ -262,8 +262,8 @@ def radiologist_queue(request):
     return paginator.get_paginated_response(serializer.data)
 
 @api_view(["GET"])
-@role_required(UserRole.RADIOLOGIST, UserRole.PHYSICIAN)
+@role_required(UserRole.RADIOLOGIC_TECH, UserRole.RADIOLOGIST, UserRole.PHYSICIAN)
 def xray_detail(request, transaction_id):
     xray_record = get_object_or_404(XrayRecord, transaction_id=transaction_id)
-    serializer = XrayRecordDetailSerializer(xray_record)
+    serializer = XrayRecordDetailSerializer(xray_record, context={'request': request})
     return Response(serializer.data)
