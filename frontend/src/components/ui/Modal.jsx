@@ -1,7 +1,15 @@
 import { useEffect, useState } from 'react'
+import { createPortal } from 'react-dom' 
 import { X } from 'lucide-react'
 
-export default function Modal({ isOpen, onClose, title, children, noPadding = false, hideClose = false }) {
+const SIZE = {
+  sm: 'max-w-sm',
+  md: 'max-w-md',
+  lg: 'max-w-2xl',
+  xl: 'max-w-5xl',
+}
+
+export default function Modal({ isOpen, onClose, title, children, noPadding = false, hideClose = false, size = 'md' }) {
   const [mounted, setMounted]   = useState(false)
   const [visible, setVisible]   = useState(false)
 
@@ -21,20 +29,20 @@ export default function Modal({ isOpen, onClose, title, children, noPadding = fa
 
   if (!mounted) return null
 
-  return (
+  return createPortal(
     // Backdrop
     <div
       className={`
         fixed inset-0 z-50 flex items-center justify-center px-4
         transition-all duration-200
-        ${visible ? 'bg-black/40' : 'bg-black/0'}
+        ${visible ? 'bg-black/40 backdrop-blur-sm' : 'bg-black/0 backdrop-blur-none'}
       `}
       onClick={onClose}
     >
       {/* Modal card */}
       <div
         className={`
-          relative w-full max-w-md bg-white rounded-[28px]
+          relative w-full ${SIZE[size]} bg-white rounded-[28px]
           border border-[var(--border)] shadow-[var(--shadow)]
           transition-all duration-200
           ${visible ? 'opacity-100 scale-100 translate-y-0' : 'opacity-0 scale-95 translate-y-2'}
@@ -61,6 +69,7 @@ export default function Modal({ isOpen, onClose, title, children, noPadding = fa
         
         {children}
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }
