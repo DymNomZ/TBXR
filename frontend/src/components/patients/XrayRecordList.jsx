@@ -17,9 +17,6 @@ function XrayRecordItem({ record, onClick }) {
         </span>
         <StatusBadge status={record.status} />
       </div>
-      <div className="flex items-center justify-between text-xs text-[var(--text-muted)]">
-        <span>{new Date(record.upload_timestamp).toLocaleString('en-PH')}</span>
-      </div>
 
       <div className="flex items-center justify-between text-xs text-[var(--text-muted)]">
         <span>{new Date(record.upload_timestamp).toLocaleString('en-PH')}</span>
@@ -35,7 +32,7 @@ function XrayRecordItem({ record, onClick }) {
   );
 }
 
-export default function XrayRecordList({ patientId, refreshKey = 0 }) {
+export default function XrayRecordList({ patientId, refreshKey = 0, autoOpenTransactionId = null }) {
   const [records, setRecords] = useState([])
   const [loading, setLoading] = useState(true)
   const [selectedRecord, setSelected] = useState(null)  // ← tracks clicked record
@@ -53,6 +50,12 @@ export default function XrayRecordList({ patientId, refreshKey = 0 }) {
       .then((data) => { setRecords(data); setLoading(false) })
       .catch(() => setLoading(false))
   }, [patientId, refreshKey])
+
+   useEffect(() => {
+    if (!autoOpenTransactionId || records.length === 0) return
+    const match = records.find(r => r.transaction_id === autoOpenTransactionId)
+    if (match) setSelected(match)
+  }, [autoOpenTransactionId, records])  // runs when records finish loading
 
   if (loading) return (
     <div className="bg-white rounded-2xl border border-[var(--border)] shadow-sm p-6">
@@ -85,7 +88,7 @@ export default function XrayRecordList({ patientId, refreshKey = 0 }) {
               <XrayRecordItem
                 key={record.transaction_id}
                 record={record}
-                onClick={() => setSelected(record)}   // ← set on click
+                onClick={() => setSelected(record)}
               />
             ))}
           </div>
