@@ -1,5 +1,5 @@
 import { useAuth } from '../context/AuthContext'
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { ArrowLeft, Upload} from 'lucide-react';
 import { useState, useEffect } from 'react';
 import AppLayout from '../components/layout/AppLayout';
@@ -14,6 +14,8 @@ export default function PatientDetailPage() {
   const { patientId } = useParams();
   const navigate = useNavigate();
   const { user, ROLE_DASHBOARD } = useAuth()
+  const location = useLocation()
+  const openXray = location.state?.openXray ?? null
 
   const [patient, setPatient] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -110,7 +112,7 @@ export default function PatientDetailPage() {
         {/* Two-column layout */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
           <PatientProfileCard patient={patient} />
-          <XrayRecordList patientId={patientId} refreshKey={xrayRefreshKey} />
+          <XrayRecordList patientId={patientId} refreshKey={xrayRefreshKey} autoOpenTransactionId={openXray} />
         </div>
  
       </div>

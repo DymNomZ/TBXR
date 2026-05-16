@@ -90,7 +90,9 @@ function DashboardActionButton({ record }) {
       variant={action.variant}
       onClick={(e) => {
         e.stopPropagation() // prevent row click double-fire
-        navigate(`/transactions/${record.transaction_id}`) // <--- Link to actual transaction detail view
+        navigate(`/patients/${record.patient.patient_id}`, {
+          state: { openXray: record.transaction_id }
+        })
       }}
     >
       {action.label}
