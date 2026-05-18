@@ -430,7 +430,7 @@ AI baseline scores are displayed alongside the X-ray viewer and in the radiologi
 
 **Data Design**
 
-- AiScore
+- AIScore
   - id (PK)
   - xray_record_id (FK -> XrayRecord)
   - probability (float)
