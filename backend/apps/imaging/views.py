@@ -238,9 +238,7 @@ def technologist_dashboard(request):
 @api_view(["GET"])
 @role_required(UserRole.RADIOLOGIST)
 def radiologist_queue(request):
-    records = XrayRecord.objects.filter(
-        status="PENDING"
-    ).order_by('upload_timestamp')  # ascending — oldest first
+    records = XrayRecord.objects.all().order_by('upload_timestamp')
 
     search = request.query_params.get('search', '').strip()
     if search:
