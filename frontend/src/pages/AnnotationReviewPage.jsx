@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { ArrowLeft, User, Hash } from 'lucide-react'
-import AppLayout from '@/components/layout/AppLayout'
-import XrayViewer from '@/components/imaging/XrayViewer'
-import AnnotationCanvas from '@/components/imaging/AnnotationCanvas'
-import AnnotationPanel from '@/components/imaging/AnnotationPanel'
+import AppLayout from '../components/layout/AppLayout'
+import XrayViewer from '../components/imaging/XrayViewer'
+import AnnotationCanvas from '../components/imaging/AnnotationCanvas'
+import AnnotationPanel from '../components/imaging/AnnotationPanel'
 
 export default function AnnotationReviewPage() {
   const { transactionId } = useParams()

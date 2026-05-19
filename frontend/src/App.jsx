@@ -6,6 +6,7 @@ import PatientCard from './components/patients/PatientCard'
 import PatientDetailPage from './pages/PatientDetailPage';
 import TechnologistDashboardPage from './pages/dashboard/TechnologistDashboardPage'
 import RadiologistDashboardPage from './pages/dashboard/RadiologistDashboardPage'
+import AnnotationReviewPage from './pages/AnnotationReviewPage'
 
 function App() {
   return (
@@ -18,6 +19,9 @@ function App() {
           {/* Dashboard */}
           <Route path="/dashboard/technologist" element={<TechnologistDashboardPage />} />
           <Route path="/dashboard/radiologist" element={<RadiologistDashboardPage />} />
+
+          {/* Annotation review */}
+          <Route path="/radiologist/review/:transactionId" element={<AnnotationReviewPage />} />
 
           {/* Patients */}
           <Route path="/patients" element={<PatientsPage />} />
