@@ -53,3 +53,39 @@ class Annotation(models.Model):
 
     def __str__(self):
         return f'Annotation for {self.xray_record.transaction_id} by {self.radiologist}'
+    
+class AIResult(models.Model):
+    class RiskLabel(models.TextChoices):
+        LOW      = 'LOW',      'Low'
+        MODERATE = 'MODERATE', 'Moderate'
+        HIGH     = 'HIGH',     'High'
+
+    xray_record    = models.OneToOneField(
+        XrayRecord,
+        on_delete=models.CASCADE,
+        related_name='ai_result',
+    )
+    risk_score     = models.FloatField(
+        help_text='TB probability between 0.0 and 1.0.'
+    )
+    risk_label     = models.CharField(
+        max_length=10,
+        choices=RiskLabel.choices,
+    )
+    heatmap_image  = models.ImageField(
+        upload_to='heatmaps/',
+        null=True,
+        blank=True,
+        help_text='Grad-CAM or equivalent saliency map.'
+    )
+    model_version  = models.CharField(
+        max_length=64,
+        help_text='e.g. mobilenetv3_v1',
+    )
+    generated_at   = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-generated_at']
+
+    def __str__(self):
+        return f'AIResult for {self.xray_record.transaction_id} — {self.risk_label} ({self.risk_score:.2f})'
