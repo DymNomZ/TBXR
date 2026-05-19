@@ -56,7 +56,7 @@ function ToolbarButton({ onClick, title, children, active = false }) {
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
-export default function XrayViewer({ transactionId, onTransformChange, overlay }) {
+export default function XrayViewer({ transactionId, onTransformChange, onXrayLoaded, overlay }) {
   const [xray, setXray]           = useState(null)
   const [fetchLoading, setFetchLoading] = useState(true)
   const [fetchError, setFetchError]     = useState(null)
@@ -96,7 +96,10 @@ export default function XrayViewer({ transactionId, onTransformChange, overlay }
         if (!r.ok) throw new Error(`Failed to load record (${r.status})`)
         return r.json()
       })
-      .then(setXray)
+      .then((data) => {
+        setXray(data)
+        onXrayLoaded?.(data)   // ← expose full xray data to parent
+      })
       .catch((err) => setFetchError(err.message))
       .finally(() => setFetchLoading(false))
   }, [transactionId])
@@ -136,10 +139,17 @@ export default function XrayViewer({ transactionId, onTransformChange, overlay }
 
   // ── Mouse pan ───────────────────────────────────────────────────────────────
 
+  // handleMouseDown — add the button check
   const handleMouseDown = useCallback((e) => {
     if (currentScale.current <= 1) return
+    if (e.button !== 2) return   // ← only right mouse button (2 = right, 0 = left)
     isPanning.current = true
     lastPointer.current = { x: e.clientX, y: e.clientY }
+  }, [])
+
+  // prevents the browser context menu on right-click
+  const handleContextMenu = useCallback((e) => {
+    e.preventDefault()
   }, [])
 
   const handleMouseMove = useCallback((e) => {
@@ -240,6 +250,7 @@ export default function XrayViewer({ transactionId, onTransformChange, overlay }
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
+        onContextMenu={handleContextMenu}  
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
