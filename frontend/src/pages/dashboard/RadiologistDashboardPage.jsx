@@ -9,13 +9,32 @@ import RadiologistDashboardTable, { QUEUE_COLUMNS } from '../../components/dashb
 const FILTERABLE_COLS = QUEUE_COLUMNS.filter((c) => c.filterable)
 const PAGE_SIZE = 20
 
+// Fetch just the count for a given status — reads from paginated `count` field
+const fetchStatusCount = (status) =>
+  fetch(`/api/imaging/queue/?status=${status}`, { credentials: 'include' })
+    .then((r) => r.json())
+    .then((d) => d.count ?? 0)
+    .catch(() => 0)
+
 export default function RadiologistDashboardPage() {
   const navigate = useNavigate()
   const [page, setPage]             = useState(1)
-  const [activeFilters, setFilters] = useState({ search: '', status: '' })
+  const [activeFilters, setFilters] = useState({ search: '', status: 'PENDING' })
   const [records, setRecords]       = useState([])
   const [count, setCount]           = useState(0)
   const [loading, setLoading]       = useState(false)
+  const [stats, setStats] = useState({ pending: 0, inReview: 0, completed: 0, total: 0 })
+
+  // ── Fetch stat counts (parallel, independent of current filter)
+  useEffect(() => {
+    Promise.all([
+      fetchStatusCount('PENDING'),
+      fetchStatusCount('IN_REVIEW'),
+      fetchStatusCount('COMPLETED'),
+    ]).then(([pending, inReview, completed]) => {
+      setStats({ pending, inReview, completed, total: pending + inReview + completed })
+    })
+  }, [])  // once on mount — rerun after submit if needed
 
   useEffect(() => {
     const params = new URLSearchParams({ page })
@@ -42,32 +61,28 @@ export default function RadiologistDashboardPage() {
   return (
     <AppLayout>
       <div className="flex flex-col gap-6">
-
         <div>
           <h1 className="text-2xl font-bold text-[var(--deep-navy)] tracking-tight">
             Radiology Review Queue
           </h1>
           <p className="text-sm text-[var(--text-muted)] mt-1">
-            All pending X-ray records awaiting radiologist review
+            All X-ray records assigned for radiologist review
           </p>
         </div>
 
         {/* Stat cards */}
         <div className="flex gap-4">
-          <StatCard label="Pending Review" value={count} />
-          <StatCard
-            label="In Review"
-            value={records.filter((r) => r.status === 'IN_REVIEW').length}
-          />
-          <StatCard
-            label="Completed (This Page)"
-            value={records.filter((r) => r.status === 'COMPLETED').length}
-          />
+          <StatCard label="Pending Review" value={stats.pending}   />
+          <StatCard label="In Review"      value={stats.inReview}  />
+          <StatCard label="Completed"      value={stats.completed} />
+          <StatCard label="Total Records"  value={stats.total} highlight />
         </div>
 
+        {/* Filter bar — initialFilters seeds the PENDING default visually */}
         <FilterBar
           filterableCols={FILTERABLE_COLS}
           onFilterChange={handleFilterChange}
+          initialFilters={{ status: 'PENDING' }}
         />
 
         {loading ? (
