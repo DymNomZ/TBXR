@@ -1,15 +1,12 @@
 import { Search } from 'lucide-react'
 import { useState } from 'react'
 
-// Receives:
-//   filterableCols — array of { key, header, filterOptions: string[] }
-//   onFilterChange — callback({ search, ...activeFilters })
-export default function FilterBar({ filterableCols = [], onFilterChange }) {
-  const [search, setSearch] = useState('')
+export default function FilterBar({ filterableCols = [], onFilterChange, initialFilters = {} }) {
+  const [search, setSearch] = useState(initialFilters.search ?? '')
 
   // Keyed by column.key → selected option string or ''
   const [filters, setFilters] = useState(
-    () => Object.fromEntries(filterableCols.map((c) => [c.key, '']))
+    () => Object.fromEntries(filterableCols.map((c) => [c.key, initialFilters[c.key] ?? '']))
   )
 
   const handleSearchSubmit = (e) => {

@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react'
 import StatusBadge from '../ui/StatusBadge'
 import Modal from '../ui/Modal'
 import XrayViewer from '../imaging/XrayViewer'
+import StaticAnnotationOverlay from '../imaging/StaticAnnotationOverlay'
 
 function XrayRecordItem({ record, onClick }) {
 
@@ -36,6 +37,15 @@ export default function XrayRecordList({ patientId, refreshKey = 0, autoOpenTran
   const [records, setRecords] = useState([])
   const [loading, setLoading] = useState(true)
   const [selectedRecord, setSelected] = useState(null)  // ← tracks clicked record
+  const [transform, setTransform] = useState({ scale: 1, translate: { x: 0, y: 0 } })
+  const [xrayData,  setXrayData]  = useState(null)
+
+  // Reset when modal closes — update your setSelected(null) calls:
+  const handleClose = () => {
+    setSelected(null)
+    setXrayData(null)
+    setTransform({ scale: 1, translate: { x: 0, y: 0 } })
+  }
 
   useEffect(() => {
     if (!patientId) return
@@ -109,12 +119,57 @@ export default function XrayRecordList({ patientId, refreshKey = 0, autoOpenTran
       {/* Viewer modal */}
       <Modal
         isOpen={!!selectedRecord}
-        onClose={() => setSelected(null)}
+        onClose={handleClose}
         title={selectedRecord?.transaction_id ?? ''}
         size="lg"
       >
         {selectedRecord && (
-          <XrayViewer transactionId={selectedRecord.transaction_id} />
+          <div className="flex flex-col gap-5">
+
+            {/* Viewer with static overlay */}
+            <XrayViewer
+              transactionId={selectedRecord.transaction_id}
+              onTransformChange={setTransform}
+              onXrayLoaded={setXrayData}
+              overlay={
+                <StaticAnnotationOverlay
+                  annotations={xrayData?.annotations ?? []}
+                  scale={transform.scale}
+                  translate={transform.translate}
+                />
+              }
+            />
+
+            {/* Radiologist notes — one card per annotation */}
+            {xrayData?.annotations?.length > 0 && (
+              <div className="flex flex-col gap-3">
+                <h3 className="text-sm font-bold text-[var(--deep-navy)]">Radiologist Notes</h3>
+                {xrayData.annotations.map((ann, i) => (
+                  <div
+                    key={i}
+                    className="flex flex-col gap-1.5 p-4 rounded-xl bg-[var(--surface-soft)] border border-[var(--border)]"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-semibold text-[var(--accent)]">
+                        {ann.radiologist
+                          ? `${ann.radiologist.first_name} ${ann.radiologist.last_name}`
+                          : 'Unknown'}
+                      </span>
+                      <span className="text-xs text-[var(--text-muted)]">
+                        {new Date(ann.submitted_at).toLocaleString('en-PH')}
+                      </span>
+                    </div>
+                    {ann.notes ? (
+                      <p className="text-sm text-[var(--text)] leading-relaxed">{ann.notes}</p>
+                    ) : (
+                      <p className="text-sm text-[var(--text-muted)] italic">No notes provided.</p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+
+          </div>
         )}
       </Modal>
     </>

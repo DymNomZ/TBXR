@@ -127,33 +127,44 @@ export default function AnnotationCanvas({
     setTimeout(() => labelRef.current?.focus(), 40)
   }, [drawing, scale])
 
-  // ── Label confirmation ──────────────────────────────────────────────────────
+  // Helper — normalizes element-space box to 0-1 using current container dims
+  const normalize = useCallback((box) => {
+    const el = selfRef.current
+    const W  = el?.offsetWidth  ?? 1
+    const H  = el?.offsetHeight ?? 1
+    return {
+      x:      box.x      / W,
+      y:      box.y      / H,
+      width:  box.width  / W,
+      height: box.height / H,
+      label:  box.label,
+    }
+  }, [])
 
   const confirmLabel = useCallback(() => {
     if (!pendingBox) return
     const confirmed = { ...pendingBox, label: draft.trim() }
     setBoxes((prev) => {
       const next = [...prev, confirmed]
-      // Strip internal id before exposing
-      onBoxesChange?.(next.map(({ id, ...rest }) => rest))
+      onBoxesChange?.(next.map(({ id, ...box }) => normalize(box)))  // ← normalized, no id
       return next
     })
     setPending(null)
     setDraft('')
-  }, [pendingBox, draft, onBoxesChange])
+  }, [pendingBox, draft, onBoxesChange, normalize])
+
+  const deleteBox = useCallback((id) => {
+    setBoxes((prev) => {
+      const next = prev.filter((b) => b.id !== id)
+      onBoxesChange?.(next.map(({ id, ...box }) => normalize(box)))  // ← normalized, no id
+      return next
+    })
+  }, [onBoxesChange, normalize])
 
   const cancelPending = useCallback(() => {
     setPending(null)
     setDraft('')
   }, [])
-
-  const deleteBox = useCallback((id) => {
-    setBoxes((prev) => {
-      const next = prev.filter((b) => b.id !== id)
-      onBoxesChange?.(next.map(({ id, ...rest }) => rest))
-      return next
-    })
-  }, [onBoxesChange])
 
   // ── SVG visual helpers ──────────────────────────────────────────────────────
 

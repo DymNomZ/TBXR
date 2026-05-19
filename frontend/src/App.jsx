@@ -6,6 +6,8 @@ import PatientCard from './components/patients/PatientCard'
 import PatientDetailPage from './pages/PatientDetailPage';
 import TechnologistDashboardPage from './pages/dashboard/TechnologistDashboardPage'
 import RadiologistDashboardPage from './pages/dashboard/RadiologistDashboardPage'
+import AnnotationReviewPage from './pages/AnnotationReviewPage'
+import RoleGuard from './components/auth/RoleGuard'
 
 function App() {
   return (
@@ -16,8 +18,32 @@ function App() {
           <Route path="/login" element={<LoginPage />} />
 
           {/* Dashboard */}
-          <Route path="/dashboard/technologist" element={<TechnologistDashboardPage />} />
-          <Route path="/dashboard/radiologist" element={<RadiologistDashboardPage />} />
+          <Route
+            path="/dashboard/technologist"
+            element={
+              <RoleGuard allowedRoles={['RADIOLOGIC_TECH']}>
+                <TechnologistDashboardPage />
+              </RoleGuard>
+            }
+          />
+          <Route
+            path="/dashboard/radiologist"
+            element={
+              <RoleGuard allowedRoles={['RADIOLOGIST']}>
+                <RadiologistDashboardPage />
+              </RoleGuard>
+            }
+          />
+
+          {/* Annotation review */}
+          <Route
+            path="/radiologist/review/:transactionId"
+            element={
+              <RoleGuard allowedRoles={['RADIOLOGIST']}>
+                <AnnotationReviewPage />
+              </RoleGuard>
+            }
+          />
 
           {/* Patients */}
           <Route path="/patients" element={<PatientsPage />} />
