@@ -1,10 +1,11 @@
 import json
 from io import BytesIO
+from tempfile import TemporaryDirectory
 
 from PIL import Image
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.urls import reverse
 
 from apps.accounts.enums import UserRole
@@ -14,6 +15,19 @@ from .models import Annotation, XrayRecord
 
 
 class ImagingAccessTests(TestCase):
+	@classmethod
+	def setUpClass(cls):
+		cls._media_root = TemporaryDirectory()
+		cls._media_override = override_settings(MEDIA_ROOT=cls._media_root.name)
+		cls._media_override.enable()
+		super().setUpClass()
+
+	@classmethod
+	def tearDownClass(cls):
+		super().tearDownClass()
+		cls._media_override.disable()
+		cls._media_root.cleanup()
+
 	@classmethod
 	def setUpTestData(cls):
 		user_model = get_user_model()

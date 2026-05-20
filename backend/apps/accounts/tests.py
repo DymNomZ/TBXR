@@ -25,6 +25,7 @@ class AccountAuthViewsTests(TestCase):
 
     def test_login_redirects_radiologic_tech_to_technologist_dashboard(self):
         self._create_user('tech', 'password123', UserRole.RADIOLOGIC_TECH)
+        expected_redirect = views.ROLE_FRONTEND_URLS[UserRole.RADIOLOGIC_TECH]
 
         response = self.client.post(
             reverse('accounts:login'),
@@ -34,12 +35,13 @@ class AccountAuthViewsTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertJSONEqual(
             response.content,
-            {'redirect': '/dashboard/technologist', 'role': UserRole.RADIOLOGIC_TECH},
+            {'redirect': expected_redirect, 'role': UserRole.RADIOLOGIC_TECH},
         )
         self.assertIn('_auth_user_id', self.client.session)
 
     def test_login_redirects_radiologist_to_radiologist_dashboard(self):
         self._create_user('rad', 'password123', UserRole.RADIOLOGIST)
+        expected_redirect = views.ROLE_FRONTEND_URLS[UserRole.RADIOLOGIST]
 
         response = self.client.post(
             reverse('accounts:login'),
@@ -49,11 +51,12 @@ class AccountAuthViewsTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertJSONEqual(
             response.content,
-            {'redirect': '/dashboard/radiologist', 'role': UserRole.RADIOLOGIST},
+            {'redirect': expected_redirect, 'role': UserRole.RADIOLOGIST},
         )
 
     def test_login_redirects_physician_to_physician_dashboard(self):
         self._create_user('phys', 'password123', UserRole.PHYSICIAN)
+        expected_redirect = views.ROLE_FRONTEND_URLS[UserRole.PHYSICIAN]
 
         response = self.client.post(
             reverse('accounts:login'),
@@ -63,7 +66,7 @@ class AccountAuthViewsTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertJSONEqual(
             response.content,
-            {'redirect': '/dashboard/physician', 'role': UserRole.PHYSICIAN},
+            {'redirect': expected_redirect, 'role': UserRole.PHYSICIAN},
         )
 
     def test_login_returns_descriptive_error_for_bad_credentials(self):
