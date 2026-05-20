@@ -3,6 +3,7 @@ import { ChevronLeft, ChevronRight } from 'lucide-react'
 import AppLayout from '../../components/layout/AppLayout'
 import StatCard from '../../components/ui/StatCard'
 import FilterBar from '../../components/dashboard/FilterBar'
+import AIScoreLegend from '../../components/ui/AIScoreLegend'
 import TechnologistDashboardTable, { DASHBOARD_COLUMNS } from '../../components/dashboard/TechnologistDashboardTable'
 
 // Pull only the filterable columns to pass to FilterBar
@@ -69,7 +70,10 @@ export default function TechDashboardPage() {
         {loading ? (
           <div className="text-sm text-[var(--text-muted)] py-8 text-center">Loading...</div>
         ) : (
-          <TechnologistDashboardTable data={records} />
+          <>
+            <TechnologistDashboardTable data={records} />
+            <AIScoreLegend sortLabel="Sorted by AI score (highest first)" />
+          </>
         )}
 
         {totalPages > 1 && (
