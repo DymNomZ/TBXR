@@ -6,7 +6,7 @@ from PIL import Image
 from django.core.files.base import ContentFile
 from rest_framework import serializers
 
-from .models import Annotation, XrayRecord, ProcessedImage
+from .models import AIResult, Annotation, XrayRecord, ProcessedImage
 from apps.patients.models import Patient
 from django.contrib.auth import get_user_model
 
@@ -62,6 +62,42 @@ class AnnotationSerializer(serializers.ModelSerializer):
             'submitted_at',
         ]
         # xray_record is intentionally excluded — redundant inside a nested response
+
+
+class AIResultSerializer(serializers.ModelSerializer):
+    heatmap_url = serializers.SerializerMethodField()
+
+    def get_heatmap_url(self, obj):
+        if not obj.heatmap_image:
+            return None
+        request = self.context.get("request")
+        url = obj.heatmap_image.url
+        return request.build_absolute_uri(url) if request else url
+
+    class Meta:
+        model = AIResult
+        fields = [
+            "risk_score",
+            "risk_label",
+            "heatmap_url",
+        ]
+
+
+class XrayRecordHistorySerializer(serializers.ModelSerializer):
+    ai_result = AIResultSerializer(read_only=True)
+    annotations = AnnotationSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = XrayRecord
+        fields = [
+            "transaction_id",
+            "raw_image",
+            "upload_timestamp",
+            "status",
+            "file_format",
+            "ai_result",
+            "annotations",
+        ]
 
 
 class XrayRecordDetailSerializer(serializers.ModelSerializer):

@@ -27,6 +27,7 @@ from .serializers import (
     TechDashboardRecordSerializer,
     RadiologistQueueSerializer,
     XrayRecordDetailSerializer,
+    XrayRecordHistorySerializer,
 )
 
 @extend_schema(
@@ -264,4 +265,19 @@ def radiologist_queue(request):
 def xray_detail(request, transaction_id):
     xray_record = get_object_or_404(XrayRecord, transaction_id=transaction_id)
     serializer = XrayRecordDetailSerializer(xray_record, context={'request': request})
+    return Response(serializer.data)
+
+@api_view(["GET"])
+@role_required(UserRole.RADIOLOGIST, UserRole.PHYSICIAN)
+def patient_history(request, patient_id):
+    patient = get_object_or_404(Patient, patient_id=patient_id)
+    records = (
+        XrayRecord.objects.filter(patient=patient)
+        .select_related("ai_result")
+        .prefetch_related("annotations", "annotations__radiologist")
+        .order_by("upload_timestamp")
+    )
+    serializer = XrayRecordHistorySerializer(
+        records, many=True, context={"request": request}
+    )
     return Response(serializer.data)

@@ -26,6 +26,11 @@ urlpatterns = [
         name="patient_xrays",
     ),
     path(
+        "patients/<int:patient_id>/history/",
+        views.patient_history,
+        name="patient_history",
+    ),
+    path(
         "dashboard/technologist/",
         views.technologist_dashboard,
         name="technologist_dashboard",

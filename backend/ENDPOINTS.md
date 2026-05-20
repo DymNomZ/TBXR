@@ -130,6 +130,11 @@ raw_image=@/path/to/file.png
 - Roles: RADIOLOGIC_TECH, RADIOLOGIST, PHYSICIAN
 - Response: JSON
 
+### GET /api/imaging/patients/<patient_id>/history/
+- Purpose: Patient X-ray history ordered by upload timestamp (ascending), including AI result and annotations.
+- Roles: RADIOLOGIST, PHYSICIAN
+- Response: 200 JSON list
+
 ### GET /api/imaging/patients/<patient_id>/xray/upload/confirm/<transaction_id>/
 - Purpose: Confirm upload and return XrayRecord details.
 - Roles: RADIOLOGIC_TECH
@@ -174,9 +179,17 @@ raw_image=@/path/to/file.png
 }
 ```
 
+### GET /api/imaging/queue/
+- Purpose: Radiologist queue of uploaded X-rays.
+- Roles: RADIOLOGIST
+- Query params (optional):
+  - search (patient first/last name or transaction ID)
+  - status (PENDING|IN_REVIEW|COMPLETED)
+- Response: 200 JSON (paginated)
+
 ### GET /api/imaging/xray/<transaction_id>/
 - Purpose: Returns the xray details with annotations
-- Roles: RADIOLOGIC_TECH
+- Roles: RADIOLOGIC_TECH, RADIOLOGIST, PHYSICIAN
 - Response: 200 JSON
 ```
 {
