@@ -79,7 +79,9 @@ class AIResultSerializer(serializers.ModelSerializer):
         fields = [
             "risk_score",
             "risk_label",
-            "heatmap_url",
+            "heatmap_url",    # Keeping your teammate's safe URL generator!
+            "model_version",  # Your new Step 24 field
+            "generated_at",   # Your new Step 24 field
         ]
 
 
@@ -245,6 +247,8 @@ class XrayRecordUploadSerializer(serializers.ModelSerializer):
 
 
 class XrayRecordSerializer(serializers.ModelSerializer):
+    ai_result = AIResultSerializer(read_only=True)
+
     class Meta:
         model = XrayRecord
         fields = [
@@ -254,6 +258,7 @@ class XrayRecordSerializer(serializers.ModelSerializer):
             "upload_timestamp",
             "status",
             "file_format",
+            "ai_result",
         ]
 
 class XrayRecordDetailSerializer(serializers.ModelSerializer):
