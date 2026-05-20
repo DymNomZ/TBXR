@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import AppLayout from '../../components/layout/AppLayout'
 import StatCard from '../../components/ui/StatCard'
 import FilterBar from '../../components/dashboard/FilterBar'
+import AIScoreLegend from '../../components/ui/AIScoreLegend'
 import RadiologistDashboardTable, { QUEUE_COLUMNS } from '../../components/dashboard/RadiologistDashboardTable'
 
 const FILTERABLE_COLS = QUEUE_COLUMNS.filter((c) => c.filterable)
@@ -90,7 +91,10 @@ export default function RadiologistDashboardPage() {
             Loading...
           </div>
         ) : (
-          <RadiologistDashboardTable data={records} />
+          <>
+            <RadiologistDashboardTable data={records} />
+            <AIScoreLegend sortLabel="Sorted by AI score (highest first)" />
+          </>
         )}
 
         {/* Pagination */}

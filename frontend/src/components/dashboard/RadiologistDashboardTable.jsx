@@ -2,6 +2,7 @@ import { useNavigate } from 'react-router-dom'
 import Table from '../ui/Table'
 import StatusBadge from '../ui/StatusBadge'
 import Button from '../ui/Button'
+import AIRiskBadge from '../ui/AIRiskBadge'
 
 // ✏️ Tag filterable: true to auto-add a filter dropdown for that column
 export const QUEUE_COLUMNS = [
@@ -72,6 +73,14 @@ export const QUEUE_COLUMNS = [
     width: '130px',
     render: (row) => <StatusBadge status={row.status} />,
   },
+  // {
+  //   key: 'risk_score',
+  //   header: 'AI Risk Score',
+  //   label: 'AI Risk Scores',
+  //   filterable: false,
+  //   width: '140px',
+  //   render: (row) => <AIRiskBadge label={result.risk_label} score={result.risk_score} />,
+  // },
   {
     key: 'action',
     header: 'Action',
