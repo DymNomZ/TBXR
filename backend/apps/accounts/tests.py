@@ -1,91 +1,108 @@
 import json
 
 from django.contrib.auth import get_user_model
+from django.contrib.auth.models import AnonymousUser
+from django.core.exceptions import PermissionDenied
+from django.test import RequestFactory
 from django.test import TestCase
 from django.urls import reverse
+
 from apps.accounts.enums import UserRole
 
+from . import views
+
+
 class AccountAuthViewsTests(TestCase):
-	def setUp(self):
-		self.user_model = get_user_model()
+    def setUp(self):
+        self.user_model = get_user_model()
 
-	def _create_user(self, username, password, role):
-		return self.user_model.objects.create_user(
-			username=username,
-			password=password,
-			role=role,
-		)
+    def _create_user(self, username, password, role):
+        return self.user_model.objects.create_user(
+            username=username,
+            password=password,
+            role=role,
+        )
 
-	def test_login_redirects_radiologic_tech_to_technologist_dashboard(self):
-		self._create_user('tech', 'password123', UserRole.RADIOLOGIC_TECH)
+    def test_login_redirects_radiologic_tech_to_technologist_dashboard(self):
+        self._create_user('tech', 'password123', UserRole.RADIOLOGIC_TECH)
 
-		response = self.client.post(
-			reverse('accounts:login'),
-			data=json.dumps({'username': 'tech', 'password': 'password123'}),
-			content_type='application/json',
-		)
-		self.assertEqual(response.status_code, 200)
-		self.assertJSONEqual(response.content, {'redirect': reverse('accounts:technologist-dashboard')})
-		self.assertIn('_auth_user_id', self.client.session)
+        response = self.client.post(
+            reverse('accounts:login'),
+            data=json.dumps({'username': 'tech', 'password': 'password123'}),
+            content_type='application/json',
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertJSONEqual(
+            response.content,
+            {'redirect': '/dashboard/technologist', 'role': UserRole.RADIOLOGIC_TECH},
+        )
+        self.assertIn('_auth_user_id', self.client.session)
 
-	def test_login_redirects_radiologist_to_radiologist_dashboard(self):
-		self._create_user('rad', 'password123', 'RADIOLOGIST')
+    def test_login_redirects_radiologist_to_radiologist_dashboard(self):
+        self._create_user('rad', 'password123', UserRole.RADIOLOGIST)
 
-		response = self.client.post(
-			reverse('accounts:login'),
-			data=json.dumps({'username': 'rad', 'password': 'password123'}),
-			content_type='application/json',
-		)
-		self.assertEqual(response.status_code, 200)
-		self.assertJSONEqual(response.content, {'redirect': reverse('accounts:radiologist-dashboard')})
+        response = self.client.post(
+            reverse('accounts:login'),
+            data=json.dumps({'username': 'rad', 'password': 'password123'}),
+            content_type='application/json',
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertJSONEqual(
+            response.content,
+            {'redirect': '/dashboard/radiologist', 'role': UserRole.RADIOLOGIST},
+        )
 
-	def test_login_redirects_physician_to_physician_dashboard(self):
-		self._create_user('phys', 'password123', 'PHYSICIAN')
+    def test_login_redirects_physician_to_physician_dashboard(self):
+        self._create_user('phys', 'password123', UserRole.PHYSICIAN)
 
-		response = self.client.post(
-			reverse('accounts:login'),
-			data=json.dumps({'username': 'phys', 'password': 'password123'}),
-			content_type='application/json',
-		)
-		self.assertEqual(response.status_code, 200)
-		self.assertJSONEqual(response.content, {'redirect': reverse('accounts:physician-dashboard')})
+        response = self.client.post(
+            reverse('accounts:login'),
+            data=json.dumps({'username': 'phys', 'password': 'password123'}),
+            content_type='application/json',
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertJSONEqual(
+            response.content,
+            {'redirect': '/dashboard/physician', 'role': UserRole.PHYSICIAN},
+        )
 
-	def test_login_returns_descriptive_error_for_bad_credentials(self):
-		self._create_user('tech', 'password123', UserRole.RADIOLOGIC_TECH)
+    def test_login_returns_descriptive_error_for_bad_credentials(self):
+        self._create_user('tech', 'password123', UserRole.RADIOLOGIC_TECH)
 
-		response = self.client.post(
-			reverse('accounts:login'),
-			data=json.dumps({'username': 'tech', 'password': 'wrong'}),
-			content_type='application/json',
-		)
+        response = self.client.post(
+            reverse('accounts:login'),
+            data=json.dumps({'username': 'tech', 'password': 'wrong'}),
+            content_type='application/json',
+        )
 
-		self.assertEqual(response.status_code, 401)
-		self.assertJSONEqual(response.content, {'error': 'Invalid username or password.'})
+        self.assertEqual(response.status_code, 401)
+        self.assertJSONEqual(response.content, {'error': 'Invalid username or password.'})
 
-	def test_logout_clears_session_and_redirects_to_login_page(self):
-		self._create_user('tech', 'password123', UserRole.RADIOLOGIC_TECH)
-		self.client.login(username='tech', password='password123')
+    def test_logout_clears_session_and_redirects_to_login_page(self):
+        self._create_user('tech', 'password123', UserRole.RADIOLOGIC_TECH)
+        self.client.login(username='tech', password='password123')
 
-		response = self.client.post(reverse('accounts:logout'))
+        response = self.client.post(reverse('accounts:logout'))
 
-		self.assertRedirects(response, '/login', fetch_redirect_response=False)
-		self.assertNotIn('_auth_user_id', self.client.session)
+        self.assertRedirects(response, '/login', fetch_redirect_response=False)
+        self.assertNotIn('_auth_user_id', self.client.session)
 
-	def test_dashboard_placeholder_is_available_for_matching_role(self):
-		self._create_user('tech', 'password123', UserRole.RADIOLOGIC_TECH)
-		self.client.login(username='tech', password='password123')
+    def test_dashboard_placeholder_is_available_for_matching_role(self):
+        self._create_user('tech', 'password123', UserRole.RADIOLOGIC_TECH)
+        request = RequestFactory().get('/dashboard/technologist')
+        request.user = self.user_model.objects.get(username='tech')
 
-		response = self.client.get(reverse('accounts:technologist-dashboard'))
+        response = views.technologist_dashboard(request)
 
-		self.assertEqual(response.status_code, 200)
-		self.assertContains(response, 'Technologist Dashboard')
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Technologist Dashboard')
 
 class RolePermissionTests(TestCase):
     @classmethod
     def setUpTestData(cls):
         user_model = get_user_model()
         cls.tech = user_model.objects.create_user(
-        username='tech1', password='demo123', role=UserRole.RADIOLOGIC_TECH
+            username='tech1', password='demo123', role=UserRole.RADIOLOGIC_TECH
         )
         cls.rad = user_model.objects.create_user(
             username='rad1', password='demo123', role=UserRole.RADIOLOGIST
@@ -93,22 +110,29 @@ class RolePermissionTests(TestCase):
         cls.phys = user_model.objects.create_user(
             username='phys1', password='demo123', role=UserRole.PHYSICIAN
         )
+        cls.rfactory = RequestFactory()
+
+    def _request_for_user(self, path, user):
+        request = self.rfactory.get(path)
+        request.user = user
+        return request
 
     def test_unauthenticated_user_is_redirected_to_login(self):
-        response = self.client.get(reverse("accounts:technologist-dashboard"))
+        request = self._request_for_user('/dashboard/technologist', AnonymousUser())
+        response = views.technologist_dashboard(request)
         self.assertEqual(response.status_code, 302)
-        self.assertIn("/login", response["Location"])
+        self.assertIn('/login', response['Location'])
 
     def test_authenticated_user_with_correct_role_can_access_view(self):
-        self.client.force_login(self.tech)
-        response = self.client.get(reverse("accounts:technologist-dashboard"))
+        response = views.technologist_dashboard(
+            self._request_for_user('/dashboard/technologist', self.tech)
+        )
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Technologist Dashboard")
+        self.assertContains(response, 'Technologist Dashboard')
 
     def test_authenticated_user_with_wrong_role_receives_403(self):
-        self.client.force_login(self.rad)
-        response = self.client.get(reverse("accounts:technologist-dashboard"))
-        self.assertEqual(response.status_code, 403)
+        with self.assertRaises(PermissionDenied):
+            views.technologist_dashboard(self._request_for_user('/dashboard/technologist', self.rad))
 
     def test_register_patient_allows_technologist(self):
         self.client.force_login(self.tech)
