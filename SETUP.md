@@ -150,6 +150,8 @@ For testing Back end automatically.
 ``` bash
 cd backend
 python manage.py test apps.accounts.tests
+python manage.py test apps.patients.tests
+python manage.py test apps.imaging.tests
 ```
 
 ---
