@@ -9,10 +9,13 @@ from PIL import Image
 from torchvision import transforms
 from torchvision.models import mobilenet_v3_large
 
+
+# CHANGE THIS FOR FUTURE VERSIONS OF THE MODEL
 MODEL_VERSION = "v1.0.0"
+MODEL_NAME = "best_model.pth"
 
 BASE_DIR = Path(__file__).parent.parents[1]
-MODEL_PATH = BASE_DIR/"ai"/"model_resources"/MODEL_VERSION/"best_model.pth"   
+MODEL_PATH = BASE_DIR/"ai"/"model_resources"/MODEL_VERSION/MODEL_NAME
 HEATMAP_DIR = BASE_DIR/"ai"/"media"/"heatmaps"
 
 HEATMAP_DIR.mkdir(parents=True, exist_ok=True)
