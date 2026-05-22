@@ -12,9 +12,9 @@ from torchvision.models import mobilenet_v3_large
 
 # CHANGE THIS FOR FUTURE VERSIONS OF THE MODEL
 MODEL_VERSION = "v1.0.0"
-MODEL_NAME = "best_model.pth"
+MODEL_NAME = "deploy_model.pth"
 
-BASE_DIR = Path(__file__).parent.parents[1]
+BASE_DIR = Path(__file__).resolve().parents[2]
 MODEL_PATH = BASE_DIR/"ai"/"model_resources"/MODEL_VERSION/MODEL_NAME
 HEATMAP_DIR = BASE_DIR/"ai"/"media"/"heatmaps"
 
@@ -59,9 +59,13 @@ def load_model():
 
     checkpoint = torch.load(MODEL_PATH, map_location=DEVICE)
 
-    # EXPECTED FORMAT:
-    # checkpoint["model_state_dict"]
-    model.load_state_dict(checkpoint["model_state_dict"])
+    # Support both training checkpoints and raw state dicts.
+    if isinstance(checkpoint, dict) and "model_state_dict" in checkpoint:
+        state_dict = checkpoint["model_state_dict"]
+    else:
+        state_dict = checkpoint
+
+    model.load_state_dict(state_dict)
 
 
     model.to(DEVICE)

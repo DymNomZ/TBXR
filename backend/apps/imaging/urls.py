@@ -21,6 +21,11 @@ urlpatterns = [
         name="annotate_xray",
     ),
     path(
+        "xray/<uuid:transaction_id>/analyse/",
+        views.analyse_xray,
+        name="analyse_xray",
+    ),
+    path(
         "patients/<int:patient_id>/xray/",
         views.patient_xrays,
         name="patient_xrays",
