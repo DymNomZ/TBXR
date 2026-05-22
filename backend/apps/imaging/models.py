@@ -7,6 +7,7 @@ class XrayRecord(models.Model):
     STATUS_CHOICES = [
         ('PENDING', 'Pending Review'),
         ('IN_REVIEW', 'In Review'),
+        ('AI_REVIEWED', 'AI Reviewed'),
         ('COMPLETED', 'Completed'),
     ]
     

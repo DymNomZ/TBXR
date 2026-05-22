@@ -116,6 +116,8 @@ GET /api/patients/search/?name=smith
 - Side effects:
   - File saved to media/raw/
   - XrayRecord created with status PENDING (Pending Review)
+  - AI inference runs automatically and stores AIResult
+  - XrayRecord status updated to AI_REVIEWED
 
 Example:
 ```
@@ -151,12 +153,36 @@ raw_image=@/path/to/file.png
   - notes (string, optional)
 - Response: 200/201 JSON
 
+### POST /api/imaging/xray/<transaction_id>/analyse/
+- Purpose: Run AI inference on the processed image and store the AI result.
+- Roles: RADIOLOGIC_TECH
+- Notes: This runs automatically after upload, but can be called again to re-run.
+- Headers:
+  - Content-Type: application/json
+  - Cookie + X-CSRFToken (session auth)
+- Body: none
+- Response: 200/201 JSON (AIResult)
+- Side effects:
+  - AIResult created/updated
+  - XrayRecord status updated to AI_REVIEWED
+
+Example response:
+```
+{
+  "risk_score": 0.9231,
+  "risk_label": "HIGH",
+  "heatmap_url": "http://127.0.0.1:8000/media/heatmaps/TXN-2026-0041_heatmap.jpg",
+  "model_version": "v1.0.0",
+  "generated_at": "2026-04-19T10:22:00Z"
+}
+```
+
 ### GET /api/imaging/dashboard/technologist/
 - Purpose: Paginated list of X-rays uploaded by the current technologist.
 - Roles: RADIOLOGIC_TECH
 - Query params (optional):
   - search (patient first/last name or transaction ID)
-  - status (PENDING|IN_REVIEW|COMPLETED)
+  - status (PENDING|IN_REVIEW|AI_REVIEWED|COMPLETED)
 - Response: 200 JSON (paginated)
 ```
 {
@@ -184,7 +210,7 @@ raw_image=@/path/to/file.png
 - Roles: RADIOLOGIST
 - Query params (optional):
   - search (patient first/last name or transaction ID)
-  - status (PENDING|IN_REVIEW|COMPLETED)
+  - status (PENDING|IN_REVIEW|AI_REVIEWED|COMPLETED)
 - Response: 200 JSON (paginated)
 
 ### GET /api/imaging/xray/<transaction_id>/

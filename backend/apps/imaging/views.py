@@ -1,10 +1,13 @@
 import json
 import cv2
+import importlib.util
 from io import BytesIO
+from pathlib import Path
+
 from PIL import Image
+from django.core.files import File
 from django.core.files.base import ContentFile
 from drf_spectacular.utils import extend_schema
-from pathlib import Path
 
 from django.shortcuts import get_object_or_404
 from rest_framework import status
@@ -19,7 +22,7 @@ from apps.accounts.enums import UserRole
 from apps.patients.models import Patient
 
 from .preprocessing import preprocess_xray
-from .models import Annotation, XrayRecord, ProcessedImage
+from .models import Annotation, XrayRecord, ProcessedImage, AIResult
 from django.db import models
 from .serializers import (
     XrayRecordUploadSerializer,
@@ -28,7 +31,83 @@ from .serializers import (
     RadiologistQueueSerializer,
     XrayRecordDetailSerializer,
     XrayRecordHistorySerializer,
+    AIResultSerializer,
 )
+
+_INFERENCE_MODULE = None
+
+
+def _get_inference_module():
+    global _INFERENCE_MODULE
+    if _INFERENCE_MODULE is not None:
+        return _INFERENCE_MODULE
+
+    inference_path = (
+        Path(__file__).resolve().parents[3] / "ai" / "scripts" / "inference.py"
+    )
+    if not inference_path.exists():
+        raise FileNotFoundError(f"Inference script not found: {inference_path}")
+
+    spec = importlib.util.spec_from_file_location("tbxr_inference", inference_path)
+    if spec is None or spec.loader is None:
+        raise ImportError("Unable to load inference module.")
+
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    _INFERENCE_MODULE = module
+    return module
+
+
+def _run_ai_inference(xray_record, processed_img):
+    inference = _get_inference_module()
+    image_path = processed_img.processed_image.path
+    prediction = inference.predict(image_path)
+    heatmap_path = inference.generate_heatmap(image_path)
+
+    try:
+        risk_score = float(prediction.get("risk_score"))
+    except (TypeError, ValueError) as exc:
+        raise ValueError("Invalid risk score from inference.") from exc
+
+    raw_label = str(prediction.get("risk_label", "")).strip().lower()
+    if not raw_label:
+        risk_label = (
+            AIResult.RiskLabel.HIGH if risk_score >= 0.5 else AIResult.RiskLabel.LOW
+        )
+    elif "high" in raw_label:
+        risk_label = AIResult.RiskLabel.HIGH
+    elif "moderate" in raw_label:
+        risk_label = AIResult.RiskLabel.MODERATE
+    else:
+        risk_label = AIResult.RiskLabel.LOW
+
+    model_version = getattr(inference, "MODEL_VERSION", "unknown")
+
+    ai_result, created = AIResult.objects.update_or_create(
+        xray_record=xray_record,
+        defaults={
+            "risk_score": risk_score,
+            "risk_label": risk_label,
+            "model_version": model_version,
+        },
+    )
+
+    if heatmap_path:
+        heatmap_path_obj = Path(heatmap_path)
+        if heatmap_path_obj.exists():
+            with heatmap_path_obj.open("rb") as handle:
+                ai_result.heatmap_image.save(
+                    heatmap_path_obj.name,
+                    File(handle),
+                    save=False,
+                )
+
+    ai_result.save()
+
+    xray_record.status = "AI_REVIEWED"
+    xray_record.save(update_fields=["status"])
+
+    return ai_result, created
 
 @extend_schema(
     request={
@@ -107,7 +186,22 @@ def upload_xray(request, patient_id):
         xray_record.delete()
         return Response(
             {"errors": {"preprocessing": [f"Pipeline failed: {str(e)}"]}},
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+    try:
+        _run_ai_inference(xray_record, processed_img)
+    except ValueError as e:
+        xray_record.delete()
+        return Response(
+            {"errors": {"risk_score": [str(e)]}},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+    except Exception as e:
+        xray_record.delete()
+        return Response(
+            {"errors": {"inference": [f"Inference failed: {str(e)}"]}},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
 
     serializer = XrayRecordSerializer(xray_record)
@@ -124,6 +218,38 @@ def upload_confirm(request, patient_id, transaction_id):
     )
     serializer = XrayRecordSerializer(xray_record)
     return Response(serializer.data)
+
+
+@api_view(["POST"])
+@role_required(UserRole.RADIOLOGIC_TECH)
+def analyse_xray(request, transaction_id):
+    xray_record = get_object_or_404(XrayRecord, transaction_id=transaction_id)
+    processed_img = get_object_or_404(ProcessedImage, xray_record=xray_record)
+
+    if not processed_img.processed_image:
+        return Response(
+            {"errors": {"processed_image": ["Processed image not found."]}},
+            status=status.HTTP_404_NOT_FOUND,
+        )
+
+    try:
+        ai_result, created = _run_ai_inference(xray_record, processed_img)
+    except ValueError as exc:
+        return Response(
+            {"errors": {"risk_score": [str(exc)]}},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+    except Exception as exc:
+        return Response(
+            {"errors": {"inference": [f"Inference failed: {exc}"]}},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+    serializer = AIResultSerializer(ai_result, context={"request": request})
+    return Response(
+        serializer.data,
+        status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
+    )
 
 @api_view(["POST"])
 @role_required(UserRole.RADIOLOGIST)

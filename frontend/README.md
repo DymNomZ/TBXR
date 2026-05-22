@@ -10,10 +10,11 @@ Session auth (for POST requests):
 - Origin: http://127.0.0.1:8000
 - Referer: http://127.0.0.1:8000/
 
-Upload flow (client-triggered):
+Upload flow (server-triggered):
 1. `POST /api/imaging/patients/<patient_id>/xray/upload/` (multipart `raw_image`)
-2. `POST /api/imaging/xray/<transaction_id>/analyse/` (AI inference)
-3. `GET /api/imaging/xray/<transaction_id>/` (detail view)
+2. `GET /api/imaging/xray/<transaction_id>/` (detail view)
+
+Optional: `POST /api/imaging/xray/<transaction_id>/analyse/` to re-run AI inference.
 
 ### Core Endpoints
 
