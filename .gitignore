@@ -6,6 +6,7 @@ __pycache__/
 ISSUES.md
 frontend_files.txt
 backend_files.txt
+ai_files.txt
 walker.py
 
 # C extensions
