@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { ArrowLeftRight, X } from 'lucide-react'
 import Modal from '../ui/Modal'
-import XrayViewer from './XrayViewer'
+import HeatmapViewer from './HeatmapViewer'
 import StaticAnnotationOverlay from './StaticAnnotationOverlay'
 import AIRiskBadge from '../ui/AIRiskBadge'
 import StatusBadge from '../ui/StatusBadge'
@@ -59,10 +59,15 @@ function ThumbnailCard({ record, slot, onClick }) {
 
 function ViewerSlot({ record, label, labelColor }) {
   const [transform, setTransform] = useState({ scale: 1, translate: { x: 0, y: 0 } })
-  const [xrayData, setXrayData] = useState(null)
+  const [xrayData, setXrayData]   = useState(null)
 
-  // Reset xrayData when record changes
-  useEffect(() => { setXrayData(null) }, [record?.transaction_id])
+  useEffect(() => {
+    if (!record) return
+    setXrayData(null)
+    fetch(`/api/imaging/xray/${record.transaction_id}/`, { credentials: 'include' })
+      .then((r) => r.json())
+      .then(setXrayData)
+  }, [record?.transaction_id])
 
   if (!record) {
     return (
@@ -77,20 +82,16 @@ function ViewerSlot({ record, label, labelColor }) {
 
   const annotations = xrayData?.annotations ?? []
 
-  console.log('[ViewerSlot]', record?.transaction_id, { xrayData, annotations })
-
   return (
     <div className="flex-1 flex flex-col gap-3 min-w-0 overflow-y-auto max-h-[65vh]">
-      {/* Slot label */}
       <span className={`self-start text-xs font-bold px-2 py-0.5 rounded-full text-white ${labelColor}`}>
         {label}
       </span>
 
-      {/* Viewer with annotation overlay */}
-      <XrayViewer
-        transactionId={record.transaction_id}
+      <HeatmapViewer
+        rawImageUrl={xrayData?.display_image ?? null}
+        heatmapUrl={xrayData?.ai_result?.heatmap_url ?? null}
         onTransformChange={setTransform}
-        onXrayLoaded={setXrayData} 
         overlay={
           <StaticAnnotationOverlay
             annotations={annotations}
@@ -100,12 +101,8 @@ function ViewerSlot({ record, label, labelColor }) {
         }
       />
 
-      {/* Annotation notes — one card per annotation that has notes */}
       {annotations.filter((a) => a.notes).map((ann, i) => (
-        <div
-          key={i}
-          className="flex flex-col gap-1.5 p-3 rounded-xl bg-[var(--surface-soft)] border border-[var(--border)] text-xs shrink-0"
-        >
+        <div key={i} className="flex flex-col gap-1.5 p-3 rounded-xl bg-[var(--surface-soft)] border border-[var(--border)] text-xs shrink-0">
           <div className="flex items-center justify-between">
             <span className="font-semibold text-[var(--accent)]">
               {ann.radiologist

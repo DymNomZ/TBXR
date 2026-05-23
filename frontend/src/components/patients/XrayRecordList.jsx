@@ -2,7 +2,7 @@ import { Clock } from 'lucide-react';
 import { useState, useEffect } from 'react'
 import StatusBadge from '../ui/StatusBadge'
 import Modal from '../ui/Modal'
-import XrayViewer from '../imaging/XrayViewer'
+import HeatmapViewer from '../imaging/HeatmapViewer'
 import StaticAnnotationOverlay from '../imaging/StaticAnnotationOverlay'
 import AIRiskBadge from '../ui/AIRiskBadge'
 
@@ -53,8 +53,15 @@ export default function XrayRecordList({ patientId, refreshKey = 0, autoOpenTran
   const handleClose = () => {
     setSelected(null)
     setXrayData(null)
-    setTransform({ scale: 1, translate: { x: 0, y: 0 } })
   }
+
+  useEffect(() => {
+    if (!selectedRecord) return
+    setXrayData(null)
+    fetch(`/api/imaging/xray/${selectedRecord.transaction_id}/`, { credentials: 'include' })
+      .then((r) => r.json())
+      .then(setXrayData)
+  }, [selectedRecord?.transaction_id])
 
   useEffect(() => {
     if (!patientId) return
@@ -136,10 +143,10 @@ export default function XrayRecordList({ patientId, refreshKey = 0, autoOpenTran
           <div className="flex flex-col gap-5">
 
             {/* Viewer with static overlay */}
-            <XrayViewer
-              transactionId={selectedRecord.transaction_id}
+            <HeatmapViewer
+              rawImageUrl={xrayData?.display_image ?? null}
+              heatmapUrl={xrayData?.ai_result?.heatmap_url ?? null}
               onTransformChange={setTransform}
-              onXrayLoaded={setXrayData}
               overlay={
                 <StaticAnnotationOverlay
                   annotations={xrayData?.annotations ?? []}
