@@ -4,6 +4,9 @@ __pycache__/
 *$py.class
 
 ISSUES.md
+frontend_files.txt
+backend_files.txt
+walker.py
 
 # C extensions
 *.so
