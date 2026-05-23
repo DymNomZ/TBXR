@@ -94,8 +94,8 @@ def login_view(request):
 
 @require_http_methods(['POST'])
 def logout_view(request):
-	logout(request)
-	return redirect(settings.LOGIN_URL)
+    logout(request)
+    return JsonResponse({'detail': 'Logged out.'})
 
 @role_required(UserRole.RADIOLOGIC_TECH)
 def technologist_dashboard(request):
