@@ -20,7 +20,23 @@ export function AuthProvider({ children }) {
     setUser(userData)
   }
 
-  const logout = () => {
+  const logout = async () => {
+    try {
+      // Read CSRF token from cookie
+      const csrfToken = document.cookie
+        .split('; ')
+        .find(row => row.startsWith('csrftoken='))
+        ?.split('=')[1]
+
+      await fetch('/api/accounts/logout/', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'X-CSRFToken': csrfToken ?? '' },
+      })
+    } catch (e) {
+      // proceed with local logout even if request fails
+    }
+
     localStorage.removeItem('user')
     setUser(null)
   }
