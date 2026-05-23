@@ -5,17 +5,19 @@ import AppLayout from '../components/layout/AppLayout'
 import XrayViewer from '../components/imaging/XrayViewer'
 import AnnotationCanvas from '../components/imaging/AnnotationCanvas'
 import AnnotationPanel from '../components/imaging/AnnotationPanel'
+import LongitudinalPanel from '../components/imaging/LongitudinalPanel'
+import HeatmapViewer from '../components/imaging/HeatmapViewer'
+import AIRiskBadge from '../components/ui/AIRiskBadge'
 
 export default function AnnotationReviewPage() {
   const { transactionId } = useParams()
   const navigate          = useNavigate()
 
-  // Shared state between canvas and panel
+  // Shared canvas state
   const [transform, setTransform] = useState({ scale: 1, translate: { x: 0, y: 0 } })
   const [boxes,     setBoxes]     = useState([])
 
-  // Header info — fetched separately from what XrayViewer fetches internally
-  // Browser caches the identical GET so this is not a second network call
+  // Xray detail — drives header, HeatmapViewer URLs, and LongitudinalPanel
   const [xray,    setXray]    = useState(null)
   const [loading, setLoading] = useState(true)
 
@@ -30,7 +32,7 @@ export default function AnnotationReviewPage() {
 
   const patientName = xray
     ? `${xray.patient.first_name} ${xray.patient.last_name}`
-    : '—'
+    : null
 
   const handleDeleteBox = (index) => {
     setBoxes((prev) => prev.filter((_, i) => i !== index))
@@ -38,7 +40,7 @@ export default function AnnotationReviewPage() {
 
   return (
     <AppLayout>
-      <div className="flex flex-col gap-5 h-full">
+      <div className="flex flex-col gap-6">
 
         {/* ── Page header ── */}
         <div className="flex items-center gap-4 shrink-0">
@@ -49,12 +51,22 @@ export default function AnnotationReviewPage() {
             <ArrowLeft size={16} className="text-[var(--text-muted)]" />
           </button>
 
-          <div className="flex flex-col gap-0.5">
-            <h1 className="text-xl font-bold text-[var(--deep-navy)] tracking-tight leading-none">
-              Annotation Review
-            </h1>
+          <div className="flex flex-col gap-1">
+            <div className="flex items-center gap-3 flex-wrap">
+              <h1 className="text-xl font-bold text-[var(--deep-navy)] tracking-tight leading-none">
+                Annotation Review
+              </h1>
+              {/* AI risk badge in header — shows as soon as xray loads */}
+              {xray?.ai_result && (
+                <AIRiskBadge
+                  label={xray.ai_result.risk_label}
+                  score={xray.ai_result.risk_score}
+                />
+              )}
+            </div>
+
             {loading ? (
-              <div className="h-4 w-48 bg-[var(--surface-soft)] rounded animate-pulse mt-1" />
+              <div className="h-4 w-56 bg-[var(--surface-soft)] rounded animate-pulse mt-0.5" />
             ) : (
               <div className="flex items-center gap-3 text-sm text-[var(--text-muted)]">
                 <span className="flex items-center gap-1.5">
@@ -66,18 +78,26 @@ export default function AnnotationReviewPage() {
                   <Hash size={12} />
                   {transactionId}
                 </span>
+                {xray?.ai_result?.model_version && (
+                  <>
+                    <span className="text-[var(--border)]">·</span>
+                    <span className="text-xs">{xray.ai_result.model_version}</span>
+                  </>
+                )}
               </div>
             )}
           </div>
         </div>
 
-        {/* ── Two-column layout ── */}
-        <div className="flex gap-6 flex-1 min-h-0">
+        {/* ── Two-column: viewer + annotation panel ── */}
+        <div className="flex gap-6 items-start">
 
-          {/* Left — viewer + canvas overlay */}
+          {/* Left — HeatmapViewer with AnnotationCanvas overlay */}
           <div className="flex-1 min-w-0">
-            <XrayViewer
-              transactionId={transactionId}
+            <HeatmapViewer
+              rawImageUrl={xray?.display_image ?? null}
+              heatmapUrl={xray?.ai_result?.heatmap_url ?? null}
+              // aiResult intentionally omitted — badge is in the header, not duplicated here
               onTransformChange={setTransform}
               overlay={
                 <AnnotationCanvas
@@ -97,6 +117,15 @@ export default function AnnotationReviewPage() {
           />
 
         </div>
+
+        {/* ── Longitudinal panel — full width below ── */}
+        {xray?.patient?.patient_id && (
+          <LongitudinalPanel
+            patientId={xray.patient.patient_id}
+            currentTransactionId={transactionId}
+          />
+        )}
+
       </div>
     </AppLayout>
   )
