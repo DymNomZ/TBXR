@@ -75,7 +75,7 @@ function ViewerSlot({ record, label, labelColor }) {
     )
   }
 
-  const annotations = record.annotations ?? []
+  const annotations = xrayData?.annotations ?? []
 
   console.log('[ViewerSlot]', record?.transaction_id, { xrayData, annotations })
 
