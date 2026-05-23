@@ -1,11 +1,13 @@
 import { Bell, MessageSquare, Search, ChevronDown, LogOut, User, Settings } from 'lucide-react';
 import { useRef, useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
+import { useNavigate } from 'react-router-dom';
 
 export default function Header() {
   const { user, logout } = useAuth();
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const dropdownRef = useRef(null);
+  const navigate = useNavigate();
 
   // Close on outside click
   useEffect(() => {
@@ -33,7 +35,7 @@ export default function Header() {
     {
       icon: LogOut,
       label: 'Log out',
-      onClick: logout,
+      onClick: async () => { await logout(); navigate('/login'); },
       danger: true,
     },
   ];
