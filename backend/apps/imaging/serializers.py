@@ -136,6 +136,7 @@ class XrayRecordHistorySerializer(serializers.ModelSerializer):
 class XrayRecordDetailSerializer(serializers.ModelSerializer):
     patient     = PatientBriefSerializer(read_only=True)
     annotations = AnnotationSerializer(many=True, read_only=True)  # plural, many=True
+    ai_result = AIResultBriefSerializer(read_only=True)
 
     class Meta:
         model = XrayRecord
@@ -147,6 +148,7 @@ class XrayRecordDetailSerializer(serializers.ModelSerializer):
             'status',
             'file_format',
             'annotations',
+            'ai_result',
         ]
 
 class TechDashboardRecordSerializer(serializers.ModelSerializer):
