@@ -57,10 +57,18 @@ export default function XrayRecordList({ patientId, refreshKey = 0, autoOpenTran
 
   useEffect(() => {
     if (!selectedRecord) return
+    const controller = new AbortController()
     setXrayData(null)
-    fetch(`/api/imaging/xray/${selectedRecord.transaction_id}/`, { credentials: 'include' })
+    fetch(`/api/imaging/xray/${selectedRecord.transaction_id}/`, {
+      credentials: 'include',
+      signal: controller.signal,
+    })
       .then((r) => r.json())
       .then(setXrayData)
+      .catch((err) => {
+        if (err.name !== 'AbortError') console.error(err)
+      })
+    return () => controller.abort()
   }, [selectedRecord?.transaction_id])
 
   useEffect(() => {
