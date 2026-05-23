@@ -3,3 +3,5 @@ torchvision
 numpy
 opencv-python-headless
 pillow
+# pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+# Guess who ^^^ HAHAHAHAHAHAHA
