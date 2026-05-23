@@ -74,7 +74,7 @@ export const QUEUE_COLUMNS = [
     render: (row) => <StatusBadge status={row.status} />,
   },
   {
-    key: 'risk_score',
+    key: 'risk_label',
     header: 'AI Risk Score',
     label: 'Scores',
     filterable: true,
