@@ -8,6 +8,7 @@ import AnnotationPanel from '../components/imaging/AnnotationPanel'
 import LongitudinalPanel from '../components/imaging/LongitudinalPanel'
 import HeatmapViewer from '../components/imaging/HeatmapViewer'
 import AIRiskBadge from '../components/ui/AIRiskBadge'
+import StaticAnnotationOverlay from '../components/imaging/StaticAnnotationOverlay'
 
 export default function AnnotationReviewPage() {
   const { transactionId } = useParams()
@@ -100,11 +101,17 @@ export default function AnnotationReviewPage() {
               // aiResult intentionally omitted — badge is in the header, not duplicated here
               onTransformChange={setTransform}
               overlay={
-                <AnnotationCanvas
-                  scale={transform.scale}
-                  translate={transform.translate}
-                  onBoxesChange={setBoxes}
-                />
+                xray?.status === 'COMPLETED'
+                  ? <StaticAnnotationOverlay
+                      annotations={xray.annotations ?? []}
+                      scale={transform.scale}
+                      translate={transform.translate}
+                    />
+                  : <AnnotationCanvas
+                      scale={transform.scale}
+                      translate={transform.translate}
+                      onBoxesChange={setBoxes}
+                    />
               }
             />
           </div>
@@ -114,6 +121,8 @@ export default function AnnotationReviewPage() {
             transactionId={transactionId}
             boxes={boxes}
             onDeleteBox={handleDeleteBox}
+            isCompleted={xray?.status === 'COMPLETED'}
+            existingAnnotation={xray?.annotations?.[0] ?? null}
           />
 
         </div>

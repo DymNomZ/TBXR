@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Tag, Trash2, FileText, CheckCircle, AlertCircle } from 'lucide-react'
 import Button from '../ui/Button'
@@ -46,12 +46,20 @@ export default function AnnotationPanel({
   transactionId,
   boxes = [],
   onDeleteBox,       // (index) => void — lets panel delete from canvas state
+  isCompleted = false,
+  existingAnnotation = null,
 }) {
   const navigate = useNavigate()
   const [notes,   setNotes]   = useState('')
   const [loading, setLoading] = useState(false)
   const [error,   setError]   = useState(null)
   const [success, setSuccess] = useState(false)
+
+  useEffect(() => {
+    if (isCompleted && existingAnnotation?.notes) {
+      setNotes(existingAnnotation.notes)
+    }
+  }, [isCompleted, existingAnnotation])
 
   const handleSubmit = async () => {
     setLoading(true)
@@ -87,6 +95,10 @@ export default function AnnotationPanel({
     }
   }
 
+  const displayBoxes = isCompleted
+    ? (existingAnnotation?.bounding_boxes ?? [])
+    : boxes
+
   // ── Render ──────────────────────────────────────────────────────────────────
 
   return (
@@ -96,21 +108,21 @@ export default function AnnotationPanel({
       <div className="bg-white rounded-2xl border border-[var(--border)] shadow-sm flex flex-col">
         <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--border)]">
           <h3 className="text-sm font-bold text-[var(--deep-navy)]">Bounding Boxes</h3>
-          {boxes.length > 0 && (
+          {displayBoxes.length > 0 && (
             <span className="text-xs font-semibold bg-[var(--accent-soft)] text-[var(--accent)] px-2 py-0.5 rounded-full">
-              {boxes.length}
+              {displayBoxes.length}
             </span>
           )}
         </div>
 
         <div className="p-4 flex flex-col gap-2 max-h-64 overflow-y-auto">
-          {boxes.length > 0 ? (
-            boxes.map((box, i) => (
+          {displayBoxes.length > 0 ? (
+            displayBoxes.map((box, i) => (
               <BoxItem
                 key={i}
                 box={box}
                 index={i}
-                onDelete={onDeleteBox}
+                onDelete={isCompleted ? () => {} : onDeleteBox}  // no-op when completed
               />
             ))
           ) : (
@@ -137,7 +149,7 @@ export default function AnnotationPanel({
             onChange={(e) => setNotes(e.target.value)}
             placeholder="Enter your findings, observations, and recommendations…"
             rows={6}
-            disabled={loading || success}
+            disabled={loading || success || isCompleted}
             className="w-full text-sm text-[var(--text)] placeholder:text-[var(--text-muted)] bg-[var(--surface-soft)] border border-[var(--border)] rounded-xl px-4 py-3 resize-none outline-none focus:border-[var(--accent)] transition-colors disabled:opacity-60"
           />
         </div>
@@ -163,7 +175,7 @@ export default function AnnotationPanel({
       <Button
         variant="primary"
         fullWidth
-        disabled={loading || success}
+        disabled={loading || success || isCompleted}
         onClick={handleSubmit}
       >
         {loading ? 'Submitting…' : success ? 'Submitted ✓' : 'Submit Findings'}
