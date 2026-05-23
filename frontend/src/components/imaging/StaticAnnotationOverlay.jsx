@@ -10,15 +10,27 @@ export default function StaticAnnotationOverlay({ annotations = [], scale = 1, t
   useEffect(() => {
     const el = selfRef.current
     if (!el) return
-    const ro = new ResizeObserver(([entry]) => {
-      setDims({
-        w: entry.contentRect.width,
-        h: entry.contentRect.height,
-      })
-    })
+
+    const measure = () => {
+      const { width, height } = el.getBoundingClientRect()
+      if (width > 0 && height > 0) setDims({ w: width, h: height })
+    }
+
+    measure() // read immediately instead of waiting
+    const ro = new ResizeObserver(measure)
     ro.observe(el)
     return () => ro.disconnect()
   }, [])
+
+  // Re-measure when annotations first populate (race condition guard)
+  useEffect(() => {
+    console.log('[Overlay]', { annotationsCount: annotations.length, dims, allBoxesPreview: annotations.flatMap(a => a.bounding_boxes ?? []).slice(0,2) })
+    if (!annotations.length) return
+    const el = selfRef.current
+    if (!el) return
+    const { width, height } = el.getBoundingClientRect()
+    if (width > 0 && height > 0) setDims({ w: width, h: height })
+  }, [annotations.length])
 
   if (!annotations.length) return <div ref={selfRef} className="absolute inset-0 pointer-events-none" />
 
