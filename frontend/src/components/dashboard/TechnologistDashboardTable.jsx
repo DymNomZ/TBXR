@@ -65,19 +65,19 @@ export const DASHBOARD_COLUMNS = [
     width: '140px',
     render: (row) => <StatusBadge status={row.status} />,
   },
-  // {
-  //   key: 'risk_score',
-  //   header: 'AI Risk Score',
-  //   label: 'AI Risk Scores',
-  //   filterable: false,
-  //   width: '140px',
-  //   render: (row) => <AIRiskBadge label={result.risk_label} score={result.risk_score} />,
-  // },
+  {
+    key: 'risk_score',
+    header: 'AI Risk Score',
+    label: 'AI Risk Scores',
+    filterable: false,
+    width: '140px',
+    render: (row) => <AIRiskBadge label={row.ai_result?.risk_label} score={row.ai_result?.risk_score} />,
+  },
   {
     key: 'action',
     header: 'Action',
     filterable: false,
-    width: '130px',
+    width: '140px',
     render: (row) => <DashboardActionButton record={row} />,
   },
 ]
@@ -118,7 +118,7 @@ export default function TechnologistDashboardTable({ data = [] }) {
       <Table
         columns={DASHBOARD_COLUMNS}
         data={data}
-        onRowClick={(row) => navigate(`/transactions/${row.transaction_id}`)}
+        // onRowClick={(row) => navigate(`/transactions/${row.transaction_id}`)}
       />
     </div>
   )
