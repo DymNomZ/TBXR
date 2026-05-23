@@ -6,7 +6,7 @@ from PIL import Image
 from django.core.files.base import ContentFile
 from rest_framework import serializers
 
-from .models import AIResult, Annotation, XrayRecord, ProcessedImage
+from .models import Annotation, XrayRecord, ProcessedImage, AIResult
 from apps.patients.models import Patient
 from django.contrib.auth import get_user_model
 
@@ -47,6 +47,37 @@ class RadiologistQueueSerializer(serializers.ModelSerializer):
             'upload_timestamp',
             'status',
             'file_format',
+        ]
+
+class AIResultBriefSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = AIResult
+        fields = ['risk_score', 'risk_label', 'model_version']
+
+class PatientHistorySerializer(serializers.ModelSerializer):
+    ai_result     = AIResultBriefSerializer(read_only=True)
+    display_image = serializers.SerializerMethodField()
+
+    def get_display_image(self, obj):
+        request   = self.context.get('request')
+        processed = ProcessedImage.objects.filter(xray_record=obj).first()
+        if processed and processed.processed_image:
+            url = processed.processed_image.url
+            return request.build_absolute_uri(url) if request else url
+        if obj.raw_image:
+            url = obj.raw_image.url
+            return request.build_absolute_uri(url) if request else url
+        return None
+
+    class Meta:
+        model  = XrayRecord
+        fields = [
+            'transaction_id',
+            'display_image',
+            'upload_timestamp',
+            'status',
+            'file_format',
+            'ai_result',
         ]
 
 class AnnotationSerializer(serializers.ModelSerializer):
