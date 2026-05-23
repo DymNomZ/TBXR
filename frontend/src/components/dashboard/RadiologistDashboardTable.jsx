@@ -76,10 +76,13 @@ export const QUEUE_COLUMNS = [
   {
     key: 'risk_score',
     header: 'AI Risk Score',
-    label: 'AI Risk Scores',
-    filterable: false,
+    label: 'Scores',
+    filterable: true,
+    filterOptions: ['LOW', 'HIGH'],
     width: '140px',
-    render: (row) => <AIRiskBadge label={row.ai_result?.risk_label} score={row.ai_result?.risk_score} />,
+    render: (row) => row.ai_result
+      ? <AIRiskBadge label={row.ai_result.risk_label} score={row.ai_result.risk_score} />
+      : <span className="text-xs text-[var(--text-muted)]">—</span>,
   },
   {
     key: 'action',
