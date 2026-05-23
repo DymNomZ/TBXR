@@ -9,6 +9,7 @@ import Button from '../components/ui/Button'
 import Modal from '../components/ui/Modal'
 import XrayUploadForm from '../components/upload/XrayUploadForm'
 import UploadConfirmation from '../components/upload/UploadConfirmation'
+import LongitudinalPanel from '../components/imaging/LongitudinalPanel'
 
 export default function PatientDetailPage() {
   const { patientId } = useParams();
@@ -114,6 +115,7 @@ export default function PatientDetailPage() {
           <PatientProfileCard patient={patient} />
           <XrayRecordList patientId={patientId} refreshKey={xrayRefreshKey} autoOpenTransactionId={openXray} />
         </div>
+        <LongitudinalPanel patientId={patient.patient_id} />
  
       </div>
  
