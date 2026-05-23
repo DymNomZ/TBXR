@@ -4,6 +4,7 @@ import StatusBadge from '../ui/StatusBadge'
 import Modal from '../ui/Modal'
 import XrayViewer from '../imaging/XrayViewer'
 import StaticAnnotationOverlay from '../imaging/StaticAnnotationOverlay'
+import AIRiskBadge from '../ui/AIRiskBadge'
 
 function XrayRecordItem({ record, onClick }) {
 
@@ -16,7 +17,15 @@ function XrayRecordItem({ record, onClick }) {
         <span className="text-sm font-semibold text-[var(--deep-navy)] font-mono">
           {record.transaction_id}
         </span>
-        <StatusBadge status={record.status} />
+        <div className="flex items-center gap-2 flex-wrap">
+          <StatusBadge status={record.status} />
+          {record.ai_result && (
+            <AIRiskBadge
+              label={record.ai_result.risk_label}
+              score={record.ai_result.risk_score}
+            />
+          )}
+        </div>
       </div>
 
       <div className="flex items-center justify-between text-xs text-[var(--text-muted)]">
