@@ -203,8 +203,8 @@ def upload_xray(request, patient_id):
             {"errors": {"inference": [f"Inference failed: {str(e)}"]}},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
-
-    serializer = XrayRecordSerializer(xray_record)
+    xray_record.refresh_from_db()
+    serializer = XrayRecordSerializer(xray_record, context={'request': request})
     return Response(serializer.data, status=status.HTTP_200_OK)
 
 
