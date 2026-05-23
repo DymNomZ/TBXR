@@ -128,6 +128,7 @@ function ViewerSlot({ record, label, labelColor }) {
 export default function LongitudinalPanel({
   patientId,
   currentTransactionId = null,
+  refreshKey = 0, 
 }) {
   const [records,     setRecords]     = useState([])
   const [loading,     setLoading]     = useState(true)
@@ -153,7 +154,7 @@ export default function LongitudinalPanel({
         }
       })
       .finally(() => setLoading(false))
-  }, [patientId, currentTransactionId])
+  }, [patientId, currentTransactionId, refreshKey])
 
   // ── Slot helpers ────────────────────────────────────────────────────────────
 
