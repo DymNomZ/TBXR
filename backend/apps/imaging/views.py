@@ -355,6 +355,10 @@ def technologist_dashboard(request):
     status_filter = request.query_params.get('status', '').strip()
     if status_filter:
         records = records.filter(status=status_filter)
+    
+    risk_label_filter = request.query_params.get('risk_label', '').strip()
+    if risk_label_filter:
+        records = records.filter(ai_result__risk_label=risk_label_filter)
 
     paginator = PageNumberPagination()
     paginator.page_size = 20
@@ -379,6 +383,10 @@ def radiologist_queue(request):
     status_filter = request.query_params.get('status', '').strip()
     if status_filter:
         records = records.filter(status=status_filter)
+
+    risk_label_filter = request.query_params.get('risk_label', '').strip()
+    if risk_label_filter:
+        records = records.filter(ai_result__risk_label=risk_label_filter)
 
     paginator = PageNumberPagination()
     paginator.page_size = 20
