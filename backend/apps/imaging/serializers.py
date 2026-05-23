@@ -29,33 +29,28 @@ class RadiologistBriefSerializer(serializers.ModelSerializer):
         model = User
         fields = ['id', 'first_name', 'last_name', 'username']
 
-class RadiologistQueueSerializer(serializers.ModelSerializer):
-    """
-    Used by: radiologist_queue (GET /api/imaging/queue/).
-    Includes raw_image so the radiologist can open the file from the queue.
-    """
-    patient = PatientBriefSerializer(read_only=True)
-    uploader = UploaderBriefSerializer(read_only=True)
-
-    class Meta:
-        model = XrayRecord
-        fields = [
-            'transaction_id',
-            'patient',
-            'uploader',  
-            'raw_image',
-            'upload_timestamp',
-            'status',
-            'file_format',
-        ]
-
 class AIResultBriefSerializer(serializers.ModelSerializer):
     class Meta:
         model = AIResult
         fields = ['risk_score', 'risk_label', 'model_version']
 
+class AnnotationSerializer(serializers.ModelSerializer):
+    radiologist = RadiologistBriefSerializer(read_only=True)
+
+    class Meta:
+        model = Annotation
+        fields = [
+            'id',
+            'radiologist',
+            'bounding_boxes',
+            'notes',
+            'submitted_at',
+        ]
+        # xray_record is intentionally excluded — redundant inside a nested response
+
 class PatientHistorySerializer(serializers.ModelSerializer):
     ai_result     = AIResultBriefSerializer(read_only=True)
+    annotations   = AnnotationSerializer(many=True, read_only=True)
     display_image = serializers.SerializerMethodField()
 
     def get_display_image(self, obj):
@@ -78,22 +73,8 @@ class PatientHistorySerializer(serializers.ModelSerializer):
             'status',
             'file_format',
             'ai_result',
+            'annotations',
         ]
-
-class AnnotationSerializer(serializers.ModelSerializer):
-    radiologist = RadiologistBriefSerializer(read_only=True)
-
-    class Meta:
-        model = Annotation
-        fields = [
-            'id',
-            'radiologist',
-            'bounding_boxes',
-            'notes',
-            'submitted_at',
-        ]
-        # xray_record is intentionally excluded — redundant inside a nested response
-
 
 class AIResultSerializer(serializers.ModelSerializer):
     heatmap_url = serializers.SerializerMethodField()
@@ -132,28 +113,10 @@ class XrayRecordHistorySerializer(serializers.ModelSerializer):
             "annotations",
         ]
 
-
-class XrayRecordDetailSerializer(serializers.ModelSerializer):
-    patient     = PatientBriefSerializer(read_only=True)
-    annotations = AnnotationSerializer(many=True, read_only=True)  # plural, many=True
-    ai_result = AIResultBriefSerializer(read_only=True)
-
-    class Meta:
-        model = XrayRecord
-        fields = [
-            'transaction_id',
-            'patient',
-            'raw_image',
-            'upload_timestamp',
-            'status',
-            'file_format',
-            'annotations',
-            'ai_result',
-        ]
-
 class TechDashboardRecordSerializer(serializers.ModelSerializer):
     # Nests the patient fields instead of just returning the FK
     patient = PatientBriefSerializer(read_only=True)
+    ai_result = AIResultBriefSerializer(read_only=True)
 
     class Meta:
         model = XrayRecord
@@ -163,8 +126,30 @@ class TechDashboardRecordSerializer(serializers.ModelSerializer):
             'upload_timestamp',
             'status',
             'file_format',
+            'ai_result',
         ]
 
+class RadiologistQueueSerializer(serializers.ModelSerializer):
+    """
+    Used by: radiologist_queue (GET /api/imaging/queue/).
+    Includes raw_image so the radiologist can open the file from the queue.
+    """
+    patient = PatientBriefSerializer(read_only=True)
+    uploader = UploaderBriefSerializer(read_only=True)
+    ai_result = AIResultBriefSerializer(read_only=True)
+
+    class Meta:
+        model = XrayRecord
+        fields = [
+            'transaction_id',
+            'patient',
+            'uploader',  
+            'raw_image',
+            'upload_timestamp',
+            'status',
+            'file_format',
+            'ai_result',
+        ]
 
 class XrayRecordUploadSerializer(serializers.ModelSerializer):
     class Meta:
@@ -300,6 +285,7 @@ class XrayRecordDetailSerializer(serializers.ModelSerializer):
     """
     patient = PatientBriefSerializer(read_only=True)
     annotations = AnnotationSerializer(many=True, read_only=True)
+    ai_result     = AIResultSerializer(read_only=True)
     display_image = serializers.SerializerMethodField()
 
     def get_display_image(self, obj):
@@ -330,4 +316,5 @@ class XrayRecordDetailSerializer(serializers.ModelSerializer):
             'status',
             'file_format',
             'annotations',
+            'ai_result',
         ]
