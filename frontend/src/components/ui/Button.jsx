@@ -2,6 +2,7 @@ const VARIANTS = {
   primary:   'bg-[var(--deep-navy)] text-white hover:opacity-90',
   secondary: 'bg-transparent text-[var(--text)] border border-[var(--border)] hover:bg-[var(--surface-soft)]',
   accent:    'bg-[var(--accent)] text-white hover:opacity-90',
+  ai_reviewed: 'bg-purple-500 text-white hover:opacity-90',
   danger:    'bg-[var(--danger)] text-white hover:opacity-90',
 }
 

@@ -69,7 +69,7 @@ export const QUEUE_COLUMNS = [
     header: 'Status',
     label: 'Statuses',
     filterable: true,
-    filterOptions: ['PENDING', 'IN_REVIEW', 'COMPLETED'],
+    filterOptions: ['PENDING', 'IN_REVIEW', 'AI_REVIEWED', 'COMPLETED'],
     width: '130px',
     render: (row) => <StatusBadge status={row.status} />,
   },

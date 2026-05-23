@@ -61,7 +61,7 @@ export const DASHBOARD_COLUMNS = [
     label: 'Statuses',
     filterable: true,
     // ✏️ Keep in sync with backend statuses
-    filterOptions: ['PENDING', 'IN_REVIEW', 'COMPLETED'],
+    filterOptions: ['PENDING', 'IN_REVIEW', 'AI_REVIEWED', 'COMPLETED'],
     width: '140px',
     render: (row) => <StatusBadge status={row.status} />,
   },
@@ -86,6 +86,7 @@ export const DASHBOARD_COLUMNS = [
 const ACTION_MAP = {
   'PENDING': 'primary',
   'IN_REVIEW': 'accent',
+  'AI_REVIEWED': 'ai_reviewed',
   'COMPLETED': 'secondary',
 }
 
