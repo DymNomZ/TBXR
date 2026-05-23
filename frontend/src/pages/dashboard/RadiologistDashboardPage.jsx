@@ -10,30 +10,33 @@ import RadiologistDashboardTable, { QUEUE_COLUMNS } from '../../components/dashb
 const FILTERABLE_COLS = QUEUE_COLUMNS.filter((c) => c.filterable)
 const PAGE_SIZE = 20
 
-// Fetch just the count for a given status — reads from paginated `count` field
-const fetchStatusCount = (status) =>
-  fetch(`/api/imaging/queue/?status=${status}`, { credentials: 'include' })
-    .then((r) => r.json())
-    .then((d) => d.count ?? 0)
-    .catch(() => 0)
-
 export default function RadiologistDashboardPage() {
   const navigate = useNavigate()
   const [page, setPage]             = useState(1)
-  const [activeFilters, setFilters] = useState({ search: '', status: 'PENDING' })
+  const [activeFilters, setFilters] = useState({ search: '', status: '', risk_label: 'HIGH' })
   const [records, setRecords]       = useState([])
   const [count, setCount]           = useState(0)
   const [loading, setLoading]       = useState(false)
-  const [stats, setStats] = useState({ pending: 0, inReview: 0, completed: 0, total: 0 })
+  const [stats, setStats] = useState({ pendingReview: 0, completed: 0, highRisk: 0, total: 0 })
+
+  // Fetch just the count for a given status — reads from paginated `count` field
+  const fetchCount = (params) =>
+    fetch(`/api/imaging/queue/?${new URLSearchParams(params)}`, {
+      credentials: 'include',
+    })
+      .then((r) => r.json())
+      .then((d) => d.count ?? 0)
+      .catch(() => 0)
 
   // ── Fetch stat counts (parallel, independent of current filter)
   useEffect(() => {
     Promise.all([
-      fetchStatusCount('PENDING'),
-      fetchStatusCount('IN_REVIEW'),
-      fetchStatusCount('COMPLETED'),
-    ]).then(([pending, inReview, completed]) => {
-      setStats({ pending, inReview, completed, total: pending + inReview + completed })
+      fetchCount({ status: 'AI_REVIEWED' }),
+      fetchCount({ status: 'COMPLETED' }),
+      fetchCount({ risk_label: 'HIGH' }),
+      fetchCount({}),
+    ]).then(([pendingReview, completed, highRisk, total]) => {
+      setStats({ pendingReview, completed, highRisk, total })
     })
   }, [])  // once on mount — rerun after submit if needed
 
@@ -41,6 +44,7 @@ export default function RadiologistDashboardPage() {
     const params = new URLSearchParams({ page })
     if (activeFilters.search) params.set('search', activeFilters.search)
     if (activeFilters.status) params.set('status', activeFilters.status)
+    if (activeFilters.risk_label) params.set('risk_label', activeFilters.risk_label)
 
     setLoading(true)
     fetch(`/api/imaging/queue/?${params}`, { credentials: 'include' })
@@ -73,17 +77,17 @@ export default function RadiologistDashboardPage() {
 
         {/* Stat cards */}
         <div className="flex gap-4">
-          <StatCard label="Pending Review" value={stats.pending}   />
-          <StatCard label="In Review"      value={stats.inReview}  />
-          <StatCard label="Completed"      value={stats.completed} />
-          <StatCard label="Total Records"  value={stats.total} highlight />
+          <StatCard label="Pending Specialist Review" value={stats.pendingReview} />
+          <StatCard label="Completed" value={stats.completed} />
+          <StatCard label="High Risk" value={stats.highRisk} highlight />
+          <StatCard label="Total Records" value={stats.total} />
         </div>
 
         {/* Filter bar — initialFilters seeds the PENDING default visually */}
         <FilterBar
           filterableCols={FILTERABLE_COLS}
           onFilterChange={handleFilterChange}
-          initialFilters={{ status: 'PENDING' }}
+          initialFilters={{ risk_label: 'HIGH' }}
         />
 
         {loading ? (

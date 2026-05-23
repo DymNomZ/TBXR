@@ -50,7 +50,7 @@ export default function FilterBar({ filterableCols = [], onFilterChange, initial
       {/* Dynamic filter dropdowns — one per filterable column */}
       {filterableCols.map((col) => (
         <select
-          key={col.key}
+          key={`${col.key}-${initialFilters[col.key] ?? 'none'}`}
           value={filters[col.key]}
           onChange={(e) => handleFilterChange(col.key, e.target.value)}
           className="bg-white border border-[var(--border)] rounded-xl px-3 py-2.5 text-sm text-[var(--text)] shadow-sm cursor-pointer focus:outline-none focus:border-[var(--accent)] transition-colors"

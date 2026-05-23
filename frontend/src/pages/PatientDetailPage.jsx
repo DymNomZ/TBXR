@@ -9,6 +9,7 @@ import Button from '../components/ui/Button'
 import Modal from '../components/ui/Modal'
 import XrayUploadForm from '../components/upload/XrayUploadForm'
 import UploadConfirmation from '../components/upload/UploadConfirmation'
+import LongitudinalPanel from '../components/imaging/LongitudinalPanel'
 
 export default function PatientDetailPage() {
   const { patientId } = useParams();
@@ -24,6 +25,7 @@ export default function PatientDetailPage() {
   const [isConfirmOpen, setIsConfirmOpen] = useState(false)
   const [uploadResult, setUploadResult]   = useState(null)
   const [xrayRefreshKey, setXrayRefreshKey] = useState(0)
+  const [refreshKey, setRefreshKey] = useState(0)
 
   useEffect(() => {
     fetch(`/api/patients/${patientId}/`, {
@@ -47,6 +49,7 @@ export default function PatientDetailPage() {
   const handleUploadSuccess = (data) => {
     setUploadResult(data)           // set data first
     setXrayRefreshKey((k) => k + 1)
+    setRefreshKey((k) => k + 1)
     setIsUploadOpen(false)          // close upload modal
     setTimeout(() => setIsConfirmOpen(true), 250)  // open confirm after animation
   }
@@ -114,6 +117,7 @@ export default function PatientDetailPage() {
           <PatientProfileCard patient={patient} />
           <XrayRecordList patientId={patientId} refreshKey={xrayRefreshKey} autoOpenTransactionId={openXray} />
         </div>
+        <LongitudinalPanel patientId={patient.patient_id} refreshKey={refreshKey} />
  
       </div>
  

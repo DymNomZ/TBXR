@@ -61,23 +61,26 @@ export const DASHBOARD_COLUMNS = [
     label: 'Statuses',
     filterable: true,
     // ✏️ Keep in sync with backend statuses
-    filterOptions: ['PENDING', 'IN_REVIEW', 'COMPLETED'],
+    filterOptions: ['PENDING', 'IN_REVIEW', 'AI_REVIEWED', 'COMPLETED'],
     width: '140px',
     render: (row) => <StatusBadge status={row.status} />,
   },
-  // {
-  //   key: 'risk_score',
-  //   header: 'AI Risk Score',
-  //   label: 'AI Risk Scores',
-  //   filterable: false,
-  //   width: '140px',
-  //   render: (row) => <AIRiskBadge label={result.risk_label} score={result.risk_score} />,
-  // },
+  {
+    key: 'risk_label',
+    header: 'AI Risk Score',
+    label: 'Scores',
+    filterable: true,
+    filterOptions: ['LOW', 'HIGH'],
+    width: '140px',
+    render: (row) => row.ai_result
+      ? <AIRiskBadge label={row.ai_result.risk_label} score={row.ai_result.risk_score} />
+      : <span className="text-xs text-[var(--text-muted)]">—</span>,
+  },
   {
     key: 'action',
     header: 'Action',
     filterable: false,
-    width: '130px',
+    width: '140px',
     render: (row) => <DashboardActionButton record={row} />,
   },
 ]
@@ -86,6 +89,7 @@ export const DASHBOARD_COLUMNS = [
 const ACTION_MAP = {
   'PENDING': 'primary',
   'IN_REVIEW': 'accent',
+  'AI_REVIEWED': 'ai_reviewed',
   'COMPLETED': 'secondary',
 }
 
@@ -117,7 +121,7 @@ export default function TechnologistDashboardTable({ data = [] }) {
       <Table
         columns={DASHBOARD_COLUMNS}
         data={data}
-        onRowClick={(row) => navigate(`/transactions/${row.transaction_id}`)}
+        // onRowClick={(row) => navigate(`/transactions/${row.transaction_id}`)}
       />
     </div>
   )

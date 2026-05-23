@@ -32,6 +32,7 @@ from .serializers import (
     XrayRecordDetailSerializer,
     XrayRecordHistorySerializer,
     AIResultSerializer,
+    PatientHistorySerializer,
 )
 
 _INFERENCE_MODULE = None
@@ -354,6 +355,10 @@ def technologist_dashboard(request):
     status_filter = request.query_params.get('status', '').strip()
     if status_filter:
         records = records.filter(status=status_filter)
+    
+    risk_label_filter = request.query_params.get('risk_label', '').strip()
+    if risk_label_filter:
+        records = records.filter(ai_result__risk_label=risk_label_filter)
 
     paginator = PageNumberPagination()
     paginator.page_size = 20
@@ -379,6 +384,10 @@ def radiologist_queue(request):
     if status_filter:
         records = records.filter(status=status_filter)
 
+    risk_label_filter = request.query_params.get('risk_label', '').strip()
+    if risk_label_filter:
+        records = records.filter(ai_result__risk_label=risk_label_filter)
+
     paginator = PageNumberPagination()
     paginator.page_size = 20
 
@@ -394,7 +403,7 @@ def xray_detail(request, transaction_id):
     return Response(serializer.data)
 
 @api_view(["GET"])
-@role_required(UserRole.RADIOLOGIST, UserRole.PHYSICIAN)
+@role_required(UserRole.RADIOLOGIC_TECH, UserRole.RADIOLOGIST, UserRole.PHYSICIAN)
 def patient_history(request, patient_id):
     patient = get_object_or_404(Patient, patient_id=patient_id)
     records = (
@@ -403,7 +412,7 @@ def patient_history(request, patient_id):
         .prefetch_related("annotations", "annotations__radiologist")
         .order_by("upload_timestamp")
     )
-    serializer = XrayRecordHistorySerializer(
+    serializer = PatientHistorySerializer(
         records, many=True, context={"request": request}
     )
     return Response(serializer.data)

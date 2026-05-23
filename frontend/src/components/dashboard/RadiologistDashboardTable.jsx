@@ -69,23 +69,26 @@ export const QUEUE_COLUMNS = [
     header: 'Status',
     label: 'Statuses',
     filterable: true,
-    filterOptions: ['PENDING', 'IN_REVIEW', 'COMPLETED'],
-    width: '130px',
+    filterOptions: ['PENDING', 'IN_REVIEW', 'AI_REVIEWED', 'COMPLETED'],
+    width: '140px',
     render: (row) => <StatusBadge status={row.status} />,
   },
-  // {
-  //   key: 'risk_score',
-  //   header: 'AI Risk Score',
-  //   label: 'AI Risk Scores',
-  //   filterable: false,
-  //   width: '140px',
-  //   render: (row) => <AIRiskBadge label={result.risk_label} score={result.risk_score} />,
-  // },
+  {
+    key: 'risk_label',
+    header: 'AI Risk Score',
+    label: 'Scores',
+    filterable: true,
+    filterOptions: ['LOW', 'HIGH'],
+    width: '140px',
+    render: (row) => row.ai_result
+      ? <AIRiskBadge label={row.ai_result.risk_label} score={row.ai_result.risk_score} />
+      : <span className="text-xs text-[var(--text-muted)]">—</span>,
+  },
   {
     key: 'action',
     header: 'Action',
     filterable: false,
-    width: '120px',
+    width: '140px',
     render: (row) => <ReviewButton record={row} />,
   },
 ]
@@ -114,7 +117,7 @@ export default function RadiologistDashboardTable({ data = [] }) {
       <Table
         columns={QUEUE_COLUMNS}
         data={data}
-        onRowClick={(row) => navigate(`/radiologist/review/${row.transaction_id}`)}
+        // onRowClick={(row) => navigate(`/radiologist/review/${row.transaction_id}`)}
       />
     </div>
   )

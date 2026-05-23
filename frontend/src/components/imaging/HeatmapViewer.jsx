@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { ZoomIn, ZoomOut, RotateCcw, Layers } from 'lucide-react'
-import AIRiskBadge from '@/components/ui/AIRiskBadge'
+import AIRiskBadge from '../ui/AIRiskBadge'
 
 const MIN_SCALE = 1
 const MAX_SCALE = 8
@@ -236,7 +236,7 @@ export default function HeatmapViewer({
             className="absolute inset-0 w-full h-full object-contain"
             style={{
               ...imgStyle,
-              opacity:       showHeatmap && heatmapReady ? 0.65 : 0,
+              opacity:       showHeatmap && heatmapReady ? 1 : 0,
               mixBlendMode:  'multiply',
               transition:    'opacity 0.25s ease, transform 0.12s ease',
             }}

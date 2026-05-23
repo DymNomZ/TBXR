@@ -2,8 +2,9 @@ import { Clock } from 'lucide-react';
 import { useState, useEffect } from 'react'
 import StatusBadge from '../ui/StatusBadge'
 import Modal from '../ui/Modal'
-import XrayViewer from '../imaging/XrayViewer'
+import HeatmapViewer from '../imaging/HeatmapViewer'
 import StaticAnnotationOverlay from '../imaging/StaticAnnotationOverlay'
+import AIRiskBadge from '../ui/AIRiskBadge'
 
 function XrayRecordItem({ record, onClick }) {
 
@@ -16,7 +17,15 @@ function XrayRecordItem({ record, onClick }) {
         <span className="text-sm font-semibold text-[var(--deep-navy)] font-mono">
           {record.transaction_id}
         </span>
-        <StatusBadge status={record.status} />
+        <div className="flex items-center gap-2 flex-wrap">
+          <StatusBadge status={record.status} />
+          {record.ai_result && (
+            <AIRiskBadge
+              label={record.ai_result.risk_label}
+              score={record.ai_result.risk_score}
+            />
+          )}
+        </div>
       </div>
 
       <div className="flex items-center justify-between text-xs text-[var(--text-muted)]">
@@ -44,8 +53,23 @@ export default function XrayRecordList({ patientId, refreshKey = 0, autoOpenTran
   const handleClose = () => {
     setSelected(null)
     setXrayData(null)
-    setTransform({ scale: 1, translate: { x: 0, y: 0 } })
   }
+
+  useEffect(() => {
+    if (!selectedRecord) return
+    const controller = new AbortController()
+    setXrayData(null)
+    fetch(`/api/imaging/xray/${selectedRecord.transaction_id}/`, {
+      credentials: 'include',
+      signal: controller.signal,
+    })
+      .then((r) => r.json())
+      .then(setXrayData)
+      .catch((err) => {
+        if (err.name !== 'AbortError') console.error(err)
+      })
+    return () => controller.abort()
+  }, [selectedRecord?.transaction_id])
 
   useEffect(() => {
     if (!patientId) return
@@ -127,10 +151,10 @@ export default function XrayRecordList({ patientId, refreshKey = 0, autoOpenTran
           <div className="flex flex-col gap-5">
 
             {/* Viewer with static overlay */}
-            <XrayViewer
-              transactionId={selectedRecord.transaction_id}
+            <HeatmapViewer
+              rawImageUrl={xrayData?.display_image ?? null}
+              heatmapUrl={xrayData?.ai_result?.heatmap_url ?? null}
               onTransformChange={setTransform}
-              onXrayLoaded={setXrayData}
               overlay={
                 <StaticAnnotationOverlay
                   annotations={xrayData?.annotations ?? []}

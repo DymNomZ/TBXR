@@ -1,7 +1,7 @@
 const ITEMS = [
-  { color: 'bg-red-500',    label: 'High Priority',   range: '≥70%'    },
-  { color: 'bg-orange-400', label: 'Medium Priority', range: '40–69%'  },
-  { color: 'bg-green-500',  label: 'Low Priority',    range: '<40%'    },
+  { color: 'bg-red-500',    label: 'High Priority',   range: '≥50%'    },
+  // { color: 'bg-orange-400', label: 'Medium Priority', range: '40–69%'  },
+  { color: 'bg-green-500',  label: 'Low Priority',    range: '<50%'    },
 ]
 
 // sortLabel — optional right-side annotation, e.g. "Sorted by AI score (highest first)"
