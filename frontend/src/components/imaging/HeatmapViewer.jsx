@@ -38,6 +38,7 @@ export default function HeatmapViewer({
   const [translate, setTranslate] = useState({ x: 0, y: 0 })
 
   const containerRef     = useRef(null)
+  const rawImgRef        = useRef(null)
   const isPanning        = useRef(false)
   const lastPointer      = useRef({ x: 0, y: 0 })
   const lastPinchDist    = useRef(null)
@@ -48,13 +49,26 @@ export default function HeatmapViewer({
   useEffect(() => { currentTranslate.current = translate }, [translate])
   useEffect(() => { onTransformChange?.({ scale, translate }) }, [scale, translate])
 
-  // Reset when URLs change
+  // Reset when the raw image changes (new record)
   useEffect(() => {
     setRawReady(false)
     setHeatmapReady(false)
     setShowHeatmap(false)
     resetTransform()
-  }, [rawImageUrl, heatmapUrl])
+  }, [rawImageUrl])
+
+  // Reset only heatmap state when the heatmap URL changes
+  useEffect(() => {
+    setHeatmapReady(false)
+    setShowHeatmap(false)
+  }, [heatmapUrl])
+
+  // checks if image is already cached in browser which causes onLoad() to not trigger
+  useEffect(() => {
+    const img = rawImgRef.current
+    if (!img) return
+    if (img.complete && img.naturalWidth > 0) setRawReady(true)
+  }, [rawImageUrl])
 
   // ── Transform helpers ───────────────────────────────────────────────────────
 
@@ -219,6 +233,7 @@ export default function HeatmapViewer({
             src={rawImageUrl}
             alt="X-Ray"
             onLoad={() => setRawReady(true)}
+            ref={rawImgRef}
             draggable={false}
             className="absolute inset-0 w-full h-full object-contain"
             style={{ ...imgStyle, opacity: rawReady ? 1 : 0 }}
