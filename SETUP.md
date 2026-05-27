@@ -42,6 +42,122 @@ The backend runs at `http://localhost:8000`
 
 > **Note:** All Django management commands (`migrate`, `createsuperuser`, `startapp`, etc.) are run from inside the `backend/` folder where `manage.py` lives.
 
+### Database Options
+
+The backend chooses its database from the values in `backend/.env`:
+
+- If `DB_NAME` is set, Django uses PostgreSQL with `DB_USER`, `DB_PASSWORD`, `DB_HOST`, and `DB_PORT`.
+- If `DB_NAME` is not set, Django falls back to SQLite at `backend/db.sqlite3`.
+
+So yes, if you want a different PostgreSQL database, you should change the `.env` file.
+For example, update `DB_NAME`, `DB_USER`, `DB_PASSWORD`, `DB_HOST`, and `DB_PORT` to match the target database.
+
+If you want to use SQLite for a local throwaway setup, remove `DB_NAME` from `.env`.
+
+Example PostgreSQL `.env` values:
+
+```env
+SECRET_KEY=replace-me
+DB_NAME=tbxr_db
+DB_USER=postgres
+DB_PASSWORD=replace-me
+DB_HOST=localhost
+DB_PORT=5432
+```
+
+Example SQLite `.env` values:
+
+```env
+SECRET_KEY=replace-me
+```
+
+### Switching Databases For SUS Testing
+
+Use this workflow when you want a clean PostgreSQL database for SUS sessions.
+
+1. Create the PostgreSQL role and database.
+
+```bash
+sudo -u postgres psql
+```
+
+```sql
+CREATE USER postgres_sus WITH PASSWORD 'databasepassword_SUS';
+CREATE DATABASE tbxr_db_sus OWNER postgres_sus;
+GRANT ALL PRIVILEGES ON DATABASE tbxr_db_sus TO postgres_sus;
+\q
+```
+
+2. Update `backend/.env` to point to the SUS database.
+
+```env
+SECRET_KEY=replace-me
+DB_NAME=tbxr_db_sus
+DB_USER=postgres_sus
+DB_PASSWORD=databasepassword_SUS
+DB_HOST=localhost
+DB_PORT=5432
+```
+
+3. Start a fresh terminal session or unset any old `DB_*` environment variables.
+
+```bash
+unset DB_NAME DB_USER DB_PASSWORD DB_HOST DB_PORT SECRET_KEY
+```
+
+4. Run migrations against the SUS database.
+
+```bash
+cd backend
+python manage.py migrate
+```
+
+5. Seed the SUS users and patient pool.
+
+```bash
+python scripts/seed_sus_dataset.py
+```
+
+This script seeds:
+- 1 technologist user
+- 1 radiologist user
+- 5 patients
+
+It does not create X-ray records, images, annotations, or AI results. Those
+are added manually during the SUS walkthrough.
+
+**Important:** If you create PostgreSQL roles or databases without quotes, PostgreSQL stores the names in lowercase. Use lowercase values in `.env` unless you intentionally created quoted mixed-case identifiers.
+
+### Switching Back To The Original Database
+
+To return to the original development database, reverse the same steps:
+
+1. Restore the old values in `backend/.env`.
+
+```env
+SECRET_KEY=replace-me
+DB_NAME=tbxr_db
+DB_USER=postgres
+DB_PASSWORD=databasepassword
+DB_HOST=localhost
+DB_PORT=5432
+```
+
+2. Clear any exported shell variables that might override `.env`.
+
+```bash
+unset DB_NAME DB_USER DB_PASSWORD DB_HOST DB_PORT SECRET_KEY
+```
+
+3. Run migrations again so Django connects to the original database.
+
+```bash
+cd backend
+python manage.py migrate
+```
+
+4. If needed, re-run seed or demo setup scripts for the original database.
+
 ---
 
 ### Frontend Setup
