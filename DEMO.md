@@ -5,6 +5,52 @@ Add each week's section as development progresses.
 
 ---
 
+## SUS Test Environment
+
+Use this setup for System Usability Scale sessions and participant walkthroughs.
+
+**Prepare before the session:**
+- Backend running at `localhost:8000`
+- Frontend running at `localhost:5173`
+- Database reset to a clean SUS dataset
+- Seeded users:
+  - 1 `RADIOLOGIC_TECH` account for intake and upload
+  - 1 `RADIOLOGIST` account for queue review, annotation, and report download
+- Seeded records:
+  - At least 5 patients
+  - At least 10 X-ray records with a mix of statuses such as `PENDING`, `AI_REVIEWED`, `IN_REVIEW`, and `COMPLETED`
+  - 1 completed record that already has an `AIResult` and at least one annotation
+
+**Recommended seed mix:**
+- 5 patients total
+- 3 records for technologist-side upload and dashboard visibility
+- 6 queue/review records in `PENDING`, `IN_REVIEW`, or `AI_REVIEWED`
+- 1 fully completed record with annotations and AI result for the report step
+
+**Participant task script:**
+1. Log in as technologist.
+2. Register a new patient.
+3. Upload a chest X-ray for that patient.
+4. Log out.
+5. Log in as radiologist.
+6. Open the queue and find the uploaded record.
+7. Open the record and review the AI result.
+8. Add an annotation.
+9. Submit the annotation.
+10. Open the completed record.
+11. Download the PDF report.
+
+**Success criteria:**
+- Participant can complete the technologist upload flow without assistance.
+- Participant can locate the case in the radiologist queue.
+- Participant can annotate and submit the record.
+- Participant can download the report after completion.
+
+**Notes:**
+- The upload flow triggers AI analysis automatically.
+- The report download endpoint only works for `COMPLETED` X-rays.
+- If a session uses a stale browser login from an earlier demo, clear local storage and cookies before starting.
+
 ## Week 1 Demo — X-ray Ingestion & Data Management
 
 **What to show:** A Radiologic Technologist using the system to upload a chest X-ray from start to finish.
