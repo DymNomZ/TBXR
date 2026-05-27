@@ -175,3 +175,6 @@ staticfiles/
 # Temporary files
 *.tmp
 *.temp
+
+# pdf_scripts using puppeteer
+backend/pdf_scripts/node_modules/

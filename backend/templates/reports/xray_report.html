@@ -1,0 +1,281 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>TB-XR Report</title>
+		<style>
+			:root {
+				--ink: #1e2430;
+				--muted: #6b7280;
+				--border: #e5e7eb;
+				--accent: #1f7a6c;
+				--soft: #f7f8fa;
+			}
+
+			* {
+				box-sizing: border-box;
+			}
+
+			body {
+				margin: 0;
+				font-family: "Segoe UI", Tahoma, Arial, sans-serif;
+				color: var(--ink);
+				background: #ffffff;
+			}
+
+			.page {
+				max-width: 980px;
+				margin: 0 auto;
+				padding: 32px 40px 40px;
+			}
+
+			.header {
+				display: flex;
+				justify-content: space-between;
+				align-items: center;
+				border-bottom: 2px solid var(--border);
+				padding-bottom: 16px;
+				margin-bottom: 24px;
+			}
+
+			.brand {
+				display: flex;
+				flex-direction: column;
+				gap: 6px;
+			}
+
+			.brand h1 {
+				margin: 0;
+				font-size: 22px;
+				letter-spacing: 0.5px;
+			}
+
+			.brand span {
+				color: var(--muted);
+				font-size: 12px;
+				text-transform: uppercase;
+				letter-spacing: 1.5px;
+			}
+
+			.meta {
+				text-align: right;
+				font-size: 12px;
+				color: var(--muted);
+				line-height: 1.6;
+			}
+
+			.section {
+				border: 1px solid var(--border);
+				border-radius: 12px;
+				padding: 18px 20px;
+				margin-bottom: 18px;
+			}
+
+			.section h2 {
+				margin: 0 0 12px;
+				font-size: 15px;
+				text-transform: uppercase;
+				letter-spacing: 1px;
+				color: var(--muted);
+			}
+
+			.grid {
+				display: grid;
+				grid-template-columns: repeat(2, minmax(0, 1fr));
+				gap: 12px 20px;
+			}
+
+			.field {
+				display: flex;
+				flex-direction: column;
+				gap: 4px;
+			}
+
+			.field label {
+				font-size: 11px;
+				text-transform: uppercase;
+				letter-spacing: 1px;
+				color: var(--muted);
+			}
+
+			.field .value {
+				font-size: 14px;
+				font-weight: 600;
+			}
+
+			.badge {
+				display: inline-block;
+				padding: 4px 10px;
+				border-radius: 999px;
+				font-size: 12px;
+				font-weight: 600;
+				background: rgba(31, 122, 108, 0.12);
+				color: var(--accent);
+			}
+
+			.image-box {
+				background: var(--soft);
+				border-radius: 12px;
+				padding: 16px;
+				border: 1px dashed var(--border);
+				text-align: center;
+			}
+
+			.image-box img {
+				max-width: 100%;
+				height: auto;
+				border-radius: 10px;
+			}
+
+			.muted {
+				color: var(--muted);
+				font-size: 12px;
+			}
+
+			.notes {
+				min-height: 84px;
+				background: var(--soft);
+				border-radius: 10px;
+				padding: 12px 14px;
+				font-size: 13px;
+				line-height: 1.5;
+			}
+
+			ol {
+				margin: 0;
+				padding-left: 18px;
+				font-size: 13px;
+			}
+
+			ol li {
+				margin-bottom: 6px;
+			}
+
+			.footer {
+				margin-top: 24px;
+				border-top: 1px solid var(--border);
+				padding-top: 14px;
+				display: flex;
+				justify-content: space-between;
+				font-size: 11px;
+				color: var(--muted);
+			}
+
+			@media print {
+				body {
+					background: #ffffff;
+				}
+				.page {
+					padding: 0;
+				}
+				.section {
+					break-inside: avoid;
+				}
+			}
+		</style>
+	</head>
+	<body>
+		<div class="page">
+			<div class="header">
+				<div class="brand">
+					<span>TB-XR</span>
+					<h1>Chest X-Ray Report</h1>
+				</div>
+				<div class="meta">
+					<div>Transaction ID: <strong>{{ transaction_id }}</strong></div>
+					<div>Upload Date: {{ upload_date }}</div>
+					<div>Report Generated: {{ generated_at }}</div>
+				</div>
+			</div>
+
+			<div class="section">
+				<h2>Patient Information</h2>
+				<div class="grid">
+					<div class="field">
+						<label>Patient Name</label>
+						<div class="value">{{ patient_name }}</div>
+					</div>
+					<div class="field">
+						<label>Age</label>
+						<div class="value">{{ patient_age }}</div>
+					</div>
+					<div class="field">
+						<label>Sex</label>
+						<div class="value">{{ patient_sex }}</div>
+					</div>
+					<div class="field">
+						<label>Facility</label>
+						<div class="value">{{ facility_name }}</div>
+					</div>
+				</div>
+			</div>
+
+			<div class="section">
+				<h2>AI Assessment</h2>
+				<div class="grid">
+					<div class="field">
+						<label>Risk Score</label>
+						<div class="value">{{ ai_risk_score }}</div>
+					</div>
+					<div class="field">
+						<label>Risk Label</label>
+						<div class="value"><span class="badge">{{ ai_risk_label }}</span></div>
+					</div>
+				</div>
+			</div>
+
+			<div class="section">
+				<h2>Heatmap</h2>
+				<div class="image-box">
+					{% if heatmap_base64 %}
+						<img src="data:image/png;base64,{{ heatmap_base64 }}" alt="Heatmap" />
+					{% else %}
+						<div class="muted">Heatmap not available.</div>
+					{% endif %}
+				</div>
+			</div>
+
+			<div class="section">
+				<h2>Radiologist Annotations</h2>
+				<ol>
+					{% for annotation in radiologist_annotations %}
+						<li>{{ annotation }}</li>
+					{% empty %}
+						<li>No annotations provided.</li>
+					{% endfor %}
+				</ol>
+			</div>
+
+			<div class="section">
+				<h2>Diagnostic Notes</h2>
+				<div class="notes">{{ diagnostic_notes }}</div>
+			</div>
+
+			<div class="section">
+				<h2>Clinical Impression</h2>
+				<div class="grid">
+					<div class="field">
+						<label>Impression</label>
+						<div class="notes">{{ clinical_impression }}</div>
+					</div>
+					<div class="field">
+						<label>Recommendations</label>
+						<div class="notes">{{ recommendations }}</div>
+					</div>
+				</div>
+			</div>
+
+            <div class="section">
+                <h2>Summary of Findings</h2>
+                <div class="field">{{ ai_summary }}</div>
+            </div>
+
+
+			<div class="footer">
+				<div>TB-XR Clinical Reporting</div>
+				<div>Generated at {{ generated_at }}</div>
+			</div>
+		</div>
+	</body>
+</html>
