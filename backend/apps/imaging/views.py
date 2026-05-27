@@ -71,8 +71,13 @@ def _get_inference_module():
 def _run_ai_inference(xray_record, processed_img):
     inference = _get_inference_module()
     image_path = processed_img.processed_image.path
-    prediction = inference.predict(image_path)
-    heatmap_path = inference.generate_heatmap(image_path)
+    shutdown = getattr(inference, "shutdown_model", None)
+    try:
+        prediction = inference.predict(image_path)
+        heatmap_path = inference.generate_heatmap(image_path)
+    finally:
+        if callable(shutdown):
+            shutdown()
 
     try:
         risk_score = float(prediction.get("risk_score"))

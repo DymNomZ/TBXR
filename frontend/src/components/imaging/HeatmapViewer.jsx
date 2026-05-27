@@ -28,6 +28,7 @@ export default function HeatmapViewer({
   heatmapUrl,
   aiResult,
   overlay,          // optional — e.g. StaticAnnotationOverlay
+  autoShowHeatmap = false,
   onTransformChange,
 }) {
   const [rawReady,     setRawReady]     = useState(false)
@@ -62,6 +63,11 @@ export default function HeatmapViewer({
     setHeatmapReady(false)
     setShowHeatmap(false)
   }, [heatmapUrl])
+
+  // If annotations exist, default the heatmap to on (without forcing it later)
+  useEffect(() => {
+    if (autoShowHeatmap && heatmapUrl) setShowHeatmap(true)
+  }, [autoShowHeatmap, heatmapUrl])
 
   // checks if image is already cached in browser which causes onLoad() to not trigger
   useEffect(() => {

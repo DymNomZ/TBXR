@@ -98,6 +98,7 @@ export default function AnnotationReviewPage() {
             <HeatmapViewer
               rawImageUrl={xray?.display_image ?? null}
               heatmapUrl={xray?.ai_result?.heatmap_url ?? null}
+              autoShowHeatmap={(xray?.annotations?.length ?? 0) > 0}
               // aiResult intentionally omitted — badge is in the header, not duplicated here
               onTransformChange={setTransform}
               overlay={

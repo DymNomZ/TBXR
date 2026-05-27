@@ -1,5 +1,12 @@
+import atexit
+import os
 from pathlib import Path
 from typing import Dict
+
+os.environ.setdefault("OMP_NUM_THREADS", "1")
+os.environ.setdefault("MKL_NUM_THREADS", "1")
+os.environ.setdefault("VECLIB_MAXIMUM_THREADS", "1")
+os.environ.setdefault("NUMEXPR_NUM_THREADS", "1")
 
 import cv2
 import numpy as np
@@ -19,7 +26,26 @@ MODEL_PATH = BASE_DIR/"ai"/"model_resources"/MODEL_VERSION/MODEL_NAME
 HEATMAP_DIR = BASE_DIR/"ai"/"media"/"heatmaps"
 
 HEATMAP_DIR.mkdir(parents=True, exist_ok=True)
-DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+def _select_device() -> torch.device:
+    if torch.cuda.is_available():
+        return torch.device("cuda")
+    if getattr(torch.backends, "mps", None) is not None and torch.backends.mps.is_available():
+        return torch.device("mps")
+    return torch.device("cpu")
+
+
+DEVICE = _select_device()
+
+
+def _configure_torch_threads():
+    try:
+        torch.set_num_threads(1)
+        torch.set_num_interop_threads(1)
+    except (RuntimeError, ValueError):
+        pass
+
+
+_configure_torch_threads()
 
 CLASS_NAMES = {
     0: "Low Risk",
@@ -42,14 +68,6 @@ transform = transforms.Compose([
     )
 ])
 
-def preprocess_image(image_path: str):
-    image = Image.open(image_path).convert("RGB")
-
-    tensor = transform(image).unsqueeze(0).to(DEVICE)
-
-    return image, tensor
-
-
 def load_model():
     model = mobilenet_v3_large(weights=None)
 
@@ -66,24 +84,45 @@ def load_model():
         state_dict = checkpoint
 
     model.load_state_dict(state_dict)
-
-
     model.to(DEVICE)
     model.eval()
 
     return model
 
-MODEL = load_model()
+
+_MODEL = None
+
+
+def get_model():
+    global _MODEL
+    if _MODEL is None:
+        _MODEL = load_model()
+    return _MODEL
+
+
+def shutdown_model():
+    global _MODEL
+    if _MODEL is None:
+        return
+    _MODEL = None
+    if torch.cuda.is_available():
+        torch.cuda.synchronize()
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+    if getattr(torch, "mps", None) is not None:
+        torch.mps.synchronize()
+        torch.mps.empty_cache()
+
+
+atexit.register(shutdown_model)
 
 # ============================================================
 # PREPROCESS IMAGE
 # ============================================================
 
 def preprocess_image(image_path: str):
-    image = Image.open(image_path)
-
+    image = Image.open(image_path).convert("RGB")
     tensor = transform(image).unsqueeze(0).to(DEVICE)
-
     return image, tensor
 
 # ============================================================
@@ -94,7 +133,7 @@ def predict(image_path: str) -> Dict:
     _, input_tensor = preprocess_image(image_path)
 
     with torch.no_grad():
-        logit = MODEL(input_tensor)
+        logit = get_model()(input_tensor)
         prob = torch.sigmoid(logit).item()
 
     risk_score = prob
@@ -164,11 +203,13 @@ class GradCAM:
 def generate_heatmap(image_path: str) -> str:
     original_image, input_tensor = preprocess_image(image_path)
 
-    target_layer = MODEL.features[-1]
+    model = get_model()
+    target_layer = model.features[-1]
 
-    grad_cam = GradCAM(MODEL, target_layer)
-
-    heatmap = grad_cam.generate(input_tensor)
+    grad_cam = GradCAM(model, target_layer)
+    with torch.enable_grad():
+        input_tensor = input_tensor.clone().detach().requires_grad_(True)
+        heatmap = grad_cam.generate(input_tensor)
 
     original_np = np.array(original_image.convert("RGB"))
     original_np = cv2.cvtColor(original_np, cv2.COLOR_RGB2BGR)

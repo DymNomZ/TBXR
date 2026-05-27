@@ -27,7 +27,7 @@ export function AuthProvider({ children }) {
         .find(row => row.startsWith('csrftoken='))
         ?.split('=')[1]
 
-      await fetch('/api/accounts/logout/', {
+      await fetch('/accounts/logout/', {
         method: 'POST',
         credentials: 'include',
         headers: { 'X-CSRFToken': csrfToken ?? '' },

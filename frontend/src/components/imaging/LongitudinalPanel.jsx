@@ -99,6 +99,7 @@ function ViewerSlot({ record, label, labelColor }) {
       <HeatmapViewer
         rawImageUrl={xrayData?.display_image ?? null}
         heatmapUrl={xrayData?.ai_result?.heatmap_url ?? null}
+        autoShowHeatmap={annotations.length > 0}
         onTransformChange={setTransform}
         overlay={
           <StaticAnnotationOverlay

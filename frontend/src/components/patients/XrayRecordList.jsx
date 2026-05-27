@@ -157,6 +157,7 @@ export default function XrayRecordList({ patientId, refreshKey = 0, autoOpenTran
             <HeatmapViewer
               rawImageUrl={xrayData?.display_image ?? null}
               heatmapUrl={xrayData?.ai_result?.heatmap_url ?? null}
+              autoShowHeatmap={(xrayData?.annotations?.length ?? 0) > 0}
               onTransformChange={setTransform}
               overlay={
                 <StaticAnnotationOverlay
