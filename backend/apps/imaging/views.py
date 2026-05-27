@@ -1,3 +1,12 @@
+import base64
+import tempfile
+import subprocess
+from datetime import date
+from django.conf import settings
+from django.utils import timezone
+from django.template.loader import render_to_string
+from django.http import FileResponse
+
 import json
 import cv2
 import importlib.util
@@ -416,3 +425,87 @@ def patient_history(request, patient_id):
         records, many=True, context={"request": request}
     )
     return Response(serializer.data)
+
+@api_view(["GET"])
+@role_required(UserRole.RADIOLOGIST)
+def generate_report(request, transaction_id):
+    xray_record = get_object_or_404(XrayRecord, transaction_id=transaction_id)
+
+    if xray_record.status != "COMPLETED":
+        return Response(
+            {"detail": "PDF report can only be generaated for COMPLETED X-rays."},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    patient = xray_record.patient
+    ai_result = getattr(xray_record, "ai_result", None)
+    annotations = xray_record.annotations.all()
+
+    heatmap_base64 = None
+    if ai_result and ai_result.heatmap_image:
+        if ai_result.heatmap_image.storage.exists(ai_result.heatmap_image.name):
+            with ai_result.heatmap_image.open("rb") as img_file:
+                heatmap_base64 = base64.b64encode(img_file.read()).decode("utf-8")
+
+    radiologist_notes = []
+    for ann in annotations:
+        if ann.notes:
+            radiologist_notes.append(ann.notes)
+
+    diagnostic_notes_text = "\n".join(radiologist_notes) if radiologist_notes else "No diagnostic notes provided."
+
+    def calculate_age(dob):
+        if not dob: return "N/A"
+        today = date.today()
+        return today.year - dob.year - ((today.month, today.day) < (dob.month, dob.day))
+
+    context = {
+        "transaction_id": str(xray_record.transaction_id),
+        "upload_date": xray_record.upload_timestamp.strftime("%Y-%m-%d %H:%M"),
+        "generated_at": timezone.now().strftime("%Y-%m-%d %H:%M"),
+        "patient_name": f"{patient.first_name} {patient.last_name}",
+        "patient_age": calculate_age(getattr(patient, 'date_of_birth', None)),
+        "patient_sex": getattr(patient, 'gender', 'N/A'),
+        "facility_name": "",
+        "ai_risk_score": f"{ai_result.risk_score:.2f}" if ai_result else "N/A",
+        "ai_risk_label": ai_result.risk_label if ai_result else "N/A",
+        "heatmap_base64": heatmap_base64,
+        "radiologist_annotations": radiologist_notes,
+        "diagnostic_notes": diagnostic_notes_text,
+        "clinical_impression": "",
+        "recommendations": "",
+        "ai_summary": f"AI model flagged as {ai_result.risk_label if ai_result else 'N/A'} risk."
+
+    }
+    html_content = render_to_string("reports/xray_report.html", context)
+    temp_html_path = None
+
+    try:
+        with tempfile.NamedTemporaryFile(suffix=".html", delete=False, mode="w", encoding="utf-8") as temp_html:
+            temp_html.write(html_content)
+            temp_html_path = temp_html.name
+
+        script_path = settings.BASE_DIR / "pdf_scripts" / "generate.js"
+        result = subprocess.run(
+            ["node", str(script_path), temp_html_path],
+            capture_output=True,
+            check=True
+        )
+
+        pdf_bytes = result.stdout
+        response = FileResponse(BytesIO(pdf_bytes), content_type='application/pdf')
+        response['Content-Disposition'] = f'attachment; filename="tbxr_report_{transaction_id}.pdf"'
+        return response
+
+    except subprocess.CalledProcessError as e:
+        return Response(
+            {"error": "Failed to generate PDF via Node script.", "details": e.stderr.decode()},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+    except Exception as e:
+        return Response(
+            {"error": str(e)},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+    finally:
+        if temp_html_path:
+            Path(temp_html_path).unlink(missing_ok=True)
