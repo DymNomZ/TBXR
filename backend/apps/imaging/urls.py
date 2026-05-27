@@ -42,4 +42,9 @@ urlpatterns = [
     ),
     path('queue/', views.radiologist_queue, name='radiologist-queue'),
     path('xray/<str:transaction_id>/', views.xray_detail, name='xray-detail'),
+    path(
+        "xray/<uuid:transaction_id>/report/",
+        views.generate_report,
+        name="generate_report",
+    ),
 ]
