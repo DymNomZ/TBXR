@@ -221,6 +221,35 @@ class ImagingAccessTests(TestCase):
 		self.assertIn(ai_result.risk_label, AIResult.RiskLabel.values)
 		self.assertEqual(ai_result.model_version, "v-test")
 
+	def test_ai_inference_endpoint_rejects_out_of_range_risk_score(self):
+		ProcessedImage.objects.create(
+			xray_record=self.tech_one_record,
+			processed_image=self._image_file("processed-out-of-range.png"),
+			preprocessing_metadata={"source": "test"},
+		)
+
+		fake_inference = SimpleNamespace(
+			MODEL_VERSION="v-test",
+			predict=mock.Mock(return_value={"risk_score": 1.25, "risk_label": "High Risk"}),
+			generate_heatmap=mock.Mock(return_value=""),
+		)
+
+		self.client.force_login(self.tech_one)
+		with mock.patch("apps.imaging.views._get_inference_module", return_value=fake_inference):
+			response = self.client.post(
+				reverse(
+					"imaging:analyse_xray",
+					kwargs={"transaction_id": str(self.tech_one_record.transaction_id)},
+				),
+			)
+
+		self.assertEqual(response.status_code, 500)
+		self.assertJSONEqual(
+			response.content,
+			{"errors": {"risk_score": ["Risk score must be between 0.0 and 1.0."]}},
+		)
+		self.assertFalse(AIResult.objects.filter(xray_record=self.tech_one_record).exists())
+
 	def test_upload_triggers_ai_analysis_automatically(self):
 		fake_inference = SimpleNamespace(
 			MODEL_VERSION="v-test",

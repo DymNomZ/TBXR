@@ -70,6 +70,9 @@ def _run_ai_inference(xray_record, processed_img):
     except (TypeError, ValueError) as exc:
         raise ValueError("Invalid risk score from inference.") from exc
 
+    if not 0.0 <= risk_score <= 1.0:
+        raise ValueError("Risk score must be between 0.0 and 1.0.")
+
     raw_label = str(prediction.get("risk_label", "")).strip().lower()
     if not raw_label:
         risk_label = (
