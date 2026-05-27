@@ -1,10 +1,12 @@
-import { Clock } from 'lucide-react';
+import { Clock, FileDown } from 'lucide-react';
 import { useState, useEffect } from 'react'
+import { useAuth } from '../../context/AuthContext'
 import StatusBadge from '../ui/StatusBadge'
 import Modal from '../ui/Modal'
 import HeatmapViewer from '../imaging/HeatmapViewer'
 import StaticAnnotationOverlay from '../imaging/StaticAnnotationOverlay'
 import AIRiskBadge from '../ui/AIRiskBadge'
+import Button from '../ui/Button'
 
 function XrayRecordItem({ record, onClick }) {
 
@@ -48,6 +50,7 @@ export default function XrayRecordList({ patientId, refreshKey = 0, autoOpenTran
   const [selectedRecord, setSelected] = useState(null)  // ← tracks clicked record
   const [transform, setTransform] = useState({ scale: 1, translate: { x: 0, y: 0 } })
   const [xrayData,  setXrayData]  = useState(null)
+  const { user } = useAuth()
 
   // Reset when modal closes — update your setSelected(null) calls:
   const handleClose = () => {
@@ -192,6 +195,18 @@ export default function XrayRecordList({ patientId, refreshKey = 0, autoOpenTran
                 ))}
               </div>
             )}
+
+            {/* Generate Report */}
+            {selectedRecord?.status === 'COMPLETED' && user?.role === 'RADIOLOGIST' && (
+            <Button
+              variant="secondary"
+              fullWidth
+              onClick={() => window.open(`/api/imaging/xray/${selectedRecord.transaction_id}/report/`, '_blank')}
+            >
+              <FileDown size={15} />
+              Generate Report
+            </Button>
+          )}
 
           </div>
         )}
