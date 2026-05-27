@@ -51,12 +51,12 @@ Required headers for session-authenticated POST requests:
 ### POST /accounts/logout/
 - Purpose: Logout and clear session.
 - Auth: Session
-- Response: 302 redirect to /login
+- Response: 200 JSON
 
 ## Patients
 ### GET /api/patients/
 - Purpose: List all patients.
-- Roles: RADIOLOGIC_TECH, RADIOLOGIST, PHYSICIAN
+- Roles: RADIOLOGIC_TECH, RADIOLOGIST
 - Response: 200 JSON list
 
 ### POST /api/patients/register/
@@ -88,7 +88,7 @@ Content-Type: application/json
 
 ### GET /api/patients/search/
 - Purpose: Search patients by name.
-- Roles: RADIOLOGIC_TECH, RADIOLOGIST, PHYSICIAN
+- Roles: RADIOLOGIC_TECH, RADIOLOGIST
 - Query params:
   - name (optional, searches first or last name)
 - Response: 200 JSON list
@@ -100,7 +100,7 @@ GET /api/patients/search/?name=smith
 
 ### GET /api/patients/<patient_id>/
 - Purpose: Retrieve patient detail.
-- Roles: RADIOLOGIC_TECH, RADIOLOGIST, PHYSICIAN
+- Roles: RADIOLOGIC_TECH, RADIOLOGIST
 - Response: 200 JSON
 
 ## Imaging
@@ -129,12 +129,12 @@ raw_image=@/path/to/file.png
 
 ### GET /api/imaging/patients/<patient_id>/xray/
 - Purpose: Get all uploaded xrays (transactions) of the patient.
-- Roles: RADIOLOGIC_TECH, RADIOLOGIST, PHYSICIAN
+- Roles: RADIOLOGIC_TECH, RADIOLOGIST
 - Response: JSON
 
 ### GET /api/imaging/patients/<patient_id>/history/
 - Purpose: Patient X-ray history ordered by upload timestamp (ascending), including AI result and annotations.
-- Roles: RADIOLOGIST, PHYSICIAN
+- Roles: RADIOLOGIC_TECH, RADIOLOGIST
 - Response: 200 JSON list
 
 ### GET /api/imaging/patients/<patient_id>/xray/upload/confirm/<transaction_id>/
@@ -215,7 +215,7 @@ Example response:
 
 ### GET /api/imaging/xray/<transaction_id>/
 - Purpose: Returns the xray details with annotations
-- Roles: RADIOLOGIC_TECH, RADIOLOGIST, PHYSICIAN
+- Roles: RADIOLOGIC_TECH, RADIOLOGIST
 - Response: 200 JSON
 ```
 {

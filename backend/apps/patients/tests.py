@@ -14,9 +14,6 @@ class PatientViewsTests(TestCase):
         self.rad = self.user_model.objects.create_user(
             username='rad_test', password='password123', role=UserRole.RADIOLOGIST
         )
-        self.phys = self.user_model.objects.create_user(
-            username='phys_test', password='password123', role=UserRole.PHYSICIAN
-        )
         
         self.valid_payload = {
             "first_name": "John",
@@ -83,7 +80,7 @@ class PatientViewsTests(TestCase):
         self.assertEqual(response.status_code, 400)
 
     def test_register_patient_unauthorized_role(self):
-        """Test that Radiologists and Physicians are forbidden from registering patients."""
+        """Test that Radiologists are forbidden from registering patients."""
         # Test for Radiologist
         self.client.force_login(self.rad)
         response_rad = self.client.post(
@@ -92,12 +89,3 @@ class PatientViewsTests(TestCase):
             content_type='application/json',
         )
         self.assertEqual(response_rad.status_code, 403)
-
-        # Test for Physician
-        self.client.force_login(self.phys)
-        response_phys = self.client.post(
-            reverse('patients:register'),
-            data=json.dumps(self.valid_payload),
-            content_type='application/json',
-        )
-        self.assertEqual(response_phys.status_code, 403)

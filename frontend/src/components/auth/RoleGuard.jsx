@@ -4,7 +4,6 @@ import { useAuth } from '../../context/AuthContext'
 const ROLE_DASHBOARD = {
   RADIOLOGIC_TECH: '/dashboard/technologist',
   RADIOLOGIST:     '/dashboard/radiologist',
-  PHYSICIAN:       '/dashboard/physician',
 }
 
 export default function RoleGuard({ allowedRoles, children }) {

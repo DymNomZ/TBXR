@@ -130,7 +130,6 @@ def create_role_user(username, password, role, email=""):
 
 create_role_user("tech1", "demo123", "RADIOLOGIC_TECH", "tech1@example.com")
 create_role_user("rad1", "demo123", "RADIOLOGIST", "rad1@example.com")
-create_role_user("phys1", "demo123", "PHYSICIAN", "phys1@example.com")
 ```
 ``` bash
 python manage.py runserver

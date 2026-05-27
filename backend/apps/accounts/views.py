@@ -16,7 +16,6 @@ from .decorators import role_required
 ROLE_FRONTEND_URLS = {
     UserRole.RADIOLOGIC_TECH: '/dashboard/technologist',
     UserRole.RADIOLOGIST:     '/dashboard/radiologist',
-    UserRole.PHYSICIAN:       '/dashboard/physician',
 }
 
 
@@ -112,13 +111,4 @@ def radiologist_dashboard(request):
 		'Radiologist Dashboard',
 		'Radiologist',
 		'This placeholder dashboard is ready for radiologist review workflows.',
-	)
-
-
-@role_required(UserRole.PHYSICIAN)
-def physician_dashboard(request):
-	return _dashboard_response(
-		'Physician Dashboard',
-		'Physician',
-		'This placeholder dashboard is ready for physician review workflows.',
 	)

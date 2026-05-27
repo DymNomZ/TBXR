@@ -6,7 +6,6 @@ Seed demo users and sample records.
 Test credentials:
 - tech1 / demo123 -> RADIOLOGIC_TECH
 - rad1 / demo123 -> RADIOLOGIST
-- phys1 / demo123 -> PHYSICIAN
 """
 
 import os
@@ -52,12 +51,6 @@ USER_FIXTURES = [
         "password": SEED_PASSWORD,
         "role": UserRole.RADIOLOGIST,
         "email": "rad1@example.com",
-    },
-    {
-        "username": "phys1",
-        "password": SEED_PASSWORD,
-        "role": UserRole.PHYSICIAN,
-        "email": "phys1@example.com",
     },
 ]
 

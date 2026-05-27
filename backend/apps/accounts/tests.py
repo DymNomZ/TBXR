@@ -54,21 +54,6 @@ class AccountAuthViewsTests(TestCase):
             {'redirect': expected_redirect, 'role': UserRole.RADIOLOGIST},
         )
 
-    def test_login_redirects_physician_to_physician_dashboard(self):
-        self._create_user('phys', 'password123', UserRole.PHYSICIAN)
-        expected_redirect = views.ROLE_FRONTEND_URLS[UserRole.PHYSICIAN]
-
-        response = self.client.post(
-            reverse('accounts:login'),
-            data=json.dumps({'username': 'phys', 'password': 'password123'}),
-            content_type='application/json',
-        )
-        self.assertEqual(response.status_code, 200)
-        self.assertJSONEqual(
-            response.content,
-            {'redirect': expected_redirect, 'role': UserRole.PHYSICIAN},
-        )
-
     def test_login_returns_descriptive_error_for_bad_credentials(self):
         self._create_user('tech', 'password123', UserRole.RADIOLOGIC_TECH)
 
@@ -87,7 +72,8 @@ class AccountAuthViewsTests(TestCase):
 
         response = self.client.post(reverse('accounts:logout'))
 
-        self.assertRedirects(response, '/login', fetch_redirect_response=False)
+        self.assertEqual(response.status_code, 200)
+        self.assertJSONEqual(response.content, {'detail': 'Logged out.'})
         self.assertNotIn('_auth_user_id', self.client.session)
 
     def test_dashboard_placeholder_is_available_for_matching_role(self):
@@ -109,9 +95,6 @@ class RolePermissionTests(TestCase):
         )
         cls.rad = user_model.objects.create_user(
             username='rad1', password='demo123', role=UserRole.RADIOLOGIST
-        )
-        cls.phys = user_model.objects.create_user(
-            username='phys1', password='demo123', role=UserRole.PHYSICIAN
         )
         cls.rfactory = RequestFactory()
 
@@ -171,19 +154,3 @@ class RolePermissionTests(TestCase):
         )
         self.assertEqual(response.status_code, 403)
 
-    def test_register_patient_is_inaccessible_to_physician(self):
-        self.client.force_login(self.phys)
-        response = self.client.post(
-            reverse("patients:register"),
-            data=json.dumps(
-                {
-                    "first_name": "Test",
-                    "last_name": "Patient",
-                    "date_of_birth": "1990-01-01",
-                    "sex": "M",
-                    "contact_number": "09171234567",
-                }
-            ),
-            content_type="application/json",
-        )
-        self.assertEqual(response.status_code, 403)

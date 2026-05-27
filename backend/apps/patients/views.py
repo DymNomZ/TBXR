@@ -22,9 +22,8 @@ from .serializers import PatientCreateSerializer, PatientSerializer
 )
 @api_view(["POST"])
 @role_required(UserRole.RADIOLOGIC_TECH)
-# Only technologists should register patients, radiologists and physicians only review existing records.    
-# Why: They are the ones who intake patients and create records before uploading X-rays. 
-# Radiologists and Physicians only review, never register.
+# Only technologists should register patients.
+# Why: They are the ones who intake patients and create records before uploading X-rays.
 def register_patient(request):
     serializer = PatientCreateSerializer(data=request.data)
     if not serializer.is_valid():
@@ -46,8 +45,7 @@ def register_patient(request):
 
 @extend_schema(responses={200: PatientSerializer})
 @api_view(["GET"])
-@role_required(UserRole.RADIOLOGIC_TECH, UserRole.RADIOLOGIST, UserRole.PHYSICIAN)
-# All three roles need to view a patient's profile at different stages of the workflow.
+@role_required(UserRole.RADIOLOGIC_TECH, UserRole.RADIOLOGIST)
 def patient_detail(request, patient_id):
     patient = get_object_or_404(Patient, patient_id=patient_id)
     serializer = PatientSerializer(patient)
@@ -65,8 +63,7 @@ def patient_detail(request, patient_id):
     responses={200: PatientSerializer(many=True)}
 )
 @api_view(["GET"])
-@role_required(UserRole.RADIOLOGIC_TECH, UserRole.RADIOLOGIST, UserRole.PHYSICIAN)
-# Same reasoning. search is just the entry point to get to a patient detail, all roles need it.
+@role_required(UserRole.RADIOLOGIC_TECH, UserRole.RADIOLOGIST)
 def search_patients(request):
     # Get the 'name' search term from the URL
     query = request.query_params.get('name', '').strip()
@@ -83,7 +80,7 @@ def search_patients(request):
     return Response(serializer.data)
 
 @api_view(['GET'])
-@role_required(UserRole.RADIOLOGIC_TECH, UserRole.RADIOLOGIST, UserRole.PHYSICIAN)
+@role_required(UserRole.RADIOLOGIC_TECH, UserRole.RADIOLOGIST)
 def patient_list(request):
     patients = Patient.objects.all().order_by('last_name', 'first_name')
     serializer = PatientSerializer(patients, many=True)
