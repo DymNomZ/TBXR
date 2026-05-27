@@ -134,7 +134,7 @@ raw_image=@/path/to/file.png
 
 ### GET /api/imaging/patients/<patient_id>/history/
 - Purpose: Patient X-ray history ordered by upload timestamp (ascending), including AI result and annotations.
-- Roles: RADIOLOGIST
+- Roles: RADIOLOGIC_TECH, RADIOLOGIST
 - Response: 200 JSON list
 
 ### GET /api/imaging/patients/<patient_id>/xray/upload/confirm/<transaction_id>/
