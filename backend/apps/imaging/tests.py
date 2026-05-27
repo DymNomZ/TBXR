@@ -50,11 +50,6 @@ class ImagingAccessTests(TestCase):
 			password="password123",
 			role=UserRole.RADIOLOGIST,
 		)
-		cls.phys = user_model.objects.create_user(
-			username="phys-one",
-			password="password123",
-			role=UserRole.PHYSICIAN,
-		)
 
 		cls.patient_one = Patient.objects.create(
 			first_name="Juan",
@@ -140,7 +135,7 @@ class ImagingAccessTests(TestCase):
 			kwargs={"transaction_id": str(self.tech_one_record.transaction_id)},
 		)
 
-		for user in (self.tech_one, self.rad, self.phys):
+		for user in (self.tech_one, self.rad):
 			self.client.force_login(user)
 			response = self.client.get(detail_url)
 			self.assertEqual(response.status_code, 200)
@@ -176,7 +171,7 @@ class ImagingAccessTests(TestCase):
 			kwargs={"transaction_id": str(self.tech_one_record.transaction_id)},
 		)
 
-		for user in (self.tech_one, self.phys):
+		for user in (self.tech_one,):
 			self.client.force_login(user)
 			response = self.client.post(
 				annotate_url,

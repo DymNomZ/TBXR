@@ -5,7 +5,6 @@ const AuthContext = createContext(null)
 const ROLE_DASHBOARD = {
   RADIOLOGIC_TECH: '/dashboard/technologist',
   RADIOLOGIST:     '/dashboard/radiologist',
-  PHYSICIAN:       '/dashboard/physician',
 }
 
 export function AuthProvider({ children }) {
