@@ -1,17 +1,21 @@
 import json
+from datetime import timedelta
 from io import BytesIO
 from tempfile import TemporaryDirectory
+from types import SimpleNamespace
+from unittest import mock
 
 from PIL import Image
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
 from django.urls import reverse
+from django.utils import timezone
 
 from apps.accounts.enums import UserRole
 from apps.patients.models import Patient
 
-from .models import Annotation, XrayRecord
+from .models import AIResult, Annotation, ProcessedImage, XrayRecord
 
 
 class ImagingAccessTests(TestCase):
@@ -184,4 +188,119 @@ class ImagingAccessTests(TestCase):
 		self.assertEqual(
 			Annotation.objects.filter(xray_record=self.tech_one_record).count(),
 			0,
+		)
+
+	def test_ai_inference_endpoint_creates_ai_result_with_valid_values(self):
+		ProcessedImage.objects.create(
+			xray_record=self.tech_one_record,
+			processed_image=self._image_file("processed.png"),
+			preprocessing_metadata={"source": "test"},
+		)
+
+		fake_inference = SimpleNamespace(
+			MODEL_VERSION="v-test",
+			predict=mock.Mock(return_value={"risk_score": 0.73, "risk_label": "High Risk"}),
+			generate_heatmap=mock.Mock(return_value=""),
+		)
+
+		self.client.force_login(self.tech_one)
+		with mock.patch("apps.imaging.views._get_inference_module", return_value=fake_inference):
+			response = self.client.post(
+				reverse(
+					"imaging:analyse_xray",
+					kwargs={"transaction_id": str(self.tech_one_record.transaction_id)},
+				),
+			)
+
+		self.assertIn(response.status_code, (200, 201))
+		self.assertEqual(AIResult.objects.filter(xray_record=self.tech_one_record).count(), 1)
+
+		ai_result = AIResult.objects.get(xray_record=self.tech_one_record)
+		self.assertGreaterEqual(ai_result.risk_score, 0.0)
+		self.assertLessEqual(ai_result.risk_score, 1.0)
+		self.assertIn(ai_result.risk_label, AIResult.RiskLabel.values)
+		self.assertEqual(ai_result.model_version, "v-test")
+
+	def test_ai_inference_endpoint_rejects_out_of_range_risk_score(self):
+		ProcessedImage.objects.create(
+			xray_record=self.tech_one_record,
+			processed_image=self._image_file("processed-out-of-range.png"),
+			preprocessing_metadata={"source": "test"},
+		)
+
+		fake_inference = SimpleNamespace(
+			MODEL_VERSION="v-test",
+			predict=mock.Mock(return_value={"risk_score": 1.25, "risk_label": "High Risk"}),
+			generate_heatmap=mock.Mock(return_value=""),
+		)
+
+		self.client.force_login(self.tech_one)
+		with mock.patch("apps.imaging.views._get_inference_module", return_value=fake_inference):
+			response = self.client.post(
+				reverse(
+					"imaging:analyse_xray",
+					kwargs={"transaction_id": str(self.tech_one_record.transaction_id)},
+				),
+			)
+
+		self.assertEqual(response.status_code, 500)
+		self.assertJSONEqual(
+			response.content,
+			{"errors": {"risk_score": ["Risk score must be between 0.0 and 1.0."]}},
+		)
+		self.assertFalse(AIResult.objects.filter(xray_record=self.tech_one_record).exists())
+
+	def test_upload_triggers_ai_analysis_automatically(self):
+		fake_inference = SimpleNamespace(
+			MODEL_VERSION="v-test",
+			predict=mock.Mock(return_value={"risk_score": 0.41, "risk_label": "Low Risk"}),
+			generate_heatmap=mock.Mock(return_value=""),
+		)
+
+		self.client.force_login(self.tech_one)
+		with mock.patch("apps.imaging.views._get_inference_module", return_value=fake_inference):
+			response = self.client.post(
+				reverse(
+					"imaging:upload_xray",
+					kwargs={"patient_id": self.patient_one.patient_id},
+				),
+				data={"raw_image": self._image_file("auto-upload.png")},
+			)
+
+		self.assertEqual(response.status_code, 200)
+		payload = response.json()
+		xray_record = XrayRecord.objects.get(transaction_id=payload["transaction_id"])
+		self.assertEqual(AIResult.objects.filter(xray_record=xray_record).count(), 1)
+		self.assertEqual(xray_record.status, "AI_REVIEWED")
+		self.assertEqual(AIResult.objects.count(), 1)
+
+	def test_patient_history_returns_records_in_chronological_order(self):
+		patient = Patient.objects.create(
+			first_name="Chrono",
+			last_name="Patient",
+			date_of_birth="1992-03-03",
+			sex="M",
+			contact_number="09170000000",
+		)
+		first = self._create_xray_record(patient=patient, uploader=self.tech_one, filename="first.png")
+		second = self._create_xray_record(patient=patient, uploader=self.tech_one, filename="second.png")
+		third = self._create_xray_record(patient=patient, uploader=self.tech_one, filename="third.png")
+
+		base_time = timezone.now() - timedelta(minutes=3)
+		for offset, record in enumerate((first, second, third)):
+			XrayRecord.objects.filter(pk=record.pk).update(
+				upload_timestamp=base_time + timedelta(minutes=offset),
+			)
+
+		self.client.force_login(self.rad)
+		response = self.client.get(
+			reverse("imaging:patient_history", kwargs={"patient_id": patient.patient_id})
+		)
+
+		self.assertEqual(response.status_code, 200)
+		payload = response.json()
+		self.assertEqual(len(payload), 3)
+		self.assertEqual(
+			[item["transaction_id"] for item in payload],
+			[str(first.transaction_id), str(second.transaction_id), str(third.transaction_id)],
 		)
