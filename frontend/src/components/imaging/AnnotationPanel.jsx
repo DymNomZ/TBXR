@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Tag, Trash2, FileText, CheckCircle, AlertCircle } from 'lucide-react'
+import { Tag, Trash2, FileText, CheckCircle, AlertCircle, FileDown } from 'lucide-react'
+import { useAuth } from '../../context/AuthContext'
 import Button from '../ui/Button'
 
 // ─── CSRF helper ─────────────────────────────────────────────────────────────
@@ -54,6 +55,8 @@ export default function AnnotationPanel({
   const [loading, setLoading] = useState(false)
   const [error,   setError]   = useState(null)
   const [success, setSuccess] = useState(false)
+  const { user } = useAuth()
+  const canDownload = isCompleted && (user?.role === 'RADIOLOGIST' || user?.role === 'RADIOLOGIC_TECH')
 
   useEffect(() => {
     if (isCompleted && existingAnnotation?.notes) {
@@ -180,6 +183,18 @@ export default function AnnotationPanel({
       >
         {loading ? 'Submitting…' : success ? 'Submitted ✓' : 'Submit Findings'}
       </Button>
+      
+      {/* Generate Report */}
+      {canDownload && (
+      <Button
+        variant="secondary"
+        fullWidth
+        onClick={() => window.open(`/api/imaging/xray/${transactionId}/report/`, '_blank')}
+      >
+        <FileDown size={15} />
+        Generate Report
+      </Button>
+    )}
 
     </div>
   )
