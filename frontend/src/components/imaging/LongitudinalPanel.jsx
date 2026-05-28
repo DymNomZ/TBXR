@@ -266,8 +266,18 @@ export default function LongitudinalPanel({
 
           {/* Side-by-side viewers */}
           <div className="flex gap-4 items-start">
-            <ViewerSlot record={slotA} label="A" labelColor="bg-[var(--accent)]" />
-            <ViewerSlot record={slotB} label="B" labelColor="bg-orange-400" />
+            <ViewerSlot
+              key={slotA?.transaction_id ?? 'slot-a-empty'}
+              record={slotA}
+              label="A"
+              labelColor="bg-[var(--accent)]"
+            />
+            <ViewerSlot
+              key={slotB?.transaction_id ?? 'slot-b-empty'}
+              record={slotB}
+              label="B"
+              labelColor="bg-orange-400"
+            />
           </div>
 
           {/* Timeline strip inside modal */}

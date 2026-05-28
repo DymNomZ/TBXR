@@ -39,6 +39,7 @@ export default function HeatmapViewer({
 
   const containerRef     = useRef(null)
   const rawImgRef        = useRef(null)
+  const heatmapImgRef    = useRef(null)
   const isPanning        = useRef(false)
   const lastPointer      = useRef({ x: 0, y: 0 })
   const lastPinchDist    = useRef(null)
@@ -69,6 +70,12 @@ export default function HeatmapViewer({
     if (!img) return
     if (img.complete && img.naturalWidth > 0) setRawReady(true)
   }, [rawImageUrl])
+
+  useEffect(() => {
+    const img = heatmapImgRef.current
+    if (!img) return
+    if (img.complete && img.naturalWidth > 0) setHeatmapReady(true)
+  }, [heatmapUrl])
 
   // ── Transform helpers ───────────────────────────────────────────────────────
 
@@ -247,6 +254,7 @@ export default function HeatmapViewer({
             src={heatmapUrl}
             alt="Heatmap"
             onLoad={() => setHeatmapReady(true)}
+            ref={heatmapImgRef}
             draggable={false}
             className="absolute inset-0 w-full h-full object-contain"
             style={{
