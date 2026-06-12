@@ -20,7 +20,9 @@ source venv/bin/activate        # Linux/macOS
 venv\Scripts\activate           # Windows
 
 # 3. Install dependencies
-pip install -r requirements.txt
+python -m pip install -r requirements.txt
+or
+py -m pip install -r requirements.txt
 
 # 4. Set up environment variables
 cp .env.example .env
@@ -39,6 +41,122 @@ python manage.py runserver
 The backend runs at `http://localhost:8000`
 
 > **Note:** All Django management commands (`migrate`, `createsuperuser`, `startapp`, etc.) are run from inside the `backend/` folder where `manage.py` lives.
+
+### Database Options
+
+The backend chooses its database from the values in `backend/.env`:
+
+- If `DB_NAME` is set, Django uses PostgreSQL with `DB_USER`, `DB_PASSWORD`, `DB_HOST`, and `DB_PORT`.
+- If `DB_NAME` is not set, Django falls back to SQLite at `backend/db.sqlite3`.
+
+So yes, if you want a different PostgreSQL database, you should change the `.env` file.
+For example, update `DB_NAME`, `DB_USER`, `DB_PASSWORD`, `DB_HOST`, and `DB_PORT` to match the target database.
+
+If you want to use SQLite for a local throwaway setup, remove `DB_NAME` from `.env`.
+
+Example PostgreSQL `.env` values:
+
+```env
+SECRET_KEY=replace-me
+DB_NAME=tbxr_db
+DB_USER=postgres
+DB_PASSWORD=replace-me
+DB_HOST=localhost
+DB_PORT=5432
+```
+
+Example SQLite `.env` values:
+
+```env
+SECRET_KEY=replace-me
+```
+
+### Switching Databases For SUS Testing
+
+Use this workflow when you want a clean PostgreSQL database for SUS sessions.
+
+1. Create the PostgreSQL role and database.
+
+```bash
+sudo -u postgres psql
+```
+
+```sql
+CREATE USER postgres_sus WITH PASSWORD 'databasepassword_SUS';
+CREATE DATABASE tbxr_db_sus OWNER postgres_sus;
+GRANT ALL PRIVILEGES ON DATABASE tbxr_db_sus TO postgres_sus;
+\q
+```
+
+2. Update `backend/.env` to point to the SUS database.
+
+```env
+SECRET_KEY=replace-me
+DB_NAME=tbxr_db_sus
+DB_USER=postgres_sus
+DB_PASSWORD=databasepassword_SUS
+DB_HOST=localhost
+DB_PORT=5432
+```
+
+3. Start a fresh terminal session or unset any old `DB_*` environment variables.
+
+```bash
+unset DB_NAME DB_USER DB_PASSWORD DB_HOST DB_PORT SECRET_KEY
+```
+
+4. Run migrations against the SUS database.
+
+```bash
+cd backend
+python manage.py migrate
+```
+
+5. Seed the SUS users and patient pool.
+
+```bash
+python scripts/seed_sus_dataset.py
+```
+
+This script seeds:
+- 1 technologist user
+- 1 radiologist user
+- 5 patients
+
+It does not create X-ray records, images, annotations, or AI results. Those
+are added manually during the SUS walkthrough.
+
+**Important:** If you create PostgreSQL roles or databases without quotes, PostgreSQL stores the names in lowercase. Use lowercase values in `.env` unless you intentionally created quoted mixed-case identifiers.
+
+### Switching Back To The Original Database
+
+To return to the original development database, reverse the same steps:
+
+1. Restore the old values in `backend/.env`.
+
+```env
+SECRET_KEY=replace-me
+DB_NAME=tbxr_db
+DB_USER=postgres
+DB_PASSWORD=databasepassword
+DB_HOST=localhost
+DB_PORT=5432
+```
+
+2. Clear any exported shell variables that might override `.env`.
+
+```bash
+unset DB_NAME DB_USER DB_PASSWORD DB_HOST DB_PORT SECRET_KEY
+```
+
+3. Run migrations again so Django connects to the original database.
+
+```bash
+cd backend
+python manage.py migrate
+```
+
+4. If needed, re-run seed or demo setup scripts for the original database.
 
 ---
 
@@ -82,29 +200,73 @@ jupyter notebook notebooks/
 
 ---
 
-## Branch Naming Convention
+### Front End and Back End Testing
 
-| Branch | Purpose |
-|--------|---------|
-| `main` | Stable, demo-ready code only. Never commit directly here. |
-| `develop` | Integration branch. All feature branches merge here first. |
-| `feature/<initials>/<short-description>` | New feature work |
-| `fix/<short-description>` | Bug fixes |
-| `hotfix/<short-description>` | Urgent fixes on `main` |
+For testing Front and Back end manually.
+``` bash
+cd backend
 
-**Examples:**
+# ignore if you have done this already
+source venv/bin/activate        # Linux/macOS
+venv\Scripts\activate           # Windows
+
+#ignore if you have done this already
+python -m pip install -r requirements.txt
+or
+py -m pip install -r requirements.txt
+
+#ignore if you have done this already
+cp .env.example .env
+
+python manage.py migrate
+python manage.py shell
 ```
-feature/jd/database-schema
-feature/sn/mobilenetv3-training
-feature/ljl/patient-profile-ui
-feature/rs/image-validation
-feature/bm/auth-login
-fix/upload-form-validation
+
+To seed account to test login functionality.
+``` bash
+from django.contrib.auth import get_user_model
+
+User = get_user_model()
+
+def create_role_user(username, password, role, email=""):
+    user, created = User.objects.get_or_create(
+        username=username,
+        defaults={
+            "email": email,
+            "role": role,
+        },
+    )
+    if not created:
+        user.role = role
+        if email:
+            user.email = email
+    user.set_password(password)
+    user.save()
+    return user
+
+create_role_user("tech1", "demo123", "RADIOLOGIC_TECH", "tech1@example.com")
+create_role_user("rad1", "demo123", "RADIOLOGIST", "rad1@example.com")
+```
+``` bash
+python manage.py runserver
 ```
 
-**Workflow:**
-1. Always branch off `develop`, never off `main`
-2. Keep branches focused — one feature per branch
-3. Open a Pull Request into `develop` when done
-4. Tag the relevant person to review before merging
-5. `main` only gets merged into at the end of each week's increment when everything is working
+Then set up the front end if you have not yet already.
+``` bash
+cd frontend
+npm install 
+# npm install vite lucide-react
+npm run dev
+```
+
+**Note**: If you want to check the database structure with GUI you can download DBeaver and connect the PostgreSQL there. Use the .env variables you have set.
+
+For testing Back end automatically.
+``` bash
+cd backend
+python manage.py test apps.accounts.tests
+python manage.py test apps.patients.tests
+python manage.py test apps.imaging.tests
+```
+
+---
