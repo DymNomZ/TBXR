@@ -9,7 +9,9 @@ from django.http import FileResponse
 
 import json
 import cv2
+import numpy as np
 import importlib.util
+import pydicom
 from io import BytesIO
 from pathlib import Path
 
@@ -148,12 +150,41 @@ def upload_xray(request, patient_id):
     file_suffix = Path(raw_image.name).suffix.lower().lstrip(".")
     file_format = file_suffix if file_suffix else "unknown"
 
-    xray_record = serializer.save(
-        patient=patient,
-        uploader=request.user,
-        status="PENDING",
-        file_format=file_format,
-    )
+    save_kwargs = {
+        "patient": patient,
+        "uploader": request.user,
+        "status": "PENDING",
+        "file_format": file_format,
+    }
+
+    if file_format == "dcm":
+        try:
+            raw_image.seek(0)
+            ds = pydicom.dcmread(raw_image)
+
+            tags_to_strip = [
+                "PatientName", "PatientID", "PatientBirthDate",
+                "PatientSex", "PatientAge", "InstitutionName",
+                "ReferringPhysicianName", "StudyDate", "AccessionNumber"
+            ]
+
+            for tag in tags_to_strip:
+                if hasattr(ds, tag):
+                    delattr(ds, tag)
+
+            buffer = BytesIO()
+            ds.save_as(buffer)
+            buffer.seek(0)
+
+            save_kwargs["raw_image"] = ContentFile(buffer.read(), name=raw_image.name)
+
+        except Exception as e:
+            return Response(
+                {"errors": {"raw_image": [f"Invalid DICOM file or failed to anonymize: {str(e)}"]}},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+    xray_record = serializer.save(**save_kwargs)
 
     try:
         processed_img = ProcessedImage.objects.filter(xray_record=xray_record).first()
@@ -163,7 +194,13 @@ def upload_xray(request, patient_id):
         else:
             source_path = xray_record.raw_image.path
 
-        img_cv = cv2.imread(source_path, cv2.IMREAD_GRAYSCALE)
+        if source_path.lower().endswith(".dcm"):
+            ds = pydicom.dcmread(source_path)
+            pixel_array = ds.pixel_array
+            img_cv = cv2.normalize(pixel_array, None, 0, 255, cv2.NORM_MINMAX, dtype=cv2.CV_8U)
+        else:
+            img_cv = cv2.imread(source_path, cv2.IMREAD_GRAYSCALE)
+
         clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
         enhanced_img_cv = clahe.apply(img_cv)
         enhanced_pil = Image.fromarray(enhanced_img_cv)
