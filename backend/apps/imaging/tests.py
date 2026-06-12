@@ -1,4 +1,6 @@
 import json
+import pydicom
+from pydicom.dataset import FileDataset, FileMetaDataset
 from datetime import timedelta
 from io import BytesIO
 from tempfile import TemporaryDirectory
@@ -102,6 +104,82 @@ class ImagingAccessTests(TestCase):
 			],
 			"notes": "Review needed",
 		}
+
+
+	@staticmethod
+	def _dicom_file(filename="xray.dcm"):
+		file_meta = FileMetaDataset()
+		file_meta.MediaStorageSOPClassUID = '1.2.840.10008.5.1.4.1.1.1'
+		file_meta.MediaStorageSOPInstanceUID = "1.2.3"
+		file_meta.TransferSyntaxUID = pydicom.uid.ImplicitVRLittleEndian
+
+		ds = FileDataset(filename, {}, file_meta=file_meta, preamble=b"\0" * 128)
+
+		ds.PatientName = "Secret^Identity"
+		ds.PatientID = "000000"
+		ds.PatientSex = "M"
+		ds.PatientAge = "030Y"
+		ds.InstitutionName = "Test Hospital"
+		ds.ReferringPhysicianName = "Dr. Classified"
+		ds.StudyDate = "20230101"
+		ds.AccessionNumber = "ACC123"
+
+		ds.Rows = 2
+		ds.Columns = 2
+		ds.SamplesPerPixel = 1
+		ds.BitsAllocated = 8
+		ds.BitsStored = 8
+		ds.HighBit = 7
+		ds.PixelRepresentation = 0
+		ds.PhotometricInterpretation = "MONOCHROME2"
+		ds.PixelData = b"\x00\xff\x00\xff"
+
+		ds.is_little_endian = True
+		ds.is_implicit_VR = True
+
+		buffer = BytesIO()
+		ds.save_as(buffer)
+		buffer.seek(0)
+		return SimpleUploadedFile(filename, buffer.getvalue(), content_type="application/dicom")
+
+	def test_upload_dicom_strips_pii(self):
+		fake_inference = SimpleNamespace(
+			MODEL_VERSION="v-test",
+			predict=mock.Mock(return_value={"risk_score": 0.41, "risk_label": "Low Risk"}),
+			generate_heatmap=mock.Mock(return_value=""),
+		)
+
+		self.client.force_login(self.tech_one)
+
+		with mock.patch("apps.imaging.views._get_inference_module", return_value=fake_inference):
+			response = self.client.post(
+				reverse(
+					"imaging:upload_xray",
+					kwargs={"patient_id": self.patient_one.patient_id},
+				),
+				data={"raw_image": self._dicom_file("test.dcm")},
+			)
+
+		self.assertEqual(response.status_code, 200)
+
+		payload = response.json()
+		xray_record = XrayRecord.objects.get(transaction_id=payload["transaction_id"])
+
+		xray_record.raw_image.seek(0)
+		saved_ds = pydicom.dcmread(xray_record.raw_image)
+
+		tags_to_strip = [
+			"PatientName", "PatientID", "PatientBirthDate",
+			"PatientSex", "PatientAge", "InstitutionName",
+			"ReferringPhysicianName", "StudyDate", "AccessionNumber"
+		]
+
+		for tag in tags_to_strip:
+			self.assertFalse(hasattr(saved_ds, tag), f"Tag {tag} was not stripped!")
+
+		xray_record.raw_image.close()
+
+
 
 	def test_technologist_dashboard_shows_only_own_records(self):
 		self.client.force_login(self.tech_one)
