@@ -88,6 +88,8 @@ The scope excludes:
 
   4. ## ***References*** {#references}
 
+T. Rahman et al., “Reliable Tuberculosis Detection Using Chest X-Ray With Deep Learning, Segmentation and Visualization,” in IEEE Access, vol. 8, pp. 191586–191601, 2020, doi: 10.1109/ACCESS.2020.3031384.
+
 2. # **Architectural Design** {#architectural-design}
 
 TB-XR follows a client-server architecture with a React front-end and a Django REST back-end.
