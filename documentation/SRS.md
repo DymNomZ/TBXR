@@ -67,35 +67,39 @@ This document serves as a reference for developers, project managers, and stakeh
 
 2. ## ***Scope***
 
-TB-XR is a collaborative web application with an AI-integrated teleradiology platform designed to assist Radiologic Technologists, remote Radiologists, and attending Physicians in managing and analyzing chest X-ray records for TB screening. The system streamlines end-to-end workflow by enabling secure image submission, AI-assisted risk assessment, collaborative diagnostic annotation, and longitudinal patient monitoring. It ensures that radiologic data is consistently organized. The system includes the following core functionalities:
+TB-XR is a collaborative web application with an AI-integrated teleradiology platform designed to assist Radiologic Technologists and remote Radiologists in managing and analyzing chest X-ray records for TB screening. The system streamlines end-to-end workflow by enabling secure image submission, AI-assisted risk assessment, collaborative diagnostic annotation, and longitudinal patient monitoring. It ensures that radiologic data is consistently organized. The system includes the following core functionalities:
 
 * X-ray Ingestion and Data Management Module
-
   * Enables secure upload of chest X-ray images along with patient metadata
-
   * Standardizes image formats
-
 * Annotation and Diagnostic Review Module
-
   * Provides an interface for radiologists to access queued X-rays, annotate findings, and submit diagnostic interpretations
-
 * Longitudinal Disease Monitoring Module
-
 * Clinical Dashboard and Reporting System
-
 * User Authentication and Role-Based Access Control
+
+The system also has the following boundaries and exclusions:
+
+* Direct PACS/DICOM Network Integration
+  * The system will not connect via live routing protocols. All X-ray images must be uploaded manually by a user via the frontend web interface as standalone files.
+* Automated Diagnostics or Chart Signing
+  * The platform excludes autonomous decision-making authority. The AI engine only provides an informational risk coefficient score. Final diagnostic authorization and verification are strictly restricted to authenticated human Radiologists.
+* Definitive Multi-Disease Diagnosis
+  * While the AI engine is trained to detect opacities and abnormalities commonly associated with pulmonary tuberculosis, it acts as a generalized “Risk Triage” tool. It will flag significant thoracic abnormalities (e.g., severe pneumonia) as “High Risk” to ensure patient safety, but it will not provide definitive, differentiated diagnoses for non-TB pathologies.
+* Pharmaceutical or Treatment Workflows
+  * The system boundary stops at the verified diagnostic screening report. The platform excludes feature logic for tracking prescription regimens, medication compliance monitoring, or clinical appointment scheduling.
 
   3. ## ***Definitions, Acronyms and Abbreviations***
 
 * *Provide the definitions of all terms, acronyms, and abbreviations required to properly interpret the SRS* 
 
-* **AI:** Artificial Intelligence.  
-* **CNN:** Convolutional Neural Network, a class of deep neural networks commonly applied to analyzing visual imagery, used here for TB baseline scoring.  
-* **DICOM:** Digital Imaging and Communications in Medicine, the international standard to transmit, store, retrieve, print, process, and display medical imaging information.  
-* **JPEG:** Joint Photographic Experts Group, a standard image format.  
-* **RBAC:** Role-Based Access Control, restricting system access to authorized users based on their role.  
-* **SRS:** Software Requirements Specification.  
-* **TB:** Tuberculosis.  
+* **AI:** Artificial Intelligence.
+* **CNN:** Convolutional Neural Network, a class of deep neural networks commonly applied to analyzing visual imagery, used here for TB baseline scoring.
+* **DICOM:** Digital Imaging and Communications in Medicine, the international standard to transmit, store, retrieve, print, process, and display medical imaging information.
+* **JPEG:** Joint Photographic Experts Group, a standard image format.
+* **RBAC:** Role-Based Access Control, restricting system access to authorized users based on their role.
+* **SRS:** Software Requirements Specification.
+* **TB:** Tuberculosis.
 * **TB-XR:** The name of the collaborative teleradiology platform being specified.
 
   4. ## ***References***
@@ -107,11 +111,13 @@ TB-XR is a collaborative web application with an AI-integrated teleradiology pla
 
 IEEE Std 830-1998, IEEE Recommended Practice for Software Requirements Specifications.
 
-Hansun, et al. 2023\. “Machine and Deep Learning for Tuberculosis Detection on Chest X-Rays: Systematic Literature Review.” Journal of Medical Internet Research.
+Hansun, et al. 2023. “Machine and Deep Learning for Tuberculosis Detection on Chest X-Rays: Systematic Literature Review.” Journal of Medical Internet Research.
 
-Nampewo, et al. 2024\. “Benefits of Artificial Intelligence versus Human-Reader in Chest X-Ray Screening for Tuberculosis in the Philippines.” International Journal of Health Sciences and Research.
+Nampewo, et al. 2024. “Benefits of Artificial Intelligence versus Human-Reader in Chest X-Ray Screening for Tuberculosis in the Philippines.” International Journal of Health Sciences and Research.
 
-Teo, et al. 2021\. “Duration and Determinants of Delayed Tuberculosis Diagnosis and Treatment in High-Burden Countries: A Mixed-Methods Systematic Review and Meta-Analysis.” Respiratory Research.
+Teo, et al. 2021. “Duration and Determinants of Delayed Tuberculosis Diagnosis and Treatment in High-Burden Countries: A Mixed-Methods Systematic Review and Meta-Analysis.” Respiratory Research.
+
+T. Rahman et al., “Reliable Tuberculosis Detection Using Chest X-Ray With Deep Learning, Segmentation and Visualization,” in IEEE Access, vol. 8, pp. 191586–191601, 2020, doi: 10.1109/ACCESS.2020.3031384.
 
 2. # **Overall Description**
 
@@ -131,36 +137,49 @@ The system interacts with external imaging sources, allowing radiologic technolo
 
 Across all user groups, familiarity with general computing devices (e.g., desktops, laptops, mobile devices) is assumed, though levels of exposure to advanced or specialized systems may differ. Additionally, some deployment environments—particularly rural or resource-limited settings—may involve users with limited exposure to complex digital platforms, reinforcing the need for accessible and straightforward system interactions.
 
-## ***2.4. 	Constraints***
+## ***2.4. Constraints***
 
-* *Provide a general description of any other items that will limit the developer’s options.*   
-* *Regulatory policies;*   
-* *Hardware limitations (e.g., signal timing requirements);*   
-* *Interfaces to other applications;*   
-* *Parallel operation;*
+### 2.4.1 Hardware Constraints
+* Client-Side/Endpoint Hardware: The system must be lightweight enough to operate efficiently in low- and middle-income healthcare environments where hardware and network bandwidth may be limited. The specific hardware is defined as standard-issue laptops or desktop stations utilizing an Intel Core i3 processor (or equivalent), a minimum of 4 GB RAM, and a modern web browser engine (Google Chrome v100+, Mozilla Firefox v100+, or Microsoft Edge v100+).
+* Server-Side Architecture: The backend platform instance requires a hosting environment configured with at least an Intel Xeon or modern quad-core CPU, 8 GB RAM, and a minimum of 20 GB available solid-state storage space to support the container layers, user logs, and image ingestion caching.
 
-* *Audit functions;*   
-* *Control functions;*   
-* *Reliability requirements;*   
-* *Criticality of the application;*   
-* *Safety and security considerations.*   
-    
-* **Resource Limitations:** The system must be lightweight enough to operate efficiently in low- and middle-income healthcare environments where hardware and network bandwidth may be limited.  
-* **Regulatory Compliance:** As the system handles sensitive medical data (patient metadata and diagnostic records), it must strictly comply with data privacy regulations (e.g., Data Privacy Act/HIPAA).  
-* **Operational:** Accurate interpretation of the images is highly dependent on the initial quality of the X-ray uploaded by the technologist.  
-* **Network Dependency:** The system requires internet connectivity for remote radiologist access.  
-* **Browser Compatibility:** The system is constrained to modern web browsers accessible to both mobile and desktop.  
-* *Add more here \-\>*
+### 2.4.2 Internet & Network Dependency Limitations
+* Intranet/LAN Operational Tolerance: The system must be capable of deploying locally over a Local Area Network (LAN) instance inside a clinic environment using a local container network bridge, enabling operation in settings with limited or unreliable internet connectivity.
+* Intranet Bandwidth Performance: As a locally hosted web application, the system relies on the facility’s internal Local Area Network (LAN/Wi-Fi). It requires a stable internal connection between the client machines (Technologist/Radiologist laptops) and the local edge server to handle standard 5–10 MB DICOM/JPEG file transmissions without request timeouts. External internet bandwidth is not a constraint for core screening operations.
 
-## ***2.5. 	Assumptions and dependencies***
+### 2.4.3 Legal, Ethical, and Compliance Constraints
+* Data Privacy Regulations: The platform must strictly satisfy the data security regulations defined under the Philippine Data Privacy Act of 2012 (RA 10173). No Protected Health Information (PHI) or Personally Identifiable Information (PII) may be transferred, stored, or processed within unencrypted data arrays.
+* Ethical AI Disclaimers: The user interface must permanently render a visible, non-dismissible clinical liability disclaimer across all dashboard analytics panels stating that AI-generated probability outputs are strictly non-definitive baseline suggestions intended to aid triage efficiency. This ensures radiologists and clinicians maintain diagnostic authority and accountability.
 
-*This subsection of the SRS should list each of the factors that affect the requirements stated in the SRS. These factors are not design constraints on the software but are, rather, any changes to them that can affect the requirements in the SRS. For example, an assumption may be that a specific operating system will be available on the hardware designated for the software product. If, in fact, the operating system is not avail- able, the SRS would then have to change accordingly.* 
+### 2.4.4 Operational Constraints
+* Image Quality Dependency: Accurate interpretation of chest X-rays is highly dependent on the initial quality of the image uploaded by the Radiologic Technologist. The system cannot compensate for severely degraded or artifact-laden radiographs.
 
-* Target healthcare facilities have access to stable, albeit potentially low-bandwidth, internet connections.  
-* X-ray machines at the clinics are capable of producing digital outputs (DICOM formats).  
-* The CNN model used for baseline TB probability scores will be pre-trained and available for integration.  
-* Users across all roles have a basic level of computer literacy sufficient for web-based application use.  
-* *Add more here \-\>*
+## ***2.5. Assumptions and dependencies***
+
+### 2.5.1 Operational Environment Assumptions
+* Target healthcare facilities have access to stable, albeit potentially low-bandwidth, internet connections sufficient for remote radiologist access and asynchronous image uploads.
+* Digital Radiography Capability: X-ray machines at the clinics are capable of producing digital outputs in DICOM or JPEG formats, enabling seamless integration into the upload workflow without requiring additional image conversion equipment.
+* User Technical Literacy: Users across all roles (Radiologic Technologists and Radiologists) have a basic level of computer literacy sufficient for web-based application use, including familiarity with file uploads, interface navigation, and report interpretation.
+
+### 2.5.2 AI Model Compilation and Asset Availability
+* Pre-Trained Model Availability: The runtime environment depends entirely on the presence of a pre-trained, fine-tuned, and serialized binary weight file (.pt, .pth, or .tflite) stored within a dedicated static directory path inside the backend host container environment. The application assumes this external model file has been fully compiled and validated prior to server initialization. Any unavailability or corruption of this model file will prevent the system from initializing AI-assisted risk assessment functionality.
+* Model Performance Baseline: The CNN model used for baseline TB probability scores will be pre-trained and available for integration before system deployment. The model’s accuracy and performance metrics are assumed to meet clinical screening standards established in project specifications.
+
+### 2.5.3 Hosting Environment and Server Infrastructure
+* Multi-Container Orchestration: The application is built assuming deployment within an environment capable of spinning up a standard multi-container orchestration layout (such as a multi-container Docker or Docker-Compose ecosystem). It assumes host-level network bridge access is permitted to route requests smoothly between the Django REST framework backend, the React production build container, and the database persistence layers.
+* Database Management System: The system interfaces with a relational database management system (e.g., MySQL, PostgreSQL, or equivalent) for storing and managing patient records, chest X-ray metadata, annotations, diagnostic results, and user account information. The DBMS is assumed to be configured, running, and accessible prior to system deployment.
+* Network Bridge Configuration: The deployment infrastructure must support Docker networking or equivalent container communication protocols to enable seamless inter-service communication between frontend, backend, and database components.
+
+### 2.5.4 Third-Party Component and Library Dependencies
+* Frontend Visualization Stack: The system relies completely on the stability of HTML5 Canvas standard rendering specifications or equivalent lightweight web graphic libraries (such as react-konva) to dynamically render structural bounding box dimensions onto the diagnostic canvas interface for radiologist annotations. Any critical deprecation or instability in these libraries will require immediate architectural revision.
+* Image Engineering Packages: The backend Python system layer relies on the integrity of third-party compilation modules—specifically OpenCV (cv2) for structural CLAHE contrast balancing operations and PyTorch/TorchVision (CPU-runtime environment) to execute numerical calculations across input data tensors during AI inference. These libraries are assumed to be compatible with the specified Python runtime environment and available in standard package repositories (pip).
+* API Framework: The system depends on the stability and availability of the Django REST framework for handling RESTful API requests between the front-end interface, the central database, and the CNN AI engine.
+* Browser Compatibility Libraries: The system assumes modern web browsers (Google Chrome v100+, Mozilla Firefox v100+, Microsoft Edge v100+) maintain consistent support for ES6+ JavaScript standards, Fetch API, and modern CSS rendering specifications.
+
+### 2.5.5 Operational Environment Assumptions
+* Persistent Storage Allocation: The system configuration assumes access to a persistent, strictly locally mounted storage partition on the edge server with an initial baseline allotment of 10 GB. To comply with Data Privacy Act regulations regarding Protected Health Information (PHI), cloud object storage (e.g., AWS S3) is explicitly excluded from the current architecture. This local allocation is required to manage the active file persistence workflow for incoming client media assets and exported JSON structured report formats, ensuring adequate space for concurrent image uploads and diagnostic output caching during peak operational periods.
+* Storage Availability: Storage partitions are assumed to be continuously available and accessible to both the backend application and the database system. Any storage unavailability or quota exhaustion will prevent new image uploads and system functionality.
+* File System Permissions: The application assumes appropriate read/write/execute permissions are configured on storage directories to enable seamless file operations without requiring additional authentication or privilege escalation.
 
 3. # **Specific Requirements** 
 

@@ -8,6 +8,10 @@ frontend_files.txt
 backend_files.txt
 ai_files.txt
 walker.py
+.proposal_pdf_plain.txt
+.proposal_pdf_text.txt
+.sdd_pdf_plain.txt
+.srs_pdf_plain.txt
 
 # C extensions
 *.so
