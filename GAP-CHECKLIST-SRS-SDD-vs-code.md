@@ -74,9 +74,10 @@ Legend:
   - Planned: export aggregated report artifacts.
   - Current: no aggregate export endpoint in summary.
 
-- [~] Logout flow is half-baked due to route mismatch.
+- [x] Logout flow is half-baked due to route mismatch.
   - Planned: secure and reliable logout.
   - Current: frontend calls /api/accounts/logout while backend route is /accounts/logout.
+  - Fixed: frontend logout caller aligned to /accounts/logout/ in AuthContext.jsx.
 
 ## 4) Data/Model and Report Output Gaps
 
