@@ -70,7 +70,7 @@ export const DASHBOARD_COLUMNS = [
     header: 'AI Risk Score',
     label: 'Scores',
     filterable: true,
-    filterOptions: ['LOW', 'HIGH'],
+    filterOptions: ['LOW', 'MODERATE', 'HIGH'],
     width: '140px',
     render: (row) => row.ai_result
       ? <AIRiskBadge label={row.ai_result.risk_label} score={row.ai_result.risk_score} />
