@@ -70,6 +70,7 @@
 | **Acceptance Criteria** | <ul><li>Smoke test suite includes auth and report endpoints</li><li>CI pipeline runs tests on every push</li><li>Frontend logout flow tested</li><li>Report generation tested</li><li>Test results logged and visible</li></ul> |
 | **Output** | Quick regression safety net |
 | **Gap Covered** | Prevent re-breakage |
+| **Status** | Done — smoke tests (accounts/test_smoke.py, imaging/test_smoke.py) + CI (.github/workflows/ci.yml); verified locally 2026-08-19 (6/6 OK) |
 
 ## W1-T6: Contract freeze note
 | Field | Value |

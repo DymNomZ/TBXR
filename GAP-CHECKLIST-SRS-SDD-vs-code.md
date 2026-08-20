@@ -109,6 +109,13 @@ Legend:
   - Planned product clarity requires implemented or intentionally removed modules.
   - Current: Appointments, Doctor, Messages, Settings links exist without routed pages.
 
+## 7) CI / Regression Safety Net
+
+- [x] Automated smoke tests cover the auth/logout and report-generation routes and run in CI on push/PR.
+  - Tests: backend/apps/accounts/test_smoke.py, backend/apps/imaging/test_smoke.py
+  - Pipeline: .github/workflows/ci.yml
+  - Verified: host run 2026-08-19 — 6/6 smoke tests pass
+
 ## Prioritized Fix Order (suggested)
 
 1. Fix logout route mismatch and report demographic mapping (high impact, low effort).
