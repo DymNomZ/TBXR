@@ -2,6 +2,8 @@ import { createContext, useContext, useState } from 'react'
 
 const AuthContext = createContext(null)
 
+const LOGOUT_URL = '/accounts/logout/'
+
 const ROLE_DASHBOARD = {
   RADIOLOGIC_TECH: '/dashboard/technologist',
   RADIOLOGIST:     '/dashboard/radiologist',
@@ -27,7 +29,7 @@ export function AuthProvider({ children }) {
         .find(row => row.startsWith('csrftoken='))
         ?.split('=')[1]
 
-      await fetch('/api/accounts/logout/', {
+      await fetch(LOGOUT_URL, {
         method: 'POST',
         credentials: 'include',
         headers: { 'X-CSRFToken': csrfToken ?? '' },

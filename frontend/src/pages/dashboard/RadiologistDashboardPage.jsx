@@ -87,7 +87,7 @@ export default function RadiologistDashboardPage() {
         <FilterBar
           filterableCols={FILTERABLE_COLS}
           onFilterChange={handleFilterChange}
-          initialFilters={{ risk_label: 'HIGH' }}
+          initialFilters={activeFilters}
         />
 
         {loading ? (

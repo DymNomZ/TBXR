@@ -74,9 +74,10 @@ Legend:
   - Planned: export aggregated report artifacts.
   - Current: no aggregate export endpoint in summary.
 
-- [~] Logout flow is half-baked due to route mismatch.
+- [x] Logout flow is half-baked due to route mismatch.
   - Planned: secure and reliable logout.
   - Current: frontend calls /api/accounts/logout while backend route is /accounts/logout.
+  - Fixed: frontend logout caller aligned to /accounts/logout/ in AuthContext.jsx.
 
 ## 4) Data/Model and Report Output Gaps
 
@@ -107,6 +108,13 @@ Legend:
 - [~] Sidebar modules are half-baked placeholders.
   - Planned product clarity requires implemented or intentionally removed modules.
   - Current: Appointments, Doctor, Messages, Settings links exist without routed pages.
+
+## 7) CI / Regression Safety Net
+
+- [x] Automated smoke tests cover the auth/logout and report-generation routes and run in CI on push/PR.
+  - Tests: backend/apps/accounts/test_smoke.py, backend/apps/imaging/test_smoke.py
+  - Pipeline: .github/workflows/ci.yml
+  - Verified: host run 2026-08-19 — 6/6 smoke tests pass
 
 ## Prioritized Fix Order (suggested)
 
