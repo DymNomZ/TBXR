@@ -87,6 +87,7 @@ export default function TechDashboardPage() {
         <FilterBar
           filterableCols={FILTERABLE_COLS}
           onFilterChange={handleFilterChange}
+          initialFilters={activeFilters}
         />
 
         {loading ? (

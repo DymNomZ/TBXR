@@ -207,6 +207,56 @@ class ImagingAccessTests(TestCase):
 			[str(self.tech_one_record.transaction_id), str(self.tech_two_record.transaction_id)],
 		)
 
+	def test_radiologist_queue_filters_by_severity_levels(self):
+		self.client.force_login(self.rad)
+
+		low_record = self._create_xray_record(
+			patient=self.patient_one,
+			uploader=self.tech_one,
+			filename="low-risk.png",
+		)
+		moderate_record = self._create_xray_record(
+			patient=self.patient_two,
+			uploader=self.tech_two,
+			filename="moderate-risk.png",
+		)
+		AIResult.objects.create(
+			xray_record=low_record,
+			risk_score=0.20,
+			risk_label=AIResult.RiskLabel.LOW,
+			model_version="v-test",
+		)
+		AIResult.objects.create(
+			xray_record=moderate_record,
+			risk_score=0.55,
+			risk_label=AIResult.RiskLabel.MODERATE,
+			model_version="v-test",
+		)
+		AIResult.objects.create(
+			xray_record=self.tech_two_record,
+			risk_score=0.85,
+			risk_label=AIResult.RiskLabel.HIGH,
+			model_version="v-test",
+		)
+
+		for filter_value, expected in [
+			("LOW", [str(low_record.transaction_id)]),
+			("MODERATE", [str(moderate_record.transaction_id)]),
+			("HIGH", [str(self.tech_two_record.transaction_id)]),
+		]:
+			with self.subTest(filter_value=filter_value):
+				response = self.client.get(
+					reverse("imaging:radiologist-queue"),
+					{"risk_label": filter_value},
+				)
+				self.assertEqual(response.status_code, 200)
+				payload = response.json()
+				self.assertEqual(payload["count"], len(expected))
+				self.assertEqual(
+					[result["transaction_id"] for result in payload["results"]],
+					expected,
+				)
+
 	def test_xray_detail_is_accessible_to_all_roles(self):
 		detail_url = reverse(
 			"imaging:xray-detail",
