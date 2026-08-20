@@ -10,6 +10,7 @@ from unittest import mock
 from PIL import Image
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.template.loader import render_to_string
 from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
@@ -207,6 +208,37 @@ class ImagingAccessTests(TestCase):
 			[str(self.tech_one_record.transaction_id), str(self.tech_two_record.transaction_id)],
 		)
 
+	def test_report_template_includes_clinical_disclaimer(self):
+		html = render_to_string(
+			"reports/xray_report.html",
+			{
+				"transaction_id": "123e4567-e89b-12d3-a456-426614174000",
+				"upload_date": "2026-08-19 14:30",
+				"generated_at": "2026-08-19 15:00",
+				"patient_name": "Juan Dela Cruz",
+				"patient_age": "35",
+				"patient_sex": "M",
+				"facility_name": "Cebu General Hospital",
+				"ai_risk_score": "0.82",
+				"ai_risk_label": "HIGH",
+				"heatmap_base64": "",
+				"radiologist_annotations": ["Left upper lobe opacity"],
+				"diagnostic_notes": "No diagnostic notes provided.",
+				"clinical_impression": "Suspicious for tuberculosis.",
+				"recommendations": "Follow-up imaging and specialist review.",
+				"ai_summary": "AI model flagged as HIGH risk.",
+			},
+		)
+
+		self.assertIn(
+			"AI-generated assessments are assistive only and are not a definitive diagnosis.",
+			html,
+		)
+		self.assertIn(
+			"Final clinical decisions remain with licensed medical professionals.",
+			html,
+		)
+    
 	def test_radiologist_queue_filters_by_severity_levels(self):
 		self.client.force_login(self.rad)
 
