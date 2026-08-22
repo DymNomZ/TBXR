@@ -81,9 +81,10 @@ Legend:
 
 ## 4) Data/Model and Report Output Gaps
 
-- [~] Report patient sex field mapping is half-baked.
+- [x] Report patient sex field mapping is half-baked.
   - Planned: accurate patient demographic output.
   - Current: report references patient.gender while model field is patient.sex.
+  - Fixed: updated report pipeline in views.py to use patient.sex.
 
 - [~] Risk-filtering in dashboard is partial.
   - Planned/Designed model choices include LOW, MODERATE, HIGH.

@@ -504,7 +504,7 @@ def generate_report(request, transaction_id):
         "generated_at": timezone.now().strftime("%Y-%m-%d %H:%M"),
         "patient_name": f"{patient.first_name} {patient.last_name}",
         "patient_age": calculate_age(getattr(patient, 'date_of_birth', None)),
-        "patient_sex": getattr(patient, 'gender', 'N/A'),
+        "patient_sex": getattr(patient, 'sex', 'N/A'),
         "facility_name": "",
         "ai_risk_score": f"{ai_result.risk_score:.2f}" if ai_result else "N/A",
         "ai_risk_label": ai_result.risk_label if ai_result else "N/A",
