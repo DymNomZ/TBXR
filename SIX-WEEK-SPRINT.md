@@ -81,6 +81,7 @@
 | **Acceptance Criteria** | <ul><li>API contract document created/updated</li><li>All modified endpoints documented with request/response schemas</li><li>Field mappings documented</li><li>Shared with team in repo or wiki</li></ul> |
 | **Output** | Team alignment before Week 2 feature work |
 | **Gap Covered** | Coordination risk |
+| **Status** | Done — contract freeze note published at `documentation/W1-CONTRACT-FREEZE-2026-08-22.md` (dated 2026-08-22) |
 
 ---
 

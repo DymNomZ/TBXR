@@ -77,3 +77,7 @@ feat(frontend): build static upload confirmation page #17
 ```
  
 > **Note:** The `#issue-number` at the end automatically links the commit to its GitHub issue. The commit will appear in the issue's timeline, making it easy to trace exactly which commits closed which issue.
+
+## Contract Freeze Notes
+
+- Week 1 API contract freeze: `documentation/W1-CONTRACT-FREEZE-2026-08-22.md`
