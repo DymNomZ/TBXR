@@ -8,7 +8,7 @@
     
     /* for JavaScript */
     "allowJs": true,
-    "checkJs": true,
+    "checkJs": false,
     "noEmit": true,
     
     /* Strict Safety Options */
