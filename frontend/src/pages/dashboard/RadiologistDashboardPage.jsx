@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
-import { useNavigate } from 'react-router-dom'
 import AppLayout from '../../components/layout/AppLayout'
 import StatCard from '../../components/ui/StatCard'
 import FilterBar from '../../components/dashboard/FilterBar'
@@ -11,7 +10,6 @@ const FILTERABLE_COLS = QUEUE_COLUMNS.filter((c) => c.filterable)
 const PAGE_SIZE = 20
 
 export default function RadiologistDashboardPage() {
-  const navigate = useNavigate()
   const [page, setPage]             = useState(1)
   const [activeFilters, setFilters] = useState({ search: '', status: '', risk_label: 'HIGH' })
   const [records, setRecords]       = useState([])
