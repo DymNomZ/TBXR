@@ -58,7 +58,7 @@ function LoginForm() {
         const text = (await response.text()).trim()
         setError(text || 'Login failed. Please try again.')
       }
-    } catch (fetchError) {
+    } catch {
       setError('Unable to reach the server. Please try again.')
     } finally {
       setIsSubmitting(false)

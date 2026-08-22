@@ -1,7 +1,6 @@
 import { useNavigate } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import Table from '../ui/Table';
-import StatusBadge from '../ui/StatusBadge';
 
 // ✏️ This is your only edit point for the table structure.
 // Each column needs:

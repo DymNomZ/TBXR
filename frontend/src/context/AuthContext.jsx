@@ -34,7 +34,7 @@ export function AuthProvider({ children }) {
         credentials: 'include',
         headers: { 'X-CSRFToken': csrfToken ?? '' },
       })
-    } catch (e) {
+    } catch {
       // proceed with local logout even if request fails
     }
 

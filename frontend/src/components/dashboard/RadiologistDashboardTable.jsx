@@ -110,8 +110,6 @@ function ReviewButton({ record }) {
 }
 
 export default function RadiologistDashboardTable({ data = [] }) {
-  const navigate = useNavigate()
-
   return (
     <div className="bg-white rounded-2xl border border-[var(--border)] shadow-sm overflow-hidden">
       <Table

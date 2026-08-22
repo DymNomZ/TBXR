@@ -114,8 +114,6 @@ function DashboardActionButton({ record }) {
 }
 
 export default function TechnologistDashboardTable({ data = [] }) {
-  const navigate = useNavigate()
-
   return (
     <div className="bg-white rounded-2xl border border-[var(--border)] shadow-sm overflow-hidden">
       <Table
