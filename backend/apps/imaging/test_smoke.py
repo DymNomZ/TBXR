@@ -13,7 +13,7 @@ from django.urls import reverse
 from apps.accounts.enums import UserRole
 from apps.patients.models import Patient
 
-from .models import AIResult, Annotation, XrayRecord
+from .models import AIResult, Annotation, XrayRecord, Report
 
 
 class ReportSmokeTests(TestCase):
@@ -126,3 +126,180 @@ class ReportSmokeTests(TestCase):
         self.client.force_login(self.rad)
         response = self.client.get(self._report_url(uuid.uuid4()))
         self.assertEqual(response.status_code, 404)
+
+    # --- New Report Model Tests ---
+
+    def _report_detail_url(self, transaction_id):
+        return reverse("imaging:report_detail", kwargs={"transaction_id": str(transaction_id)})
+
+    def test_create_report_draft(self):
+        """Radiologist can create a draft report (is_finalized=False)."""
+        self.client.force_login(self.rad)
+        url = self._report_detail_url(self.completed_record.transaction_id)
+        payload = {
+            "findings": "Right upper lobe opacity noted.",
+            "impression": "Suggestive of active TB.",
+            "recommendation": "Sputum AFB and GeneXpert recommended.",
+            "severity": "MODERATE",
+        }
+        response = self.client.post(url, payload, content_type="application/json")
+        self.assertEqual(response.status_code, 201)
+        self.assertFalse(response.data["is_finalized"])
+        self.assertEqual(response.data["severity"], "MODERATE")
+        self.assertEqual(response.data["findings"], "Right upper lobe opacity noted.")
+
+    def test_create_report_draft_allows_empty_fields(self):
+        """Draft creation allows empty required fields."""
+        self.client.force_login(self.rad)
+        url = self._report_detail_url(self.completed_record.transaction_id)
+        payload = {}  # All fields empty
+        response = self.client.post(url, payload, content_type="application/json")
+        self.assertEqual(response.status_code, 201)
+        self.assertFalse(response.data["is_finalized"])
+        # severity defaults to NORMAL
+        self.assertEqual(response.data["severity"], "NORMAL")
+
+    def test_retrieve_report(self):
+        """Radiologist can retrieve an existing report."""
+        self.client.force_login(self.rad)
+        report = Report.objects.create(
+            xray_record=self.completed_record,
+            findings="Test findings",
+            impression="Test impression",
+            recommendation="Test recommendation",
+            severity=Report.SeverityChoices.MILD,
+            is_finalized=False,
+        )
+        url = self._report_detail_url(self.completed_record.transaction_id)
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["id"], report.id)
+        self.assertEqual(response.data["severity"], "MILD")
+
+    def test_update_report_draft(self):
+        """Radiologist can PATCH a draft report."""
+        self.client.force_login(self.rad)
+        report = Report.objects.create(
+            xray_record=self.completed_record,
+            findings="Initial findings",
+            impression="Initial impression",
+            recommendation="Initial rec",
+            severity=Report.SeverityChoices.NORMAL,
+            is_finalized=False,
+        )
+        url = self._report_detail_url(self.completed_record.transaction_id)
+        response = self.client.patch(url, {"severity": "SEVERE"}, content_type="application/json")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["severity"], "SEVERE")
+        report.refresh_from_db()
+        self.assertEqual(report.severity, "SEVERE")
+
+    def test_cannot_update_finalized_report(self):
+        """Finalized reports cannot be modified."""
+        self.client.force_login(self.rad)
+        report = Report.objects.create(
+            xray_record=self.completed_record,
+            findings="Findings",
+            impression="Impression",
+            recommendation="Rec",
+            severity=Report.SeverityChoices.NORMAL,
+            is_finalized=True,
+            created_by=self.rad,
+        )
+        url = self._report_detail_url(self.completed_record.transaction_id)
+        response = self.client.patch(url, {"findings": "Changed"}, content_type="application/json")
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("finalized", response.data["detail"].lower())
+
+    def test_final_submit_rejects_missing_fields(self):
+        """Final submit (is_finalized=true) rejects missing required fields."""
+        self.client.force_login(self.rad)
+        # First create a draft
+        report = Report.objects.create(
+            xray_record=self.completed_record,
+            findings="",  # missing
+            impression="Impression",
+            recommendation="Rec",
+            severity=Report.SeverityChoices.NORMAL,
+            is_finalized=False,
+        )
+        url = self._report_detail_url(self.completed_record.transaction_id)
+        # Try to finalize with missing fields
+        response = self.client.patch(url, {"is_finalized": True}, content_type="application/json")
+        self.assertEqual(response.status_code, 400)
+        # Should have field-level errors for missing fields
+        self.assertIn("findings", response.data)
+        self.assertEqual(response.data["findings"][0], "This field is required for final submission.")
+
+    def test_final_submit_succeeds_with_all_fields(self):
+        """Final submit succeeds when all required fields are present."""
+        self.client.force_login(self.rad)
+        report = Report.objects.create(
+            xray_record=self.completed_record,
+            findings="Complete findings",
+            impression="Complete impression",
+            recommendation="Complete recommendation",
+            severity=Report.SeverityChoices.MODERATE,
+            is_finalized=False,
+        )
+        url = self._report_detail_url(self.completed_record.transaction_id)
+        response = self.client.patch(url, {"is_finalized": True}, content_type="application/json")
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.data["is_finalized"])
+        self.assertEqual(response.data["created_by"]["username"], "smoke-rad")
+        report.refresh_from_db()
+        self.assertTrue(report.is_finalized)
+        self.assertEqual(report.created_by, self.rad)
+
+    def test_draft_then_finalize_workflow(self):
+        """Full workflow: create draft, update, then finalize."""
+        self.client.force_login(self.rad)
+        url = self._report_detail_url(self.completed_record.transaction_id)
+        # Create draft with minimal data
+        response = self.client.post(url, {"severity": "MILD"}, content_type="application/json")
+        self.assertEqual(response.status_code, 201)
+        self.assertFalse(response.data["is_finalized"])
+        # Update draft with remaining fields
+        response = self.client.patch(url, {
+            "findings": "Updated findings",
+            "impression": "Updated impression",
+            "recommendation": "Updated recommendation",
+        }, content_type="application/json")
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.data["is_finalized"])
+        # Finalize
+        response = self.client.patch(url, {"is_finalized": True}, content_type="application/json")
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.data["is_finalized"])
+        report = Report.objects.get(xray_record=self.completed_record)
+        self.assertTrue(report.is_finalized)
+        self.assertEqual(report.created_by, self.rad)
+
+    def test_tech_cannot_create_report(self):
+        """Technologists cannot create reports."""
+        self.client.force_login(self.tech)
+        url = self._report_detail_url(self.completed_record.transaction_id)
+        response = self.client.post(url, {"findings": "x", "impression": "x", "recommendation": "x", "severity": "NORMAL"}, content_type="application/json")
+        self.assertEqual(response.status_code, 403)
+
+    def test_generate_report_uses_persisted_report_data(self):
+        """PDF generation uses Report model fields."""
+        self.client.force_login(self.rad)
+        Report.objects.create(
+            xray_record=self.completed_record,
+            findings="Persistent findings",
+            impression="Persistent impression",
+            recommendation="Persistent rec",
+            severity=Report.SeverityChoices.CRITICAL,
+            is_finalized=True,
+            created_by=self.rad,
+        )
+        fake_run = SimpleNamespace(
+            stdout=b"%PDF-1.4 fake pdf bytes",
+            stderr=b"",
+            returncode=0,
+        )
+        url = reverse("imaging:generate_report", kwargs={"transaction_id": str(self.completed_record.transaction_id)})
+        with mock.patch("apps.imaging.views.subprocess.run", return_value=fake_run):
+            response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)

@@ -44,6 +44,11 @@ urlpatterns = [
     path('xray/<str:transaction_id>/', views.xray_detail, name='xray-detail'),
     path(
         "xray/<uuid:transaction_id>/report/",
+        views.report_detail,
+        name="report_detail",
+    ),
+    path(
+        "xray/<uuid:transaction_id>/report/generate/",
         views.generate_report,
         name="generate_report",
     ),

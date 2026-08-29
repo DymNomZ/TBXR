@@ -6,7 +6,7 @@ from PIL import Image
 from django.core.files.base import ContentFile
 from rest_framework import serializers
 
-from .models import Annotation, XrayRecord, ProcessedImage, AIResult
+from .models import Annotation, XrayRecord, ProcessedImage, AIResult, Report
 from apps.patients.models import Patient
 from django.contrib.auth import get_user_model
 
@@ -318,3 +318,61 @@ class XrayRecordDetailSerializer(serializers.ModelSerializer):
             'annotations',
             'ai_result',
         ]
+
+
+class ReportSerializer(serializers.ModelSerializer):
+    created_by = RadiologistBriefSerializer(read_only=True)
+    xray_record = serializers.UUIDField(source='xray_record.transaction_id', read_only=True)
+
+    class Meta:
+        model = Report
+        fields = [
+            'id', 'xray_record', 'findings', 'impression',
+            'recommendation', 'severity', 'created_by',
+            'created_at', 'updated_at', 'is_finalized'
+        ]
+        read_only_fields = ['created_by', 'created_at', 'updated_at', 'is_finalized']
+
+
+class ReportCreateSerializer(serializers.ModelSerializer):
+    is_finalized = serializers.BooleanField(write_only=True, required=False, default=False)
+
+    class Meta:
+        model = Report
+        fields = ['findings', 'impression', 'recommendation', 'severity', 'is_finalized']
+        extra_kwargs = {
+            'findings': {'required': False, 'allow_blank': True},
+            'impression': {'required': False, 'allow_blank': True},
+            'recommendation': {'required': False, 'allow_blank': True},
+            'severity': {'required': False},
+        }
+
+    def validate(self, attrs):
+        is_finalized = attrs.get('is_finalized', False)
+
+        if is_finalized:
+            required_fields = ['findings', 'impression', 'recommendation', 'severity']
+            # Check both attrs (incoming data) and instance (existing data for partial updates)
+            missing = []
+            for field in required_fields:
+                value = attrs.get(field)
+                if value is None and self.instance is not None:
+                    value = getattr(self.instance, field, None)
+                if not value:
+                    missing.append(field)
+            if missing:
+                raise serializers.ValidationError({
+                    field: "This field is required for final submission."
+                    for field in missing
+                })
+
+        return attrs
+
+    def update(self, instance, validated_data):
+        is_finalized = validated_data.get('is_finalized', False)
+        # If finalizing, set created_by from context (request.user)
+        if is_finalized and not instance.is_finalized:
+            request = self.context.get('request')
+            if request and hasattr(request, 'user'):
+                instance.created_by = request.user
+        return super().update(instance, validated_data)

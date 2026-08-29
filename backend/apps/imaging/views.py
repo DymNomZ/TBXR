@@ -33,7 +33,7 @@ from apps.accounts.enums import UserRole
 from apps.patients.models import Patient
 
 from .preprocessing import preprocess_xray
-from .models import Annotation, XrayRecord, ProcessedImage, AIResult
+from .models import Annotation, XrayRecord, ProcessedImage, AIResult, Report
 from django.db import models
 from .serializers import (
     XrayRecordUploadSerializer,
@@ -44,6 +44,8 @@ from .serializers import (
     XrayRecordHistorySerializer,
     AIResultSerializer,
     PatientHistorySerializer,
+    ReportSerializer,
+    ReportCreateSerializer,
 )
 
 _INFERENCE_MODULE = None
@@ -466,6 +468,71 @@ def patient_history(request, patient_id):
     )
     return Response(serializer.data)
 
+
+@api_view(["GET", "POST", "PATCH"])
+@role_required(UserRole.RADIOLOGIST)
+def report_detail(request, transaction_id):
+    xray_record = get_object_or_404(XrayRecord, transaction_id=transaction_id)
+
+    if request.method == "GET":
+        try:
+            report = xray_record.report
+        except Report.DoesNotExist:
+            return Response(
+                {"detail": "Report not found for this X-ray."},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        serializer = ReportSerializer(report, context={'request': request})
+        return Response(serializer.data)
+
+    elif request.method == "POST":
+        report, created = Report.objects.get_or_create(
+            xray_record=xray_record,
+            defaults={
+                'findings': '',
+                'impression': '',
+                'recommendation': '',
+                'severity': Report.SeverityChoices.NORMAL,
+                'is_finalized': False,
+            }
+        )
+        # For draft creation, always pass is_finalized=False
+        data = {**request.data, 'is_finalized': False}
+        serializer = ReportCreateSerializer(report, data=data, partial=False)
+
+        if serializer.is_valid():
+            serializer.save()
+            return Response(
+                ReportSerializer(report, context={'request': request}).data,
+                status=status.HTTP_201_CREATED if created else status.HTTP_200_OK
+            )
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    elif request.method == "PATCH":
+        try:
+            report = xray_record.report
+        except Report.DoesNotExist:
+            return Response(
+                {"detail": "Report not found for this X-ray."},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        if report.is_finalized:
+            return Response(
+                {"detail": "Cannot modify a finalized report."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Allow client to pass is_finalized=true to submit
+        serializer = ReportCreateSerializer(report, data=request.data, partial=True, context={'request': request})
+        if serializer.is_valid():
+            serializer.save()
+            return Response(
+                ReportSerializer(report, context={'request': request}).data
+            )
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
 @api_view(["GET"])
 @role_required(UserRole.RADIOLOGIST)
 def generate_report(request, transaction_id):
@@ -473,9 +540,24 @@ def generate_report(request, transaction_id):
 
     if xray_record.status != "COMPLETED":
         return Response(
-            {"detail": "PDF report can only be generaated for COMPLETED X-rays."},
+            {"detail": "PDF report can only be generated for COMPLETED X-rays."},
             status=status.HTTP_400_BAD_REQUEST
         )
+
+    # Get or create report (allow PDF generation even if not finalized)
+    try:
+        report = xray_record.report
+    except Report.DoesNotExist:
+        # Auto-create minimal report for PDF generation
+        report = Report.objects.create(
+            xray_record=xray_record,
+            findings="Report not yet structured. See diagnostic notes below.",
+            impression="Pending radiologist finalization.",
+            recommendation="Clinical correlation recommended.",
+            severity=Report.SeverityChoices.NORMAL,
+            is_finalized=False,
+        )
+
     patient = xray_record.patient
     ai_result = getattr(xray_record, "ai_result", None)
     annotations = xray_record.annotations.all()
@@ -511,10 +593,9 @@ def generate_report(request, transaction_id):
         "heatmap_base64": heatmap_base64,
         "radiologist_annotations": radiologist_notes,
         "diagnostic_notes": diagnostic_notes_text,
-        "clinical_impression": "",
-        "recommendations": "",
+        "clinical_impression": report.impression if report else "",
+        "recommendations": report.recommendation if report else "",
         "ai_summary": f"AI model flagged as {ai_result.risk_label if ai_result else 'N/A'} risk."
-
     }
     html_content = render_to_string("reports/xray_report.html", context)
     temp_html_path = None
