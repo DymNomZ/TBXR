@@ -493,11 +493,11 @@ def report_detail(request, transaction_id):
                 'impression': '',
                 'recommendation': '',
                 'severity': Report.SeverityChoices.NORMAL,
-                'is_finalized': False,
+                'status': 'DRAFT',
             }
         )
-        # For draft creation, always pass is_finalized=False
-        data = {**request.data, 'is_finalized': False}
+        # For draft creation, always pass status='DRAFT'
+        data = {**request.data, 'status': 'DRAFT'}
         serializer = ReportCreateSerializer(report, data=data, partial=False)
 
         if serializer.is_valid():
@@ -517,13 +517,13 @@ def report_detail(request, transaction_id):
                 status=status.HTTP_404_NOT_FOUND
             )
 
-        if report.is_finalized:
+        if report.status == 'SUBMITTED':
             return Response(
                 {"detail": "Cannot modify a finalized report."},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # Allow client to pass is_finalized=true to submit
+        # Allow client to pass status='SUBMITTED' to submit
         serializer = ReportCreateSerializer(report, data=request.data, partial=True, context={'request': request})
         if serializer.is_valid():
             serializer.save()
@@ -555,7 +555,7 @@ def generate_report(request, transaction_id):
             impression="Pending radiologist finalization.",
             recommendation="Clinical correlation recommended.",
             severity=Report.SeverityChoices.NORMAL,
-            is_finalized=False,
+            status='DRAFT',
         )
 
     patient = xray_record.patient

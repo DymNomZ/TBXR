@@ -329,17 +329,17 @@ class ReportSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'xray_record', 'findings', 'impression',
             'recommendation', 'severity', 'created_by',
-            'created_at', 'updated_at', 'is_finalized'
+            'created_at', 'updated_at', 'status'
         ]
-        read_only_fields = ['created_by', 'created_at', 'updated_at', 'is_finalized']
+        read_only_fields = ['created_by', 'created_at', 'updated_at', 'status']
 
 
 class ReportCreateSerializer(serializers.ModelSerializer):
-    is_finalized = serializers.BooleanField(write_only=True, required=False, default=False)
+    status = serializers.ChoiceField(choices=[('DRAFT', 'Draft'), ('SUBMITTED', 'Submitted')], required=False, default='DRAFT')
 
     class Meta:
         model = Report
-        fields = ['findings', 'impression', 'recommendation', 'severity', 'is_finalized']
+        fields = ['findings', 'impression', 'recommendation', 'severity', 'status']
         extra_kwargs = {
             'findings': {'required': False, 'allow_blank': True},
             'impression': {'required': False, 'allow_blank': True},
@@ -348,9 +348,9 @@ class ReportCreateSerializer(serializers.ModelSerializer):
         }
 
     def validate(self, attrs):
-        is_finalized = attrs.get('is_finalized', False)
+        status_val = attrs.get('status', 'DRAFT')
 
-        if is_finalized:
+        if status_val == 'SUBMITTED':
             required_fields = ['findings', 'impression', 'recommendation', 'severity']
             # Check both attrs (incoming data) and instance (existing data for partial updates)
             missing = []
@@ -369,9 +369,9 @@ class ReportCreateSerializer(serializers.ModelSerializer):
         return attrs
 
     def update(self, instance, validated_data):
-        is_finalized = validated_data.get('is_finalized', False)
+        status_val = validated_data.get('status', 'DRAFT')
         # If finalizing, set created_by from context (request.user)
-        if is_finalized and not instance.is_finalized:
+        if status_val == 'SUBMITTED' and instance.status != 'SUBMITTED':
             request = self.context.get('request')
             if request and hasattr(request, 'user'):
                 instance.created_by = request.user

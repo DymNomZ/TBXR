@@ -133,7 +133,7 @@ class ReportSmokeTests(TestCase):
         return reverse("imaging:report_detail", kwargs={"transaction_id": str(transaction_id)})
 
     def test_create_report_draft(self):
-        """Radiologist can create a draft report (is_finalized=False)."""
+        """Radiologist can create a draft report (status='DRAFT')."""
         self.client.force_login(self.rad)
         url = self._report_detail_url(self.completed_record.transaction_id)
         payload = {
@@ -144,7 +144,7 @@ class ReportSmokeTests(TestCase):
         }
         response = self.client.post(url, payload, content_type="application/json")
         self.assertEqual(response.status_code, 201)
-        self.assertFalse(response.data["is_finalized"])
+        self.assertEqual(response.data["status"], "DRAFT")
         self.assertEqual(response.data["severity"], "MODERATE")
         self.assertEqual(response.data["findings"], "Right upper lobe opacity noted.")
 
@@ -155,7 +155,7 @@ class ReportSmokeTests(TestCase):
         payload = {}  # All fields empty
         response = self.client.post(url, payload, content_type="application/json")
         self.assertEqual(response.status_code, 201)
-        self.assertFalse(response.data["is_finalized"])
+        self.assertEqual(response.data["status"], "DRAFT")
         # severity defaults to NORMAL
         self.assertEqual(response.data["severity"], "NORMAL")
 
@@ -168,7 +168,7 @@ class ReportSmokeTests(TestCase):
             impression="Test impression",
             recommendation="Test recommendation",
             severity=Report.SeverityChoices.MILD,
-            is_finalized=False,
+            status="DRAFT",
         )
         url = self._report_detail_url(self.completed_record.transaction_id)
         response = self.client.get(url)
@@ -185,7 +185,7 @@ class ReportSmokeTests(TestCase):
             impression="Initial impression",
             recommendation="Initial rec",
             severity=Report.SeverityChoices.NORMAL,
-            is_finalized=False,
+            status="DRAFT",
         )
         url = self._report_detail_url(self.completed_record.transaction_id)
         response = self.client.patch(url, {"severity": "SEVERE"}, content_type="application/json")
@@ -203,7 +203,7 @@ class ReportSmokeTests(TestCase):
             impression="Impression",
             recommendation="Rec",
             severity=Report.SeverityChoices.NORMAL,
-            is_finalized=True,
+            status="SUBMITTED",
             created_by=self.rad,
         )
         url = self._report_detail_url(self.completed_record.transaction_id)
@@ -212,7 +212,7 @@ class ReportSmokeTests(TestCase):
         self.assertIn("finalized", response.data["detail"].lower())
 
     def test_final_submit_rejects_missing_fields(self):
-        """Final submit (is_finalized=true) rejects missing required fields."""
+        """Final submit (status='SUBMITTED') rejects missing required fields."""
         self.client.force_login(self.rad)
         # First create a draft
         report = Report.objects.create(
@@ -221,11 +221,11 @@ class ReportSmokeTests(TestCase):
             impression="Impression",
             recommendation="Rec",
             severity=Report.SeverityChoices.NORMAL,
-            is_finalized=False,
+            status="DRAFT",
         )
         url = self._report_detail_url(self.completed_record.transaction_id)
         # Try to finalize with missing fields
-        response = self.client.patch(url, {"is_finalized": True}, content_type="application/json")
+        response = self.client.patch(url, {"status": "SUBMITTED"}, content_type="application/json")
         self.assertEqual(response.status_code, 400)
         # Should have field-level errors for missing fields
         self.assertIn("findings", response.data)
@@ -240,15 +240,15 @@ class ReportSmokeTests(TestCase):
             impression="Complete impression",
             recommendation="Complete recommendation",
             severity=Report.SeverityChoices.MODERATE,
-            is_finalized=False,
+            status="DRAFT",
         )
         url = self._report_detail_url(self.completed_record.transaction_id)
-        response = self.client.patch(url, {"is_finalized": True}, content_type="application/json")
+        response = self.client.patch(url, {"status": "SUBMITTED"}, content_type="application/json")
         self.assertEqual(response.status_code, 200)
-        self.assertTrue(response.data["is_finalized"])
+        self.assertEqual(response.data["status"], "SUBMITTED")
         self.assertEqual(response.data["created_by"]["username"], "smoke-rad")
         report.refresh_from_db()
-        self.assertTrue(report.is_finalized)
+        self.assertEqual(report.status, "SUBMITTED")
         self.assertEqual(report.created_by, self.rad)
 
     def test_draft_then_finalize_workflow(self):
@@ -258,7 +258,7 @@ class ReportSmokeTests(TestCase):
         # Create draft with minimal data
         response = self.client.post(url, {"severity": "MILD"}, content_type="application/json")
         self.assertEqual(response.status_code, 201)
-        self.assertFalse(response.data["is_finalized"])
+        self.assertEqual(response.data["status"], "DRAFT")
         # Update draft with remaining fields
         response = self.client.patch(url, {
             "findings": "Updated findings",
@@ -266,13 +266,13 @@ class ReportSmokeTests(TestCase):
             "recommendation": "Updated recommendation",
         }, content_type="application/json")
         self.assertEqual(response.status_code, 200)
-        self.assertFalse(response.data["is_finalized"])
+        self.assertEqual(response.data["status"], "DRAFT")
         # Finalize
-        response = self.client.patch(url, {"is_finalized": True}, content_type="application/json")
+        response = self.client.patch(url, {"status": "SUBMITTED"}, content_type="application/json")
         self.assertEqual(response.status_code, 200)
-        self.assertTrue(response.data["is_finalized"])
+        self.assertEqual(response.data["status"], "SUBMITTED")
         report = Report.objects.get(xray_record=self.completed_record)
-        self.assertTrue(report.is_finalized)
+        self.assertEqual(report.status, "SUBMITTED")
         self.assertEqual(report.created_by, self.rad)
 
     def test_tech_cannot_create_report(self):
@@ -291,7 +291,7 @@ class ReportSmokeTests(TestCase):
             impression="Persistent impression",
             recommendation="Persistent rec",
             severity=Report.SeverityChoices.CRITICAL,
-            is_finalized=True,
+            status="SUBMITTED",
             created_by=self.rad,
         )
         fake_run = SimpleNamespace(

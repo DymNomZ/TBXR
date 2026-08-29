@@ -116,7 +116,11 @@ class Report(models.Model):
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-    is_finalized = models.BooleanField(default=False)
+    status = models.CharField(
+        max_length=20, 
+        choices=[('DRAFT', 'Draft'), ('SUBMITTED', 'Submitted')], 
+        default='DRAFT'
+    )
 
     class Meta:
         ordering = ['-created_at']
