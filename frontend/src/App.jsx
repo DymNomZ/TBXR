@@ -6,6 +6,7 @@ import PatientDetailPage from './pages/PatientDetailPage';
 import TechnologistDashboardPage from './pages/dashboard/TechnologistDashboardPage'
 import RadiologistDashboardPage from './pages/dashboard/RadiologistDashboardPage'
 import AnnotationReviewPage from './pages/AnnotationReviewPage'
+import ReportWritePage from './pages/ReportWritePage'
 import RoleGuard from './components/auth/RoleGuard'
 
 function App() {
@@ -40,6 +41,14 @@ function App() {
             element={
               <RoleGuard allowedRoles={['RADIOLOGIST']}>
                 <AnnotationReviewPage />
+              </RoleGuard>
+            }
+          />
+          <Route
+            path="/radiologist/report/:transactionId"
+            element={
+              <RoleGuard allowedRoles={['RADIOLOGIST']}>
+                <ReportWritePage />
               </RoleGuard>
             }
           />
