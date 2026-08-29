@@ -184,17 +184,28 @@ export default function AnnotationPanel({
         {loading ? 'Submitting…' : success ? 'Submitted ✓' : 'Submit Findings'}
       </Button>
       
-      {/* Generate Report */}
+      {/* Report actions */}
       {canDownload && (
-      <Button
-        variant="secondary"
-        fullWidth
-        onClick={() => window.open(`/api/imaging/xray/${transactionId}/report/`, '_blank')}
-      >
-        <FileDown size={15} />
-        Generate Report
-      </Button>
-    )}
+        <>
+          <Button
+            variant="secondary"
+            fullWidth
+            onClick={() => navigate(`/radiologist/report/${transactionId}`)}
+          >
+            <FileText size={15} />
+            Write Report
+          </Button>
+
+          <Button
+            variant="secondary"
+            fullWidth
+            onClick={() => window.open(`/api/imaging/xray/${transactionId}/report/`, '_blank')}
+          >
+            <FileDown size={15} />
+            Generate Report
+          </Button>
+        </>
+      )}
 
     </div>
   )
