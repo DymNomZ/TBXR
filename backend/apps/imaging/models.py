@@ -90,3 +90,36 @@ class AIResult(models.Model):
 
     def __str__(self):
         return f'AIResult for {self.xray_record.transaction_id} — {self.risk_label} ({self.risk_score:.2f})'
+
+
+class Report(models.Model):
+    class SeverityChoices(models.TextChoices):
+        NORMAL = 'NORMAL', 'Normal'
+        MILD = 'MILD', 'Mild'
+        MODERATE = 'MODERATE', 'Moderate'
+        SEVERE = 'SEVERE', 'Severe'
+        CRITICAL = 'CRITICAL', 'Critical'
+
+    xray_record = models.OneToOneField(
+        XrayRecord, on_delete=models.CASCADE, related_name='report'
+    )
+    findings = models.TextField(help_text="Detailed radiological findings")
+    impression = models.TextField(help_text="Clinical impression/diagnosis")
+    recommendation = models.TextField(help_text="Clinical recommendations")
+    severity = models.CharField(
+        max_length=20, choices=SeverityChoices.choices,
+        help_text="Overall severity classification"
+    )
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, related_name='reports_created'
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    is_finalized = models.BooleanField(default=False)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'Report for {self.xray_record.transaction_id} — {self.severity}'
