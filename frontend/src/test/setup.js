@@ -9,4 +9,13 @@ afterEach(() => {
   vi.unstubAllGlobals()
   vi.useRealTimers()
   localStorage.clear()
+
+  // Clear cookies set during tests (e.g., csrftoken) to avoid cross-test leakage.
+  document.cookie.split(';').forEach((cookie) => {
+    const eqPos = cookie.indexOf('=')
+    const name = (eqPos > -1 ? cookie.slice(0, eqPos) : cookie).trim()
+    if (name) {
+      document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/`
+    }
+  })
 })
