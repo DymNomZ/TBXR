@@ -341,6 +341,54 @@ class ReportSubmissionNotificationTests(_ReportTestBase):
         self.assertEqual(Notification.objects.filter(recipient=self.physician).count(), 1)
 
 
+class Week3IntegrationTests(_ReportTestBase):
+    """End-to-end checks for review locking and physician notification flow."""
+
+    def setUp(self):
+        super().setUp()
+        self.physician = get_user_model().objects.create_user(
+            username="physician-integration",
+            password="password123",
+            role=UserRole.PHYSICIAN,
+        )
+        self.second_rad = get_user_model().objects.create_user(
+            username="second-rad-integration",
+            password="password123",
+            role=UserRole.RADIOLOGIST,
+        )
+
+    def test_lock_conflict_and_submit_notification_chain(self):
+        self.client.force_login(self.rad)
+        first_response = self.client.get(reverse("imaging:xray-detail", kwargs={"transaction_id": str(self.completed_record.transaction_id)}))
+        self.completed_record.refresh_from_db()
+        self.assertEqual(first_response.status_code, 200)
+        self.assertEqual(self.completed_record.active_reviewer, self.rad)
+
+        self.client.force_login(self.second_rad)
+        locked_response = self.client.get(reverse("imaging:xray-detail", kwargs={"transaction_id": str(self.completed_record.transaction_id)}))
+        self.assertEqual(locked_response.status_code, 409)
+        self.assertEqual(locked_response.data["active_reviewer"], self.rad.username)
+
+        self.client.force_login(self.rad)
+        self.client.post(
+            reverse("imaging:report_detail", kwargs={"transaction_id": str(self.completed_record.transaction_id)}),
+            self._valid_payload(),
+            content_type="application/json",
+        )
+        notification_response = self.client.patch(
+            reverse("imaging:report_detail", kwargs={"transaction_id": str(self.completed_record.transaction_id)}),
+            {"status": "SUBMITTED"},
+            content_type="application/json",
+        )
+
+        self.assertEqual(notification_response.status_code, 200)
+        self.assertTrue(Notification.objects.filter(recipient=self.physician).exists())
+        self.assertEqual(
+            Notification.objects.filter(recipient=self.physician).last().message,
+            f"Report ready for {self.patient.first_name} {self.patient.last_name} (case {self.completed_record.transaction_id}).",
+        )
+
+
 class ReportCreateSerializerTests(_ReportTestBase):
     """Unit-level coverage of ReportCreateSerializer validation (serializers.py)."""
 
