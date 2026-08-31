@@ -305,6 +305,11 @@ class XrayRecordDetailSerializer(serializers.ModelSerializer):
 
         return None
 
+    active_reviewer = serializers.SerializerMethodField()
+
+    def get_active_reviewer(self, obj):
+        return obj.active_reviewer.username if obj.active_reviewer else None
+
     class Meta:
         model = XrayRecord
         fields = [
@@ -317,6 +322,8 @@ class XrayRecordDetailSerializer(serializers.ModelSerializer):
             'file_format',
             'annotations',
             'ai_result',
+            'active_reviewer',
+            'lock_timestamp',
         ]
 
 

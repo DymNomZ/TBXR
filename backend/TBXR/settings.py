@@ -46,6 +46,8 @@ SECRET_KEY = os.environ.get(
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
+REVIEW_LOCK_TIMEOUT_MINUTES = int(os.environ.get("REVIEW_LOCK_TIMEOUT_MINUTES", "60"))
+
 ALLOWED_HOSTS = ['localhost', '127.0.0.1', 'testserver']
 CSRF_TRUSTED_ORIGINS = ['http://localhost:5173']
 

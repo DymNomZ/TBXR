@@ -1,6 +1,10 @@
 import uuid
+from datetime import timedelta
+
 from django.db import models
 from django.conf import settings
+from django.utils import timezone
+
 from apps.patients.models import Patient
 
 class XrayRecord(models.Model):
@@ -10,7 +14,7 @@ class XrayRecord(models.Model):
         ('AI_REVIEWED', 'AI Reviewed'),
         ('COMPLETED', 'Completed'),
     ]
-    
+
     transaction_id = models.UUIDField(default=uuid.uuid4, editable=False, unique=True)
     patient = models.ForeignKey(Patient, on_delete=models.CASCADE)
     raw_image = models.FileField(upload_to='raw/')
@@ -18,6 +22,49 @@ class XrayRecord(models.Model):
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='PENDING')
     uploader = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     file_format = models.CharField(max_length=10)  # e.g., 'jpg', 'png', 'dcm'
+    active_reviewer = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='active_review_locks',
+    )
+    lock_timestamp = models.DateTimeField(null=True, blank=True)
+
+    @property
+    def review_lock_timeout_minutes(self):
+        return getattr(settings, 'REVIEW_LOCK_TIMEOUT_MINUTES', 60)
+
+    def lock_has_expired(self, now=None):
+        if not self.lock_timestamp:
+            return True
+        if not self.active_reviewer:
+            return True
+        now = now or timezone.now()
+        timeout = self.lock_timestamp + timedelta(minutes=self.review_lock_timeout_minutes)
+        return now >= timeout
+
+    def acquire_lock(self, reviewer, now=None):
+        now = now or timezone.now()
+        if self.active_reviewer_id == reviewer.pk:
+            self.lock_timestamp = now
+            self.save(update_fields=['lock_timestamp'])
+            return True
+
+        if not self.active_reviewer or self.lock_has_expired(now):
+            self.active_reviewer = reviewer
+            self.lock_timestamp = now
+            self.save(update_fields=['active_reviewer', 'lock_timestamp'])
+            return True
+
+        return False
+
+    def release_lock(self):
+        if self.active_reviewer is None and self.lock_timestamp is None:
+            return
+        self.active_reviewer = None
+        self.lock_timestamp = None
+        self.save(update_fields=['active_reviewer', 'lock_timestamp'])
 
     def __str__(self):
         return f"X-ray {self.transaction_id} for {self.patient}"

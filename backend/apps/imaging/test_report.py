@@ -1,9 +1,12 @@
+from datetime import timedelta
+from datetime import timedelta
 from io import BytesIO
 from tempfile import TemporaryDirectory
 from types import SimpleNamespace
 
 from PIL import Image
 from django.contrib.auth import get_user_model
+from django.utils import timezone
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
 from django.urls import reverse
@@ -277,3 +280,56 @@ class ReportCreateSerializerTests(_ReportTestBase):
         self.assertEqual(updated.findings, "Instance findings")  # kept from instance
         self.assertIsNotNone(updated.created_by)
         self.assertEqual(updated.created_by, self.rad)
+
+
+class ReviewLockTests(_ReportTestBase):
+    """Concurrency checks for radiologist case review locking."""
+
+    def _xray_detail_url(self, transaction_id):
+        return reverse("imaging:xray-detail", kwargs={"transaction_id": str(transaction_id)})
+
+    def test_radiologist_acquires_lock_when_opening_case(self):
+        self.client.force_login(self.rad)
+
+        response = self.client.get(self._xray_detail_url(self.completed_record.transaction_id))
+
+        self.assertEqual(response.status_code, 200)
+        self.completed_record.refresh_from_db()
+        self.assertEqual(self.completed_record.active_reviewer, self.rad)
+        self.assertIsNotNone(self.completed_record.lock_timestamp)
+        self.assertEqual(response.data["active_reviewer"], self.rad.username)
+
+    def test_second_radiologist_is_rejected_when_lock_is_active(self):
+        second_rad = get_user_model().objects.create_user(
+            username="second-rad",
+            password="password123",
+            role=UserRole.RADIOLOGIST,
+        )
+        self.completed_record.active_reviewer = self.rad
+        self.completed_record.lock_timestamp = timezone.now()
+        self.completed_record.save(update_fields=["active_reviewer", "lock_timestamp"])
+
+        self.client.force_login(second_rad)
+        response = self.client.get(self._xray_detail_url(self.completed_record.transaction_id))
+
+        self.assertEqual(response.status_code, 409)
+        self.assertIn("currently locked", response.data["detail"].lower())
+        self.assertEqual(response.data["active_reviewer"], self.rad.username)
+
+    def test_lock_expires_after_timeout(self):
+        second_rad = get_user_model().objects.create_user(
+            username="third-rad",
+            password="password123",
+            role=UserRole.RADIOLOGIST,
+        )
+        self.completed_record.active_reviewer = self.rad
+        self.completed_record.lock_timestamp = timezone.now() - timedelta(minutes=61)
+        self.completed_record.save(update_fields=["active_reviewer", "lock_timestamp"])
+
+        self.client.force_login(second_rad)
+        response = self.client.get(self._xray_detail_url(self.completed_record.transaction_id))
+
+        self.assertEqual(response.status_code, 200)
+        self.completed_record.refresh_from_db()
+        self.assertEqual(self.completed_record.active_reviewer, second_rad)
+        self.assertIsNotNone(self.completed_record.lock_timestamp)

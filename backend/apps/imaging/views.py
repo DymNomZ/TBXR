@@ -450,6 +450,20 @@ def radiologist_queue(request):
 @role_required(UserRole.RADIOLOGIC_TECH, UserRole.RADIOLOGIST)
 def xray_detail(request, transaction_id):
     xray_record = get_object_or_404(XrayRecord, transaction_id=transaction_id)
+
+    if request.user.role == UserRole.RADIOLOGIST:
+        if xray_record.active_reviewer_id and xray_record.active_reviewer_id != request.user.id and not xray_record.lock_has_expired():
+            return Response(
+                {
+                    "detail": "This case is currently locked by another radiologist.",
+                    "active_reviewer": xray_record.active_reviewer.username,
+                    "lock_timestamp": xray_record.lock_timestamp.isoformat() if xray_record.lock_timestamp else None,
+                },
+                status=status.HTTP_409_CONFLICT,
+            )
+
+        xray_record.acquire_lock(request.user)
+
     serializer = XrayRecordDetailSerializer(xray_record, context={'request': request})
     return Response(serializer.data)
 
