@@ -3,6 +3,7 @@ import tempfile
 import subprocess
 from django.conf import settings
 from datetime import date
+from django.contrib.auth.decorators import login_required
 from django.utils import timezone
 from django.template.loader import render_to_string
 from django.http import FileResponse
@@ -20,6 +21,7 @@ from django.core.files import File
 from django.core.files.base import ContentFile
 from drf_spectacular.utils import extend_schema
 
+from django.contrib.auth import get_user_model
 from django.shortcuts import get_object_or_404
 from rest_framework import status
 from rest_framework.decorators import api_view, parser_classes
@@ -33,7 +35,7 @@ from apps.accounts.enums import UserRole
 from apps.patients.models import Patient
 
 from .preprocessing import preprocess_xray
-from .models import Annotation, XrayRecord, ProcessedImage, AIResult, Report
+from .models import Annotation, XrayRecord, ProcessedImage, AIResult, Report, Notification
 from django.db import models
 from .serializers import (
     XrayRecordUploadSerializer,
@@ -49,6 +51,29 @@ from .serializers import (
 )
 
 _INFERENCE_MODULE = None
+
+
+def _trigger_report_submission_notification(report):
+    """Create a one-time notification for the assigned physician after successful final submission."""
+    physician = get_user_model().objects.filter(role=UserRole.PHYSICIAN).order_by('id').first()
+    if physician is None:
+        return None
+
+    patient = report.xray_record.patient
+    patient_name = f"{patient.first_name} {patient.last_name}".strip()
+    message = (
+        f"Report ready for {patient_name} "
+        f"(case {report.xray_record.transaction_id})."
+    )
+
+    if Notification.objects.filter(recipient=physician, message=message).exists():
+        return None
+
+    return Notification.objects.create(
+        recipient=physician,
+        message=message,
+        read_status=False,
+    )
 
 
 def _get_inference_module():
@@ -450,6 +475,22 @@ def radiologist_queue(request):
 @role_required(UserRole.RADIOLOGIC_TECH, UserRole.RADIOLOGIST)
 def xray_detail(request, transaction_id):
     xray_record = get_object_or_404(XrayRecord, transaction_id=transaction_id)
+
+    if request.user.role == UserRole.RADIOLOGIST:
+        if xray_record.active_reviewer_id and xray_record.active_reviewer_id != request.user.id and not xray_record.lock_has_expired():
+            serializer = XrayRecordDetailSerializer(xray_record, context={'request': request})
+            return Response(
+                {
+                    **serializer.data,
+                    "detail": "This case is currently locked by another radiologist.",
+                    "active_reviewer": xray_record.active_reviewer.username,
+                    "lock_timestamp": xray_record.lock_timestamp.isoformat() if xray_record.lock_timestamp else None,
+                },
+                status=status.HTTP_409_CONFLICT,
+            )
+
+        xray_record.acquire_lock(request.user)
+
     serializer = XrayRecordDetailSerializer(xray_record, context={'request': request})
     return Response(serializer.data)
 
@@ -467,6 +508,41 @@ def patient_history(request, patient_id):
         records, many=True, context={"request": request}
     )
     return Response(serializer.data)
+
+
+@api_view(["GET"])
+@login_required
+def notifications(request):
+    items = Notification.objects.filter(recipient=request.user).order_by('-created_at')
+    data = [{
+        'id': item.id,
+        'recipient': item.recipient_id,
+        'message': item.message,
+        'read_status': item.read_status,
+        'created_at': item.created_at.isoformat(),
+        'updated_at': item.updated_at.isoformat(),
+    } for item in items]
+    return Response(data)
+
+
+@api_view(["POST"])
+@login_required
+def notification_mark_read(request, notification_id):
+    notification = get_object_or_404(
+        Notification,
+        id=notification_id,
+        recipient=request.user,
+    )
+    notification.read_status = True
+    notification.save(update_fields=['read_status', 'updated_at'])
+    return Response({
+        'id': notification.id,
+        'recipient': notification.recipient_id,
+        'message': notification.message,
+        'read_status': notification.read_status,
+        'created_at': notification.created_at.isoformat(),
+        'updated_at': notification.updated_at.isoformat(),
+    })
 
 
 @api_view(["GET", "POST", "PATCH"])
@@ -502,6 +578,8 @@ def report_detail(request, transaction_id):
 
         if serializer.is_valid():
             serializer.save()
+            if report.status == 'SUBMITTED':
+                _trigger_report_submission_notification(report)
             return Response(
                 ReportSerializer(report, context={'request': request}).data,
                 status=status.HTTP_201_CREATED if created else status.HTTP_200_OK
@@ -526,7 +604,10 @@ def report_detail(request, transaction_id):
         # Allow client to pass status='SUBMITTED' to submit
         serializer = ReportCreateSerializer(report, data=request.data, partial=True, context={'request': request})
         if serializer.is_valid():
-            serializer.save()
+            previous_status = report.status
+            report = serializer.save()
+            if previous_status != 'SUBMITTED' and report.status == 'SUBMITTED':
+                _trigger_report_submission_notification(report)
             return Response(
                 ReportSerializer(report, context={'request': request}).data
             )

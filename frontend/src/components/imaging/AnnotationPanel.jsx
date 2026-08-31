@@ -46,9 +46,10 @@ function BoxItem({ box, index, onDelete }) {
 export default function AnnotationPanel({
   transactionId,
   boxes = [],
-  onDeleteBox,       // (index) => void — lets panel delete from canvas state
+  onDeleteBox,
   isCompleted = false,
   existingAnnotation = null,
+  readOnly = false,
 }) {
   const navigate = useNavigate()
   const [notes,   setNotes]   = useState('')
@@ -57,6 +58,7 @@ export default function AnnotationPanel({
   const [success, setSuccess] = useState(false)
   const { user } = useAuth()
   const canDownload = isCompleted && (user?.role === 'RADIOLOGIST' || user?.role === 'RADIOLOGIC_TECH')
+  const editingDisabled = loading || success || isCompleted || readOnly
 
   useEffect(() => {
     if (isCompleted && existingAnnotation?.notes) {
@@ -150,9 +152,9 @@ export default function AnnotationPanel({
           <textarea
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
-            placeholder="Enter your findings, observations, and recommendations…"
+            placeholder={readOnly ? 'This case is locked by another reviewer.' : 'Enter your findings, observations, and recommendations…'}
             rows={6}
-            disabled={loading || success || isCompleted}
+            disabled={editingDisabled}
             className="w-full text-sm text-[var(--text)] placeholder:text-[var(--text-muted)] bg-[var(--surface-soft)] border border-[var(--border)] rounded-xl px-4 py-3 resize-none outline-none focus:border-[var(--accent)] transition-colors disabled:opacity-60"
           />
         </div>
@@ -178,18 +180,19 @@ export default function AnnotationPanel({
       <Button
         variant="primary"
         fullWidth
-        disabled={loading || success || isCompleted}
+        disabled={editingDisabled}
         onClick={handleSubmit}
       >
-        {loading ? 'Submitting…' : success ? 'Submitted ✓' : 'Submit Findings'}
+        {readOnly ? 'Locked by another reviewer' : loading ? 'Submitting…' : success ? 'Submitted ✓' : 'Submit Findings'}
       </Button>
-      
+
       {/* Report actions */}
       {canDownload && (
         <>
           <Button
             variant="secondary"
             fullWidth
+            disabled={readOnly}
             onClick={() => navigate(`/radiologist/report/${transactionId}`)}
           >
             <FileText size={15} />

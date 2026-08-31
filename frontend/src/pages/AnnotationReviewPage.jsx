@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, User, Hash } from 'lucide-react'
+import { ArrowLeft, User, Hash, AlertTriangle } from 'lucide-react'
 import AppLayout from '../components/layout/AppLayout'
 import AnnotationCanvas from '../components/imaging/AnnotationCanvas'
 import AnnotationPanel from '../components/imaging/AnnotationPanel'
@@ -11,28 +11,46 @@ import StaticAnnotationOverlay from '../components/imaging/StaticAnnotationOverl
 
 export default function AnnotationReviewPage() {
   const { transactionId } = useParams()
-  const navigate          = useNavigate()
+  const navigate = useNavigate()
 
-  // Shared canvas state
   const [transform, setTransform] = useState({ scale: 1, translate: { x: 0, y: 0 } })
-  const [boxes,     setBoxes]     = useState([])
-
-  // Xray detail — drives header, HeatmapViewer URLs, and LongitudinalPanel
-  const [xray,    setXray]    = useState(null)
+  const [boxes, setBoxes] = useState([])
+  const [xray, setXray] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [lockInfo, setLockInfo] = useState(null)
 
   useEffect(() => {
     if (!transactionId) return
-    setLoading(true)
-    fetch(`/api/imaging/xray/${transactionId}/`, { credentials: 'include' })
-      .then((r) => r.json())
-      .then(setXray)
-      .finally(() => setLoading(false))
+
+    const loadXray = async () => {
+      setLoading(true)
+      setLockInfo(null)
+
+      try {
+        const response = await fetch(`/api/imaging/xray/${transactionId}/`, { credentials: 'include' })
+        const data = await response.json()
+
+        if (response.status === 409) {
+          setLockInfo({
+            active_reviewer: data.active_reviewer,
+            lock_timestamp: data.lock_timestamp,
+            detail: data.detail,
+          })
+        }
+
+        setXray(data)
+      } catch {
+        setXray(null)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    loadXray()
   }, [transactionId])
 
-  const patientName = xray
-    ? `${xray.patient.first_name} ${xray.patient.last_name}`
-    : null
+  const patientName = xray ? `${xray.patient.first_name} ${xray.patient.last_name}` : null
+  const readOnly = Boolean(lockInfo)
 
   const handleDeleteBox = (index) => {
     setBoxes((prev) => prev.filter((_, i) => i !== index))
@@ -41,8 +59,6 @@ export default function AnnotationReviewPage() {
   return (
     <AppLayout>
       <div className="flex flex-col gap-6">
-
-        {/* ── Page header ── */}
         <div className="flex items-center gap-4 shrink-0">
           <button
             onClick={() => navigate('/dashboard/radiologist')}
@@ -56,7 +72,6 @@ export default function AnnotationReviewPage() {
               <h1 className="text-xl font-bold text-[var(--deep-navy)] tracking-tight leading-none">
                 Annotation Review
               </h1>
-              {/* AI risk badge in header — shows as soon as xray loads */}
               {xray?.ai_result && (
                 <AIRiskBadge
                   label={xray.ai_result.risk_label}
@@ -89,20 +104,31 @@ export default function AnnotationReviewPage() {
           </div>
         </div>
 
-        {/* ── Two-column: viewer + annotation panel ── */}
-        <div className="flex gap-6 items-start">
+        {lockInfo && (
+          <div className="flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            <AlertTriangle size={16} className="mt-0.5 shrink-0" />
+            <div>
+              <p className="font-semibold">Read-only mode</p>
+              <p>
+                {lockInfo.detail} Active reviewer: <span className="font-semibold">{lockInfo.active_reviewer}</span>
+                {lockInfo.lock_timestamp && (
+                  <span> at {new Date(lockInfo.lock_timestamp).toLocaleString()}</span>
+                )}
+              </p>
+            </div>
+          </div>
+        )}
 
-          {/* Left — HeatmapViewer with AnnotationCanvas overlay */}
+        <div className="flex gap-6 items-start">
           <div className="flex-1 min-w-0">
             <HeatmapViewer
               rawImageUrl={xray?.display_image ?? null}
               heatmapUrl={xray?.ai_result?.heatmap_url ?? null}
-              // aiResult intentionally omitted — badge is in the header, not duplicated here
               onTransformChange={setTransform}
               overlay={
-                xray?.status === 'COMPLETED'
+                xray?.status === 'COMPLETED' || readOnly
                   ? <StaticAnnotationOverlay
-                      annotations={xray.annotations ?? []}
+                      annotations={xray?.annotations ?? []}
                       scale={transform.scale}
                       translate={transform.translate}
                     />
@@ -110,30 +136,28 @@ export default function AnnotationReviewPage() {
                       scale={transform.scale}
                       translate={transform.translate}
                       onBoxesChange={setBoxes}
+                      disabled={readOnly}
                     />
               }
             />
           </div>
 
-          {/* Right — annotation panel */}
           <AnnotationPanel
             transactionId={transactionId}
             boxes={boxes}
             onDeleteBox={handleDeleteBox}
             isCompleted={xray?.status === 'COMPLETED'}
             existingAnnotation={xray?.annotations?.[0] ?? null}
+            readOnly={readOnly}
           />
-
         </div>
 
-        {/* ── Longitudinal panel — full width below ── */}
         {xray?.patient?.patient_id && (
           <LongitudinalPanel
             patientId={xray.patient.patient_id}
             currentTransactionId={transactionId}
           />
         )}
-
       </div>
     </AppLayout>
   )

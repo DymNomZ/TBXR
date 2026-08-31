@@ -52,4 +52,6 @@ urlpatterns = [
         views.generate_report,
         name="generate_report",
     ),
+    path("notifications/", views.notifications, name="notifications"),
+    path("notifications/<int:notification_id>/mark-read/", views.notification_mark_read, name="notification_mark_read"),
 ]

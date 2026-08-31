@@ -1,9 +1,11 @@
+from datetime import timedelta
 from io import BytesIO
 from tempfile import TemporaryDirectory
 from types import SimpleNamespace
 
 from PIL import Image
 from django.contrib.auth import get_user_model
+from django.utils import timezone
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
 from django.urls import reverse
@@ -11,7 +13,7 @@ from django.urls import reverse
 from apps.accounts.enums import UserRole
 from apps.patients.models import Patient
 
-from .models import Report, XrayRecord
+from .models import Notification, Report, XrayRecord
 from .serializers import ReportCreateSerializer
 
 
@@ -224,6 +226,169 @@ class ReportDetailViewTests(_ReportTestBase):
         self.assertEqual(response.status_code, 403)
 
 
+class NotificationAPITests(TestCase):
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(
+            username="notify-user",
+            password="password123",
+            role=UserRole.RADIOLOGIST,
+        )
+        self.other_user = get_user_model().objects.create_user(
+            username="other-user",
+            password="password123",
+            role=UserRole.RADIOLOGIST,
+        )
+        self.notification = Notification.objects.create(
+            recipient=self.user,
+            message="Lab follow-up required.",
+            read_status=False,
+        )
+
+    def test_list_returns_only_current_users_notifications(self):
+        Notification.objects.create(
+            recipient=self.other_user,
+            message="Other user alert.",
+            read_status=False,
+        )
+
+        self.client.force_login(self.user)
+        response = self.client.get(reverse("imaging:notifications"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data[0]["message"], "Lab follow-up required.")
+        self.assertEqual(response.data[0]["recipient"], self.user.id)
+
+    def test_mark_read_updates_notification_state(self):
+        self.client.force_login(self.user)
+        response = self.client.post(
+            reverse("imaging:notification_mark_read", kwargs={"notification_id": self.notification.id}),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.notification.refresh_from_db()
+        self.assertTrue(self.notification.read_status)
+        self.assertEqual(response.data["read_status"], True)
+
+    def test_users_cannot_mark_another_users_notification_as_read(self):
+        self.client.force_login(self.other_user)
+        response = self.client.post(
+            reverse("imaging:notification_mark_read", kwargs={"notification_id": self.notification.id}),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 404)
+
+
+class ReportSubmissionNotificationTests(_ReportTestBase):
+    def setUp(self):
+        super().setUp()
+        self.physician = get_user_model().objects.create_user(
+            username="physician-user",
+            password="password123",
+            role=UserRole.PHYSICIAN,
+        )
+
+    def test_submit_creates_notification_for_assigned_physician(self):
+        self.client.force_login(self.rad)
+        self.client.post(
+            self._report_url(self.completed_record.transaction_id),
+            self._valid_payload(),
+            content_type="application/json",
+        )
+
+        response = self.client.patch(
+            self._report_url(self.completed_record.transaction_id),
+            {"status": "SUBMITTED"},
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        notification = Notification.objects.get(recipient=self.physician)
+        self.assertIn("Report ready", notification.message)
+        self.assertIn(str(self.completed_record.transaction_id), notification.message)
+        self.assertFalse(notification.read_status)
+
+    def test_draft_save_does_not_create_notification(self):
+        self.client.force_login(self.rad)
+        self.client.post(
+            self._report_url(self.completed_record.transaction_id),
+            self._valid_payload(),
+            content_type="application/json",
+        )
+
+        self.assertEqual(Notification.objects.filter(recipient=self.physician).count(), 0)
+
+    def test_submit_does_not_duplicate_notifications_on_retries(self):
+        self.client.force_login(self.rad)
+        self.client.post(
+            self._report_url(self.completed_record.transaction_id),
+            self._valid_payload(),
+            content_type="application/json",
+        )
+        self.client.patch(
+            self._report_url(self.completed_record.transaction_id),
+            {"status": "SUBMITTED"},
+            content_type="application/json",
+        )
+        self.client.patch(
+            self._report_url(self.completed_record.transaction_id),
+            {"status": "SUBMITTED"},
+            content_type="application/json",
+        )
+
+        self.assertEqual(Notification.objects.filter(recipient=self.physician).count(), 1)
+
+
+class Week3IntegrationTests(_ReportTestBase):
+    """End-to-end checks for review locking and physician notification flow."""
+
+    def setUp(self):
+        super().setUp()
+        self.physician = get_user_model().objects.create_user(
+            username="physician-integration",
+            password="password123",
+            role=UserRole.PHYSICIAN,
+        )
+        self.second_rad = get_user_model().objects.create_user(
+            username="second-rad-integration",
+            password="password123",
+            role=UserRole.RADIOLOGIST,
+        )
+
+    def test_lock_conflict_and_submit_notification_chain(self):
+        self.client.force_login(self.rad)
+        first_response = self.client.get(reverse("imaging:xray-detail", kwargs={"transaction_id": str(self.completed_record.transaction_id)}))
+        self.completed_record.refresh_from_db()
+        self.assertEqual(first_response.status_code, 200)
+        self.assertEqual(self.completed_record.active_reviewer, self.rad)
+
+        self.client.force_login(self.second_rad)
+        locked_response = self.client.get(reverse("imaging:xray-detail", kwargs={"transaction_id": str(self.completed_record.transaction_id)}))
+        self.assertEqual(locked_response.status_code, 409)
+        self.assertEqual(locked_response.data["active_reviewer"], self.rad.username)
+
+        self.client.force_login(self.rad)
+        self.client.post(
+            reverse("imaging:report_detail", kwargs={"transaction_id": str(self.completed_record.transaction_id)}),
+            self._valid_payload(),
+            content_type="application/json",
+        )
+        notification_response = self.client.patch(
+            reverse("imaging:report_detail", kwargs={"transaction_id": str(self.completed_record.transaction_id)}),
+            {"status": "SUBMITTED"},
+            content_type="application/json",
+        )
+
+        self.assertEqual(notification_response.status_code, 200)
+        self.assertTrue(Notification.objects.filter(recipient=self.physician).exists())
+        self.assertEqual(
+            Notification.objects.filter(recipient=self.physician).last().message,
+            f"Report ready for {self.patient.first_name} {self.patient.last_name} (case {self.completed_record.transaction_id}).",
+        )
+
+
 class ReportCreateSerializerTests(_ReportTestBase):
     """Unit-level coverage of ReportCreateSerializer validation (serializers.py)."""
 
@@ -277,3 +442,57 @@ class ReportCreateSerializerTests(_ReportTestBase):
         self.assertEqual(updated.findings, "Instance findings")  # kept from instance
         self.assertIsNotNone(updated.created_by)
         self.assertEqual(updated.created_by, self.rad)
+
+
+class ReviewLockTests(_ReportTestBase):
+    """Concurrency checks for radiologist case review locking."""
+
+    def _xray_detail_url(self, transaction_id):
+        return reverse("imaging:xray-detail", kwargs={"transaction_id": str(transaction_id)})
+
+    def test_radiologist_acquires_lock_when_opening_case(self):
+        self.client.force_login(self.rad)
+
+        response = self.client.get(self._xray_detail_url(self.completed_record.transaction_id))
+
+        self.assertEqual(response.status_code, 200)
+        self.completed_record.refresh_from_db()
+        self.assertEqual(self.completed_record.active_reviewer, self.rad)
+        self.assertIsNotNone(self.completed_record.lock_timestamp)
+        self.assertEqual(response.data["active_reviewer"], self.rad.username)
+
+    def test_second_radiologist_is_rejected_when_lock_is_active(self):
+        second_rad = get_user_model().objects.create_user(
+            username="second-rad",
+            password="password123",
+            role=UserRole.RADIOLOGIST,
+        )
+        self.completed_record.active_reviewer = self.rad
+        self.completed_record.lock_timestamp = timezone.now()
+        self.completed_record.save(update_fields=["active_reviewer", "lock_timestamp"])
+
+        self.client.force_login(second_rad)
+        response = self.client.get(self._xray_detail_url(self.completed_record.transaction_id))
+
+        self.assertEqual(response.status_code, 409)
+        self.assertIn("currently locked", response.data["detail"].lower())
+        self.assertEqual(response.data["active_reviewer"], self.rad.username)
+        self.assertEqual(response.data["transaction_id"], str(self.completed_record.transaction_id))
+
+    def test_lock_expires_after_timeout(self):
+        second_rad = get_user_model().objects.create_user(
+            username="third-rad",
+            password="password123",
+            role=UserRole.RADIOLOGIST,
+        )
+        self.completed_record.active_reviewer = self.rad
+        self.completed_record.lock_timestamp = timezone.now() - timedelta(minutes=61)
+        self.completed_record.save(update_fields=["active_reviewer", "lock_timestamp"])
+
+        self.client.force_login(second_rad)
+        response = self.client.get(self._xray_detail_url(self.completed_record.transaction_id))
+
+        self.assertEqual(response.status_code, 200)
+        self.completed_record.refresh_from_db()
+        self.assertEqual(self.completed_record.active_reviewer, second_rad)
+        self.assertIsNotNone(self.completed_record.lock_timestamp)
