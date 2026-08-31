@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft, AlertCircle, CheckCircle, Save } from 'lucide-react'
 import AppLayout from '../components/layout/AppLayout'
@@ -59,9 +59,11 @@ export default function ReportWritePage() {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [statusMessage, setStatusMessage] = useState('')
   const [statusType, setStatusType] = useState('neutral')
+  const hasLoadedReport = useRef(false)
 
   useEffect(() => {
-    if (!transactionId) return
+    if (!transactionId || hasLoadedReport.current) return
+    hasLoadedReport.current = true
 
     const loadReport = async () => {
       try {

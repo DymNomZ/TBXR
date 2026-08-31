@@ -26,7 +26,7 @@ export default function Header() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    if (!user) return
+    if (!user || !notificationsOpen) return
 
     const fetchNotifications = async () => {
       setLoadingNotifications(true)
@@ -43,7 +43,7 @@ export default function Header() {
     }
 
     fetchNotifications()
-  }, [user])
+  }, [user, notificationsOpen])
 
   useEffect(() => {
     const handleClickOutside = (event) => {
