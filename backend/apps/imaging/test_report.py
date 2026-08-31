@@ -281,6 +281,66 @@ class NotificationAPITests(TestCase):
         self.assertEqual(response.status_code, 404)
 
 
+class ReportSubmissionNotificationTests(_ReportTestBase):
+    def setUp(self):
+        super().setUp()
+        self.physician = get_user_model().objects.create_user(
+            username="physician-user",
+            password="password123",
+            role=UserRole.PHYSICIAN,
+        )
+
+    def test_submit_creates_notification_for_assigned_physician(self):
+        self.client.force_login(self.rad)
+        self.client.post(
+            self._report_url(self.completed_record.transaction_id),
+            self._valid_payload(),
+            content_type="application/json",
+        )
+
+        response = self.client.patch(
+            self._report_url(self.completed_record.transaction_id),
+            {"status": "SUBMITTED"},
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        notification = Notification.objects.get(recipient=self.physician)
+        self.assertIn("Report ready", notification.message)
+        self.assertIn(str(self.completed_record.transaction_id), notification.message)
+        self.assertFalse(notification.read_status)
+
+    def test_draft_save_does_not_create_notification(self):
+        self.client.force_login(self.rad)
+        self.client.post(
+            self._report_url(self.completed_record.transaction_id),
+            self._valid_payload(),
+            content_type="application/json",
+        )
+
+        self.assertEqual(Notification.objects.filter(recipient=self.physician).count(), 0)
+
+    def test_submit_does_not_duplicate_notifications_on_retries(self):
+        self.client.force_login(self.rad)
+        self.client.post(
+            self._report_url(self.completed_record.transaction_id),
+            self._valid_payload(),
+            content_type="application/json",
+        )
+        self.client.patch(
+            self._report_url(self.completed_record.transaction_id),
+            {"status": "SUBMITTED"},
+            content_type="application/json",
+        )
+        self.client.patch(
+            self._report_url(self.completed_record.transaction_id),
+            {"status": "SUBMITTED"},
+            content_type="application/json",
+        )
+
+        self.assertEqual(Notification.objects.filter(recipient=self.physician).count(), 1)
+
+
 class ReportCreateSerializerTests(_ReportTestBase):
     """Unit-level coverage of ReportCreateSerializer validation (serializers.py)."""
 

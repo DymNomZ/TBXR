@@ -21,6 +21,7 @@ from django.core.files import File
 from django.core.files.base import ContentFile
 from drf_spectacular.utils import extend_schema
 
+from django.contrib.auth import get_user_model
 from django.shortcuts import get_object_or_404
 from rest_framework import status
 from rest_framework.decorators import api_view, parser_classes
@@ -50,6 +51,29 @@ from .serializers import (
 )
 
 _INFERENCE_MODULE = None
+
+
+def _trigger_report_submission_notification(report):
+    """Create a one-time notification for the assigned physician after successful final submission."""
+    physician = get_user_model().objects.filter(role=UserRole.PHYSICIAN).order_by('id').first()
+    if physician is None:
+        return None
+
+    patient = report.xray_record.patient
+    patient_name = f"{patient.first_name} {patient.last_name}".strip()
+    message = (
+        f"Report ready for {patient_name} "
+        f"(case {report.xray_record.transaction_id})."
+    )
+
+    if Notification.objects.filter(recipient=physician, message=message).exists():
+        return None
+
+    return Notification.objects.create(
+        recipient=physician,
+        message=message,
+        read_status=False,
+    )
 
 
 def _get_inference_module():
@@ -554,6 +578,8 @@ def report_detail(request, transaction_id):
 
         if serializer.is_valid():
             serializer.save()
+            if report.status == 'SUBMITTED':
+                _trigger_report_submission_notification(report)
             return Response(
                 ReportSerializer(report, context={'request': request}).data,
                 status=status.HTTP_201_CREATED if created else status.HTTP_200_OK
@@ -578,7 +604,10 @@ def report_detail(request, transaction_id):
         # Allow client to pass status='SUBMITTED' to submit
         serializer = ReportCreateSerializer(report, data=request.data, partial=True, context={'request': request})
         if serializer.is_valid():
-            serializer.save()
+            previous_status = report.status
+            report = serializer.save()
+            if previous_status != 'SUBMITTED' and report.status == 'SUBMITTED':
+                _trigger_report_submission_notification(report)
             return Response(
                 ReportSerializer(report, context={'request': request}).data
             )
