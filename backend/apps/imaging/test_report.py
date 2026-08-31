@@ -315,6 +315,7 @@ class ReviewLockTests(_ReportTestBase):
         self.assertEqual(response.status_code, 409)
         self.assertIn("currently locked", response.data["detail"].lower())
         self.assertEqual(response.data["active_reviewer"], self.rad.username)
+        self.assertEqual(response.data["transaction_id"], str(self.completed_record.transaction_id))
 
     def test_lock_expires_after_timeout(self):
         second_rad = get_user_model().objects.create_user(

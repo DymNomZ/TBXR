@@ -453,8 +453,10 @@ def xray_detail(request, transaction_id):
 
     if request.user.role == UserRole.RADIOLOGIST:
         if xray_record.active_reviewer_id and xray_record.active_reviewer_id != request.user.id and not xray_record.lock_has_expired():
+            serializer = XrayRecordDetailSerializer(xray_record, context={'request': request})
             return Response(
                 {
+                    **serializer.data,
                     "detail": "This case is currently locked by another radiologist.",
                     "active_reviewer": xray_record.active_reviewer.username,
                     "lock_timestamp": xray_record.lock_timestamp.isoformat() if xray_record.lock_timestamp else None,
