@@ -1,5 +1,4 @@
 from datetime import timedelta
-from datetime import timedelta
 from io import BytesIO
 from tempfile import TemporaryDirectory
 from types import SimpleNamespace
@@ -14,7 +13,7 @@ from django.urls import reverse
 from apps.accounts.enums import UserRole
 from apps.patients.models import Patient
 
-from .models import Report, XrayRecord
+from .models import Notification, Report, XrayRecord
 from .serializers import ReportCreateSerializer
 
 
@@ -225,6 +224,61 @@ class ReportDetailViewTests(_ReportTestBase):
             content_type="application/json",
         )
         self.assertEqual(response.status_code, 403)
+
+
+class NotificationAPITests(TestCase):
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(
+            username="notify-user",
+            password="password123",
+            role=UserRole.RADIOLOGIST,
+        )
+        self.other_user = get_user_model().objects.create_user(
+            username="other-user",
+            password="password123",
+            role=UserRole.RADIOLOGIST,
+        )
+        self.notification = Notification.objects.create(
+            recipient=self.user,
+            message="Lab follow-up required.",
+            read_status=False,
+        )
+
+    def test_list_returns_only_current_users_notifications(self):
+        Notification.objects.create(
+            recipient=self.other_user,
+            message="Other user alert.",
+            read_status=False,
+        )
+
+        self.client.force_login(self.user)
+        response = self.client.get(reverse("imaging:notifications"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data[0]["message"], "Lab follow-up required.")
+        self.assertEqual(response.data[0]["recipient"], self.user.id)
+
+    def test_mark_read_updates_notification_state(self):
+        self.client.force_login(self.user)
+        response = self.client.post(
+            reverse("imaging:notification_mark_read", kwargs={"notification_id": self.notification.id}),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.notification.refresh_from_db()
+        self.assertTrue(self.notification.read_status)
+        self.assertEqual(response.data["read_status"], True)
+
+    def test_users_cannot_mark_another_users_notification_as_read(self):
+        self.client.force_login(self.other_user)
+        response = self.client.post(
+            reverse("imaging:notification_mark_read", kwargs={"notification_id": self.notification.id}),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 404)
 
 
 class ReportCreateSerializerTests(_ReportTestBase):

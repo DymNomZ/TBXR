@@ -3,6 +3,7 @@ import tempfile
 import subprocess
 from django.conf import settings
 from datetime import date
+from django.contrib.auth.decorators import login_required
 from django.utils import timezone
 from django.template.loader import render_to_string
 from django.http import FileResponse
@@ -33,7 +34,7 @@ from apps.accounts.enums import UserRole
 from apps.patients.models import Patient
 
 from .preprocessing import preprocess_xray
-from .models import Annotation, XrayRecord, ProcessedImage, AIResult, Report
+from .models import Annotation, XrayRecord, ProcessedImage, AIResult, Report, Notification
 from django.db import models
 from .serializers import (
     XrayRecordUploadSerializer,
@@ -483,6 +484,41 @@ def patient_history(request, patient_id):
         records, many=True, context={"request": request}
     )
     return Response(serializer.data)
+
+
+@api_view(["GET"])
+@login_required
+def notifications(request):
+    items = Notification.objects.filter(recipient=request.user).order_by('-created_at')
+    data = [{
+        'id': item.id,
+        'recipient': item.recipient_id,
+        'message': item.message,
+        'read_status': item.read_status,
+        'created_at': item.created_at.isoformat(),
+        'updated_at': item.updated_at.isoformat(),
+    } for item in items]
+    return Response(data)
+
+
+@api_view(["POST"])
+@login_required
+def notification_mark_read(request, notification_id):
+    notification = get_object_or_404(
+        Notification,
+        id=notification_id,
+        recipient=request.user,
+    )
+    notification.read_status = True
+    notification.save(update_fields=['read_status', 'updated_at'])
+    return Response({
+        'id': notification.id,
+        'recipient': notification.recipient_id,
+        'message': notification.message,
+        'read_status': notification.read_status,
+        'created_at': notification.created_at.isoformat(),
+        'updated_at': notification.updated_at.isoformat(),
+    })
 
 
 @api_view(["GET", "POST", "PATCH"])
