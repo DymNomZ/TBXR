@@ -459,3 +459,71 @@ class ImagingAccessTests(TestCase):
 			[item["transaction_id"] for item in payload],
 			[str(first.transaction_id), str(second.transaction_id), str(third.transaction_id)],
 		)
+
+	def test_ai_transient_failure_retries_and_falls_back(self):
+		ProcessedImage.objects.create(
+			xray_record=self.tech_one_record,
+			processed_image=self._image_file("processed.png"),
+			preprocessing_metadata={"source": "test"},
+		)
+
+		fake_inference = SimpleNamespace(
+			MODEL_VERSION="v-test",
+			predict=mock.Mock(return_value={"error": {"error_type": "TIMEOUT", "message": "Connection timeout"}}),
+			generate_heatmap=mock.Mock(return_value=""),
+			AIErrorType=SimpleNamespace(TIMEOUT="TIMEOUT", UNREACHABLE="UNREACHABLE", FAILED="FAILED")
+		)
+
+		self.client.force_login(self.tech_one)
+		
+		with override_settings(AI_MAX_RETRIES=2, AI_RETRY_DELAY=0.01):
+			with mock.patch("apps.imaging.views._get_inference_module", return_value=fake_inference):
+				response = self.client.post(
+					reverse(
+						"imaging:analyse_xray",
+						kwargs={"transaction_id": str(self.tech_one_record.transaction_id)},
+					),
+				)
+
+		self.assertEqual(response.status_code, 200)
+		self.assertEqual(response.json()["status"], "MANUAL_ONLY")
+		
+		# It should attempt initially + 2 retries = 3 total attempts
+		self.assertEqual(fake_inference.predict.call_count, 3)
+		
+		self.tech_one_record.refresh_from_db()
+		self.assertEqual(self.tech_one_record.status, "MANUAL_ONLY")
+
+	def test_ai_permanent_failure_falls_back_immediately(self):
+		ProcessedImage.objects.create(
+			xray_record=self.tech_one_record,
+			processed_image=self._image_file("processed.png"),
+			preprocessing_metadata={"source": "test"},
+		)
+
+		fake_inference = SimpleNamespace(
+			MODEL_VERSION="v-test",
+			predict=mock.Mock(return_value={"error": {"error_type": "FAILED", "message": "Invalid model file"}}),
+			generate_heatmap=mock.Mock(return_value=""),
+			AIErrorType=SimpleNamespace(TIMEOUT="TIMEOUT", UNREACHABLE="UNREACHABLE", FAILED="FAILED")
+		)
+
+		self.client.force_login(self.tech_one)
+		
+		with override_settings(AI_MAX_RETRIES=2, AI_RETRY_DELAY=0.01):
+			with mock.patch("apps.imaging.views._get_inference_module", return_value=fake_inference):
+				response = self.client.post(
+					reverse(
+						"imaging:analyse_xray",
+						kwargs={"transaction_id": str(self.tech_one_record.transaction_id)},
+					),
+				)
+
+		self.assertEqual(response.status_code, 200)
+		self.assertEqual(response.json()["status"], "MANUAL_ONLY")
+		
+		# Should only attempt once for permanent failure
+		self.assertEqual(fake_inference.predict.call_count, 1)
+		
+		self.tech_one_record.refresh_from_db()
+		self.assertEqual(self.tech_one_record.status, "MANUAL_ONLY")

@@ -97,11 +97,52 @@ def _get_inference_module():
     return module
 
 
+import time
+import logging
+
+logger = logging.getLogger(__name__)
+
 def _run_ai_inference(xray_record, processed_img):
     inference = _get_inference_module()
     image_path = processed_img.processed_image.path
-    prediction = inference.predict(image_path)
-    heatmap_path = inference.generate_heatmap(image_path)
+    
+    max_retries = getattr(settings, 'AI_MAX_RETRIES', 3)
+    retry_delay = getattr(settings, 'AI_RETRY_DELAY', 1)
+    
+    prediction = None
+    heatmap_path = None
+    
+    for attempt in range(max_retries + 1):
+        prediction = inference.predict(image_path)
+        
+        if "error" in prediction:
+            error_data = prediction["error"]
+            error_type = error_data.get("error_type")
+            message = error_data.get("message", "Unknown error")
+            
+            # Use getattr to safely access AIErrorType attributes in case they are not defined
+            ai_error_type = getattr(inference, "AIErrorType", None)
+            timeout_type = getattr(ai_error_type, "TIMEOUT", "TIMEOUT")
+            unreachable_type = getattr(ai_error_type, "UNREACHABLE", "UNREACHABLE")
+            
+            if error_type in [timeout_type, unreachable_type]:
+                if attempt < max_retries:
+                    logger.warning(f"AI transient failure for case {xray_record.transaction_id} (attempt {attempt + 1}/{max_retries}): {message}. Retrying in {retry_delay}s...")
+                    time.sleep(retry_delay)
+                    continue
+                else:
+                    logger.error(f"AI retries exhausted for case {xray_record.transaction_id}. Fallback to MANUAL_ONLY.")
+                    xray_record.status = "MANUAL_ONLY"
+                    xray_record.save(update_fields=["status"])
+                    return None, False
+            else:
+                logger.error(f"AI permanent failure for case {xray_record.transaction_id}: {message}. Fallback to MANUAL_ONLY.")
+                xray_record.status = "MANUAL_ONLY"
+                xray_record.save(update_fields=["status"])
+                return None, False
+                
+        heatmap_path = inference.generate_heatmap(image_path)
+        break
 
     try:
         risk_score = float(prediction.get("risk_score"))
@@ -310,7 +351,13 @@ def analyse_xray(request, transaction_id):
         )
 
     try:
-        ai_result, created = _run_ai_inference(xray_record, processed_img)
+        ai_result_tuple = _run_ai_inference(xray_record, processed_img)
+        if ai_result_tuple == (None, False):
+            return Response(
+                {"detail": "AI inference failed. Case marked as manual only.", "status": "MANUAL_ONLY"},
+                status=status.HTTP_200_OK,
+            )
+        ai_result, created = ai_result_tuple
     except ValueError as exc:
         return Response(
             {"errors": {"risk_score": [str(exc)]}},
