@@ -9,6 +9,35 @@ from PIL import Image
 from torchvision import transforms
 from torchvision.models import mobilenet_v3_large
 
+# ============================================================
+# AI-ERROR TYPES
+# ============================================================
+class AIErrorType:
+    TIMEOUT = "TIMEOUT"
+    UNREACHABLE = "UNREACHABLE"
+    FAILED = "FAILED"
+
+
+class AIError(Exception):
+    def __init__(self, error_type: str, message: str):
+        self.error_type = error_type
+        self.message = message
+        super().__init__(f"{error_type}: {message}")
+
+    def to_dict(self):
+        return {
+            "error_type": self.error_type,
+            "message": self.message
+        }
+
+# AI ERROR RESPONSE FUNCTION
+def error_response(error_type: str, message: str) -> dict:
+    return {
+        "error": {
+            "error_type": error_type,
+            "message": message
+        }
+    }
 
 # CHANGE THIS FOR FUTURE VERSIONS OF THE MODEL
 MODEL_VERSION = "v1.0.0"
@@ -51,27 +80,55 @@ def preprocess_image(image_path: str):
 
 
 def load_model():
-    model = mobilenet_v3_large(weights=None)
+    try:
+        if not MODEL_PATH.exists():
+            raise AIError(
+                AIErrorType.UNREACHABLE,
+                f"Model file not found: {MODEL_PATH}"
+            )
 
-    # Binary classification head
-    in_features = model.classifier[3].in_features
-    model.classifier[3] = torch.nn.Linear(in_features, 1)
+        model = mobilenet_v3_large(weights=None)
 
-    checkpoint = torch.load(MODEL_PATH, map_location=DEVICE)
+        in_features = model.classifier[3].in_features
+        model.classifier[3] = torch.nn.Linear(
+            in_features,
+            1
+        )
 
-    # Support both training checkpoints and raw state dicts.
-    if isinstance(checkpoint, dict) and "model_state_dict" in checkpoint:
-        state_dict = checkpoint["model_state_dict"]
-    else:
-        state_dict = checkpoint
+        checkpoint = torch.load(
+            MODEL_PATH,
+            map_location=DEVICE
+        )
 
-    model.load_state_dict(state_dict)
+        if (
+            isinstance(checkpoint, dict)
+            and "model_state_dict" in checkpoint
+        ):
+            state_dict = checkpoint["model_state_dict"]
+        else:
+            state_dict = checkpoint
 
+        model.load_state_dict(state_dict)
 
-    model.to(DEVICE)
-    model.eval()
+        model.to(DEVICE)
+        model.eval()
 
-    return model
+        return model
+
+    except AIError:
+        raise
+
+    except FileNotFoundError as e:
+        raise AIError(
+            AIErrorType.UNREACHABLE,
+            "AI model resource is unavailable."
+        ) from e
+
+    except Exception as e:
+        raise AIError(
+            AIErrorType.FAILED,
+            "Failed to load AI model."
+        ) from e
 
 MODEL = load_model()
 
@@ -91,19 +148,41 @@ def preprocess_image(image_path: str):
 # ============================================================
 
 def predict(image_path: str) -> Dict:
-    _, input_tensor = preprocess_image(image_path)
+    try:
+        _, input_tensor = preprocess_image(image_path)
 
-    with torch.no_grad():
-        logit = MODEL(input_tensor)
-        prob = torch.sigmoid(logit).item()
+        with torch.no_grad():
+            logit = MODEL(input_tensor)
+            prob = torch.sigmoid(logit).item()
 
-    risk_score = prob
-    risk_label = "High Risk" if prob >= 0.5 else "Low Risk"
+        risk_label = (
+            "High Risk"
+            if prob >= 0.5
+            else "Low Risk"
+        )
 
-    return {
-        "risk_score": round(risk_score, 4),
-        "risk_label": risk_label
-    }
+        return {
+            "risk_score": round(prob, 4),
+            "risk_label": risk_label
+        }
+
+    except FileNotFoundError:
+        return error_response(
+            AIErrorType.FAILED,
+            "Input image could not be found."
+        )
+
+    except AIError as e:
+        return error_response(
+            e.error_type,
+            e.message
+        )
+
+    except Exception:
+        return error_response(
+            AIErrorType.FAILED,
+            "AI inference failed."
+        )
 
 
 # ============================================================
