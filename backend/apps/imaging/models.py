@@ -12,7 +12,7 @@ class XrayRecord(models.Model):
         ('PENDING', 'Pending Review'),
         ('IN_REVIEW', 'In Review'),
         ('AI_REVIEWED', 'AI Reviewed'),
-        ('MANUAL_ONLY', 'Manual Only'),
+        ('MANUAL_REVIEW', 'Manual Review Required'),
         ('COMPLETED', 'Completed'),
     ]
 
