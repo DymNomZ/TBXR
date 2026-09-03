@@ -76,6 +76,31 @@ def _trigger_report_submission_notification(report):
     )
 
 
+def _trigger_manual_review_notification(xray_record, error_message):
+    """Create notifications for all radiologists when AI processing fails and manual review is required."""
+    radiologists = get_user_model().objects.filter(role=UserRole.RADIOLOGIST)
+    if not radiologists.exists():
+        return []
+
+    patient = xray_record.patient
+    patient_name = f"{patient.first_name} {patient.last_name}".strip()
+    message = (
+        f"Manual review required for {patient_name} "
+        f"(case {xray_record.transaction_id}). AI processing failed: {error_message}"
+    )
+
+    notifications = []
+    for radiologist in radiologists:
+        if not Notification.objects.filter(recipient=radiologist, message=message).exists():
+            notifications.append(Notification(
+                recipient=radiologist,
+                message=message,
+                read_status=False,
+            ))
+
+    return Notification.objects.bulk_create(notifications)
+
+
 def _get_inference_module():
     global _INFERENCE_MODULE
     if _INFERENCE_MODULE is not None:
@@ -98,18 +123,61 @@ def _get_inference_module():
 
 
 def _run_ai_inference(xray_record, processed_img):
-    inference = _get_inference_module()
+    """
+    Run AI inference on the processed image.
+    Returns (ai_result, created, error_message) where error_message is None on success.
+    """
+    try:
+        inference = _get_inference_module()
+    except (FileNotFoundError, ImportError) as exc:
+        error_msg = f"AI inference module unavailable: {exc}"
+        xray_record.status = "MANUAL_REVIEW"
+        xray_record.save(update_fields=["status"])
+        _trigger_manual_review_notification(xray_record, error_msg)
+        return None, False, error_msg
+
     image_path = processed_img.processed_image.path
-    prediction = inference.predict(image_path)
-    heatmap_path = inference.generate_heatmap(image_path)
+
+    try:
+        prediction = inference.predict(image_path)
+    except Exception as exc:
+        error_msg = f"AI prediction failed: {exc}"
+        xray_record.status = "MANUAL_REVIEW"
+        xray_record.save(update_fields=["status"])
+        _trigger_manual_review_notification(xray_record, error_msg)
+        return None, False, error_msg
+
+    if isinstance(prediction, dict) and "error" in prediction:
+        error_msg = f"AI prediction error: {prediction['error'].get('message', 'Unknown error')}"
+        xray_record.status = "MANUAL_REVIEW"
+        xray_record.save(update_fields=["status"])
+        _trigger_manual_review_notification(xray_record, error_msg)
+        return None, False, error_msg
+
+    try:
+        heatmap_path = inference.generate_heatmap(image_path)
+    except Exception as exc:
+        error_msg = f"AI heatmap generation failed: {exc}"
+        xray_record.status = "MANUAL_REVIEW"
+        xray_record.save(update_fields=["status"])
+        _trigger_manual_review_notification(xray_record, error_msg)
+        return None, False, error_msg
 
     try:
         risk_score = float(prediction.get("risk_score"))
     except (TypeError, ValueError) as exc:
-        raise ValueError("Invalid risk score from inference.") from exc
+        error_msg = "Invalid risk score from inference."
+        xray_record.status = "MANUAL_REVIEW"
+        xray_record.save(update_fields=["status"])
+        _trigger_manual_review_notification(xray_record, error_msg)
+        return None, False, error_msg
 
     if not 0.0 <= risk_score <= 1.0:
-        raise ValueError("Risk score must be between 0.0 and 1.0.")
+        error_msg = "Risk score must be between 0.0 and 1.0."
+        xray_record.status = "MANUAL_REVIEW"
+        xray_record.save(update_fields=["status"])
+        _trigger_manual_review_notification(xray_record, error_msg)
+        return None, False, error_msg
 
     raw_label = str(prediction.get("risk_label", "")).strip().lower()
     if not raw_label:
@@ -149,7 +217,7 @@ def _run_ai_inference(xray_record, processed_img):
     xray_record.status = "AI_REVIEWED"
     xray_record.save(update_fields=["status"])
 
-    return ai_result, created
+    return ai_result, created, None
 
 @extend_schema(
     request={
@@ -266,20 +334,19 @@ def upload_xray(request, patient_id):
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
 
-    try:
-        _run_ai_inference(xray_record, processed_img)
-    except ValueError as e:
-        xray_record.delete()
+    ai_result, created, error_msg = _run_ai_inference(xray_record, processed_img)
+    if error_msg:
+        xray_record.refresh_from_db()
+        serializer = XrayRecordSerializer(xray_record, context={'request': request})
         return Response(
-            {"errors": {"risk_score": [str(e)]}},
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            {
+                "status": "MANUAL_REVIEW",
+                "message": f"AI processing failed; case flagged for manual review: {error_msg}",
+                "record": serializer.data
+            },
+            status=status.HTTP_202_ACCEPTED,
         )
-    except Exception as e:
-        xray_record.delete()
-        return Response(
-            {"errors": {"inference": [f"Inference failed: {str(e)}"]}},
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        )
+
     xray_record.refresh_from_db()
     serializer = XrayRecordSerializer(xray_record, context={'request': request})
     return Response(serializer.data, status=status.HTTP_200_OK)
@@ -310,16 +377,17 @@ def analyse_xray(request, transaction_id):
         )
 
     try:
-        ai_result, created = _run_ai_inference(xray_record, processed_img)
-    except ValueError as exc:
-        return Response(
-            {"errors": {"risk_score": [str(exc)]}},
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        )
+        ai_result, created, error_msg = _run_ai_inference(xray_record, processed_img)
     except Exception as exc:
         return Response(
             {"errors": {"inference": [f"Inference failed: {exc}"]}},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+    if error_msg:
+        return Response(
+            {"errors": {"inference": [error_msg]}, "status": "MANUAL_REVIEW"},
+            status=status.HTTP_202_ACCEPTED,
         )
 
     serializer = AIResultSerializer(ai_result, context={"request": request})
