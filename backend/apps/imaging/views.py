@@ -122,6 +122,12 @@ def _get_inference_module():
     return module
 
 
+import time
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 def _run_ai_inference(xray_record, processed_img):
     """
     Run AI inference on the processed image.
@@ -218,6 +224,7 @@ def _run_ai_inference(xray_record, processed_img):
     xray_record.save(update_fields=["status"])
 
     return ai_result, created, None
+
 
 @extend_schema(
     request={

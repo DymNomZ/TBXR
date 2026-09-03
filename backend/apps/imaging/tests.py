@@ -106,7 +106,6 @@ class ImagingAccessTests(TestCase):
             "notes": "Review needed",
         }
 
-
     @staticmethod
     def _dicom_file(filename="xray.dcm"):
         file_meta = FileMetaDataset()
@@ -179,8 +178,6 @@ class ImagingAccessTests(TestCase):
             self.assertFalse(hasattr(saved_ds, tag), f"Tag {tag} was not stripped!")
 
         xray_record.raw_image.close()
-
-
 
     def test_technologist_dashboard_shows_only_own_records(self):
         self.client.force_login(self.tech_one)
@@ -377,7 +374,6 @@ class ImagingAccessTests(TestCase):
         self.assertEqual(ai_result.model_version, "v-test")
 
     def test_ai_inference_endpoint_rejects_out_of_range_risk_score(self):
-        """Test that out-of-range risk score triggers MANUAL_REVIEW status instead of 500."""
         ProcessedImage.objects.create(
             xray_record=self.tech_one_record,
             processed_image=self._image_file("processed-out-of-range.png"),
@@ -399,15 +395,13 @@ class ImagingAccessTests(TestCase):
                 ),
             )
 
-        # Should return 202 ACCEPTED with MANUAL_REVIEW status, not 500
         self.assertEqual(response.status_code, 202)
         self.assertEqual(response.data["status"], "MANUAL_REVIEW")
         self.assertIn("errors", response.data)
         self.assertIn("inference", response.data["errors"])
         self.assertIn("Risk score must be between 0.0 and 1.0", response.data["errors"]["inference"][0])
-        # No AIResult should be created
         self.assertFalse(AIResult.objects.filter(xray_record=self.tech_one_record).exists())
-        # XrayRecord should still exist with MANUAL_REVIEW status
+
         self.tech_one_record.refresh_from_db()
         self.assertEqual(self.tech_one_record.status, "MANUAL_REVIEW")
 
