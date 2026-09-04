@@ -128,7 +128,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-def _run_ai_inference(xray_record, processed_img):
+def _run_ai_inference(xray_record, processed_img, force_proceed=False):
     """
     Run AI inference on the processed image.
     Returns (ai_result, created, error_message) where error_message is None on success.
@@ -140,7 +140,7 @@ def _run_ai_inference(xray_record, processed_img):
         xray_record.status = "MANUAL_REVIEW"
         xray_record.save(update_fields=["status"])
         _trigger_manual_review_notification(xray_record, error_msg)
-        return None, False, error_msg
+        return None, False, error_msg, None
 
     image_path = processed_img.processed_image.path
 
@@ -151,14 +151,26 @@ def _run_ai_inference(xray_record, processed_img):
         xray_record.status = "MANUAL_REVIEW"
         xray_record.save(update_fields=["status"])
         _trigger_manual_review_notification(xray_record, error_msg)
-        return None, False, error_msg
+        return None, False, error_msg, None
 
     if isinstance(prediction, dict) and "error" in prediction:
         error_msg = f"AI prediction error: {prediction['error'].get('message', 'Unknown error')}"
         xray_record.status = "MANUAL_REVIEW"
         xray_record.save(update_fields=["status"])
         _trigger_manual_review_notification(xray_record, error_msg)
-        return None, False, error_msg
+        return None, False, error_msg, None
+
+    quality_check = prediction.get("quality_check")
+    if quality_check and quality_check.get("status") == "LOW_QUALITY":
+        if not force_proceed:
+            return None, False, None, quality_check
+        else:
+            # Persist the override
+            metadata = processed_img.preprocessing_metadata
+            metadata["low_quality_proceed"] = True
+            metadata["low_quality_score"] = quality_check.get("score")
+            processed_img.preprocessing_metadata = metadata
+            processed_img.save(update_fields=["preprocessing_metadata"])
 
     try:
         heatmap_path = inference.generate_heatmap(image_path)
@@ -167,7 +179,7 @@ def _run_ai_inference(xray_record, processed_img):
         xray_record.status = "MANUAL_REVIEW"
         xray_record.save(update_fields=["status"])
         _trigger_manual_review_notification(xray_record, error_msg)
-        return None, False, error_msg
+        return None, False, error_msg, None
 
     try:
         risk_score = float(prediction.get("risk_score"))
@@ -176,14 +188,14 @@ def _run_ai_inference(xray_record, processed_img):
         xray_record.status = "MANUAL_REVIEW"
         xray_record.save(update_fields=["status"])
         _trigger_manual_review_notification(xray_record, error_msg)
-        return None, False, error_msg
+        return None, False, error_msg, None
 
     if not 0.0 <= risk_score <= 1.0:
         error_msg = "Risk score must be between 0.0 and 1.0."
         xray_record.status = "MANUAL_REVIEW"
         xray_record.save(update_fields=["status"])
         _trigger_manual_review_notification(xray_record, error_msg)
-        return None, False, error_msg
+        return None, False, error_msg, None
 
     raw_label = str(prediction.get("risk_label", "")).strip().lower()
     if not raw_label:
@@ -223,7 +235,7 @@ def _run_ai_inference(xray_record, processed_img):
     xray_record.status = "AI_REVIEWED"
     xray_record.save(update_fields=["status"])
 
-    return ai_result, created, None
+    return ai_result, created, None, None
 
 
 @extend_schema(
@@ -341,7 +353,19 @@ def upload_xray(request, patient_id):
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
 
-    ai_result, created, error_msg = _run_ai_inference(xray_record, processed_img)
+    force_proceed = str(request.data.get("force_proceed", "false")).lower() == "true"
+    ai_result, created, error_msg, quality_info = _run_ai_inference(xray_record, processed_img, force_proceed=force_proceed)
+    
+    if quality_info:
+        return Response({
+            "status": "quality_check_failed",
+            "message": "Uploaded image may be too low quality for reliable AI interpretation.",
+            "quality_score": quality_info.get("score"),
+            "requires_confirmation": True,
+            "can_proceed": True,
+            "transaction_id": str(xray_record.transaction_id)
+        }, status=status.HTTP_200_OK)
+
     if error_msg:
         xray_record.refresh_from_db()
         serializer = XrayRecordSerializer(xray_record, context={'request': request})
@@ -384,12 +408,23 @@ def analyse_xray(request, transaction_id):
         )
 
     try:
-        ai_result, created, error_msg = _run_ai_inference(xray_record, processed_img)
+        force_proceed = str(request.data.get("force_proceed", "false")).lower() == "true"
+        ai_result, created, error_msg, quality_info = _run_ai_inference(xray_record, processed_img, force_proceed=force_proceed)
     except Exception as exc:
         return Response(
             {"errors": {"inference": [f"Inference failed: {exc}"]}},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
+
+    if quality_info:
+        return Response({
+            "status": "quality_check_failed",
+            "message": "Uploaded image may be too low quality for reliable AI interpretation.",
+            "quality_score": quality_info.get("score"),
+            "requires_confirmation": True,
+            "can_proceed": True,
+            "transaction_id": str(xray_record.transaction_id)
+        }, status=status.HTTP_200_OK)
 
     if error_msg:
         return Response(

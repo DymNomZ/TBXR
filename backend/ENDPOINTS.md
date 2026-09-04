@@ -112,12 +112,26 @@ GET /api/patients/search/?name=smith
   - Cookie + X-CSRFToken (session auth)
 - Body (multipart):
   - raw_image (file)
+  - force_proceed (boolean, optional, default: false) - Bypass quality check
 - Response: 200 JSON
 - Side effects:
   - File saved to media/raw/
   - XrayRecord created with status PENDING (Pending Review)
-  - AI inference runs automatically and stores AIResult
-  - XrayRecord status updated to AI_REVIEWED
+  - AI inference runs automatically. If quality check fails and force_proceed is false, AI Result is not created and it returns a quality_check_failed response.
+  - If successful, XrayRecord status updated to AI_REVIEWED
+
+Example of quality check failed response:
+```json
+{
+  "status": "quality_check_failed",
+  "message": "Uploaded image may be too low quality for reliable AI interpretation.",
+  "quality_score": 0.41,
+  "requires_confirmation": true,
+  "can_proceed": true,
+  "transaction_id": "uuid"
+}
+```
+*Note: To continue with a low quality image, the frontend should prompt the user and make a request to `POST /api/imaging/xray/<transaction_id>/analyse/` with `{"force_proceed": true}`.*
 
 Example:
 ```
@@ -156,11 +170,12 @@ raw_image=@/path/to/file.png
 ### POST /api/imaging/xray/<transaction_id>/analyse/
 - Purpose: Run AI inference on the processed image and store the AI result.
 - Roles: RADIOLOGIC_TECH
-- Notes: This runs automatically after upload, but can be called again to re-run.
+- Notes: This runs automatically after upload, but can be called again to re-run. To bypass quality check failure on a previous upload, use `force_proceed`.
 - Headers:
   - Content-Type: application/json
   - Cookie + X-CSRFToken (session auth)
-- Body: none
+- Body (JSON):
+  - force_proceed (boolean, optional, default: false)
 - Response: 200/201 JSON (AIResult)
 - Side effects:
   - AIResult created/updated

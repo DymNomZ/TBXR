@@ -1,5 +1,6 @@
 from pathlib import Path
 from typing import Dict
+from quality import assess_quality
 
 import cv2
 import numpy as np
@@ -71,13 +72,6 @@ transform = transforms.Compose([
     )
 ])
 
-def preprocess_image(image_path: str):
-    image = Image.open(image_path).convert("RGB")
-
-    tensor = transform(image).unsqueeze(0).to(DEVICE)
-
-    return image, tensor
-
 
 def load_model():
     try:
@@ -137,11 +131,13 @@ MODEL = load_model()
 # ============================================================
 
 def preprocess_image(image_path: str):
-    image = Image.open(image_path)
+    image = Image.open(image_path).convert("RGB")
+
+    quality_check = assess_quality(image)
 
     tensor = transform(image).unsqueeze(0).to(DEVICE)
 
-    return image, tensor
+    return image, tensor, quality_check
 
 # ============================================================
 # PREDICTION
@@ -149,7 +145,7 @@ def preprocess_image(image_path: str):
 
 def predict(image_path: str) -> Dict:
     try:
-        _, input_tensor = preprocess_image(image_path)
+        _, input_tensor, quality_check = preprocess_image(image_path)
 
         with torch.no_grad():
             logit = MODEL(input_tensor)
@@ -163,7 +159,8 @@ def predict(image_path: str) -> Dict:
 
         return {
             "risk_score": round(prob, 4),
-            "risk_label": risk_label
+            "risk_label": risk_label,
+        "quality_check": quality_check
         }
 
     except FileNotFoundError:
@@ -241,7 +238,7 @@ class GradCAM:
 # ============================================================
 
 def generate_heatmap(image_path: str) -> str:
-    original_image, input_tensor = preprocess_image(image_path)
+    original_image, input_tensor,_ = preprocess_image(image_path)
 
     target_layer = MODEL.features[-1]
 
