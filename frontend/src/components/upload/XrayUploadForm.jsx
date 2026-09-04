@@ -1,6 +1,8 @@
 import { useState, useRef } from 'react'
 import { Upload, FileImage, X } from 'lucide-react'
 import Button from '../ui/Button'
+import Modal from '../ui/Modal'
+import { AI_DISCLAIMER_TEXT } from '../ui/AIDisclaimer'
 
 const ACCEPTED_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.dcm']
 const MAX_SIZE_MB = 20
@@ -23,12 +25,28 @@ function validateFile(file) {
   return null
 }
 
+function readErrorMessage(data, fallback) {
+  if (Array.isArray(data)) return data[0]
+  return data?.error ?? data?.detail ?? data?.message ?? fallback
+}
+
+function isLowQualityResponse(data) {
+  return (
+    data?.status === 'quality_check_failed'
+    && data?.requires_confirmation === true
+    && data?.can_proceed === true
+    && Boolean(data?.transaction_id)
+  )
+}
+
 export default function XrayUploadForm({ patientId, patientName, onSuccess }) {
   const [file, setFile]                 = useState(null)
   const [preview, setPreview]           = useState(null)
   const [isDragging, setIsDragging]     = useState(false)
   const [error, setError]               = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [isProceedingLowQuality, setIsProceedingLowQuality] = useState(false)
+  const [qualityPrompt, setQualityPrompt] = useState(null)
   const inputRef = useRef(null)
 
   const applyFile = (selected) => {
@@ -46,6 +64,20 @@ export default function XrayUploadForm({ patientId, patientName, onSuccess }) {
   const handleClear = () => {
     setFile(null); setPreview(null); setError('')
     if (inputRef.current) inputRef.current.value = ''
+  }
+
+  const completeConfirmedUpload = async (transactionId) => {
+    const response = await fetch(`/api/imaging/patients/${patientId}/xray/upload/confirm/${transactionId}/`, {
+      method: 'GET',
+      credentials: 'include',
+    })
+    const data = await response.json().catch(() => null)
+
+    if (!response.ok) {
+      throw new Error(readErrorMessage(data, 'Unable to load uploaded case details.'))
+    }
+
+    onSuccess?.(data)
   }
 
   const handleSubmit = async (e) => {
@@ -67,18 +99,67 @@ export default function XrayUploadForm({ patientId, patientName, onSuccess }) {
 
       if (response.ok) {
         const data = await response.json()
+        if (isLowQualityResponse(data)) {
+          setQualityPrompt({
+            transactionId: data.transaction_id,
+            qualityScore: data.quality_score,
+            message: data.message,
+          })
+          return
+        }
         onSuccess?.(data)
         return
       }
 
       const data = await response.json().catch(() => null)
-      const message = Array.isArray(data)
-        ? data[0]
-        : data?.error ?? data?.detail ?? `Upload failed (HTTP ${response.status}).`
+      const message = readErrorMessage(data, `Upload failed (HTTP ${response.status}).`)
       setError(message)
     } catch {
       setError('Unable to reach the server. Please try again.')
+    } finally {
+      setIsSubmitting(false)
     }
+  }
+
+  const handleProceedAnyway = async () => {
+    if (!qualityPrompt?.transactionId) return
+
+    setIsProceedingLowQuality(true)
+    setError('')
+    try {
+      const analyseResponse = await fetch(`/api/imaging/xray/${qualityPrompt.transactionId}/analyse/`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': getCsrfToken() ?? '',
+        },
+        body: JSON.stringify({ force_proceed: true }),
+      })
+      const analyseData = await analyseResponse.json().catch(() => null)
+
+      if (!analyseResponse.ok) {
+        setError(readErrorMessage(analyseData, 'Unable to continue with this image right now.'))
+        return
+      }
+
+      if (isLowQualityResponse(analyseData)) {
+        setError('Unable to continue: image quality confirmation did not clear. Please re-upload a clearer image.')
+        return
+      }
+
+      await completeConfirmedUpload(qualityPrompt.transactionId)
+      setQualityPrompt(null)
+    } catch {
+      setError('Unable to continue with this image right now. Please try again.')
+    } finally {
+      setIsProceedingLowQuality(false)
+    }
+  }
+
+  const handleReupload = () => {
+    setQualityPrompt(null)
+    handleClear()
   }
 
   return (
@@ -169,10 +250,53 @@ export default function XrayUploadForm({ patientId, patientName, onSuccess }) {
         <p className="text-xs font-medium text-[var(--danger)] px-1">{error}</p>
       )}
 
-      <Button type="submit" fullWidth disabled={isSubmitting || !file}>
+      <Button type="submit" fullWidth disabled={isSubmitting || isProceedingLowQuality || !file || Boolean(qualityPrompt)}>
         <Upload size={15} />
         {isSubmitting ? 'Uploading...' : 'Upload X-ray'}
       </Button>
+
+      <Modal
+        isOpen={Boolean(qualityPrompt)}
+        onClose={() => {}}
+        hideClose
+        size="lg"
+      >
+        <div className="flex flex-col gap-4">
+          <h3 className="text-xl font-semibold text-[var(--deep-navy)]">Low-quality image detected</h3>
+          <p className="text-sm text-[var(--text)] leading-relaxed">
+            {qualityPrompt?.message ?? 'The uploaded image may be too low quality for reliable AI interpretation.'}
+          </p>
+          {typeof qualityPrompt?.qualityScore === 'number' && (
+            <p className="text-sm text-[var(--text-muted)]">
+              Quality score: <span className="font-semibold text-[var(--text)]">{qualityPrompt.qualityScore.toFixed(2)}</span>
+            </p>
+          )}
+          <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+            {AI_DISCLAIMER_TEXT}
+          </p>
+          <p className="text-sm text-[var(--text-muted)]">
+            Continuing may reduce AI reliability. Re-upload a clearer image when available.
+          </p>
+          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={handleReupload}
+              disabled={isProceedingLowQuality}
+            >
+              Re-upload
+            </Button>
+            <Button
+              type="button"
+              variant="danger"
+              onClick={handleProceedAnyway}
+              disabled={isProceedingLowQuality}
+            >
+              {isProceedingLowQuality ? 'Continuing...' : 'Proceed Anyway'}
+            </Button>
+          </div>
+        </div>
+      </Modal>
 
     </form>
   )
