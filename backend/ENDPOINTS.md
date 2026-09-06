@@ -228,6 +228,93 @@ Example response:
   - status (PENDING|IN_REVIEW|AI_REVIEWED|COMPLETED)
 - Response: 200 JSON (paginated)
 
+### GET /api/physician/dashboard
+- Purpose: Physician read-only clinical summary for finalized reports, pending alerts, and patient progress.
+- Roles: PHYSICIAN
+- Query params (optional):
+  - severity (NORMAL|MILD|MODERATE|SEVERE|CRITICAL)
+  - date_from (YYYY-MM-DD; filters finalized reports by report updated date)
+  - date_to (YYYY-MM-DD; filters finalized reports by report updated date)
+- Notes:
+  - Source of truth is finalized radiologist outputs only (`Report.status=SUBMITTED`).
+  - Pending alerts include only unread notifications for the authenticated physician.
+- Response: 200 JSON
+```json
+{
+  "filters": {
+    "severity": "CRITICAL",
+    "date_from": "2026-09-01",
+    "date_to": "2026-09-06"
+  },
+  "summary": {
+    "finalized_report_count": 3,
+    "recent_report_count": 3,
+    "pending_alert_count": 2,
+    "report_ready_count": 3,
+    "patient_progress_count": 2
+  },
+  "finalized_cases": [
+    {
+      "report_id": 41,
+      "transaction_id": "uuid",
+      "reported_at": "2026-09-06T07:21:00Z",
+      "severity": "CRITICAL",
+      "patient": {
+        "patient_id": 12,
+        "first_name": "Juan",
+        "last_name": "Dela Cruz"
+      },
+      "radiologist": {
+        "id": 3,
+        "username": "rad.one",
+        "first_name": "Maria",
+        "last_name": "Santos"
+      },
+      "ai_result": {
+        "risk_label": "HIGH",
+        "risk_score": 0.92
+      },
+      "status": "COMPLETED"
+    }
+  ],
+  "recent_reports": [],
+  "report_ready_items": [],
+  "pending_alerts": [
+    {
+      "id": 91,
+      "message": "Report ready for Juan Dela Cruz (case uuid).",
+      "read_status": false,
+      "created_at": "2026-09-06T07:22:00Z",
+      "updated_at": "2026-09-06T07:22:00Z"
+    }
+  ],
+  "patient_progress": [
+    {
+      "patient": {
+        "patient_id": 12,
+        "first_name": "Juan",
+        "last_name": "Dela Cruz"
+      },
+      "total_finalized_reports": 2,
+      "latest_transaction_id": "uuid",
+      "latest_reported_at": "2026-09-06T07:21:00Z",
+      "latest_severity": "CRITICAL",
+      "latest_status": "COMPLETED"
+    }
+  ]
+}
+```
+- Error responses:
+  - 400 when `severity` is invalid.
+  - 400 when `date_from` or `date_to` format is invalid.
+  - 400 when `date_from > date_to`.
+  - 403 for non-physician roles.
+
+### GET /api/imaging/physician/dashboard/
+- Purpose: Imaging-scoped alias of physician dashboard endpoint for clients already using `/api/imaging` routes.
+- Roles: PHYSICIAN
+- Response: Same as `/api/physician/dashboard`.
+
 ### GET /api/imaging/xray/<transaction_id>/
 - Purpose: Returns the xray details with annotations
 - Roles: RADIOLOGIC_TECH, RADIOLOGIST
