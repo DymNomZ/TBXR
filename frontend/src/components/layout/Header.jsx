@@ -82,8 +82,18 @@ export default function Header() {
 
     setNotificationsOpen(false)
 
-    if (caseId) {
+    if (caseId && user?.role === 'RADIOLOGIST') {
       navigate(`/radiologist/review/${caseId}`)
+      return
+    }
+
+    if (caseId && user?.role === 'PHYSICIAN') {
+      navigate(`/dashboard/physician?case=${encodeURIComponent(caseId)}`)
+      return
+    }
+
+    if (user?.role === 'PHYSICIAN') {
+      navigate('/dashboard/physician')
       return
     }
 
