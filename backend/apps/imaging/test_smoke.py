@@ -13,7 +13,7 @@ from django.urls import reverse
 from apps.accounts.enums import UserRole
 from apps.patients.models import Patient
 
-from .models import AIResult, Annotation, XrayRecord, Report
+from .models import AIResult, Annotation, Notification, ProcessedImage, Report, XrayRecord
 
 
 class ReportSmokeTests(TestCase):
@@ -303,3 +303,133 @@ class ReportSmokeTests(TestCase):
         with mock.patch("apps.imaging.views.subprocess.run", return_value=fake_run):
             response = self.client.get(url)
         self.assertEqual(response.status_code, 200)
+
+
+class PhysicianDashboardSmokeTests(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        user_model = get_user_model()
+        cls.physician = user_model.objects.create_user(
+            username="smoke-physician",
+            password="password123",
+            role=UserRole.PHYSICIAN,
+        )
+        cls.radiologist = user_model.objects.create_user(
+            username="smoke-rad-physician",
+            password="password123",
+            role=UserRole.RADIOLOGIST,
+        )
+        cls.technologist = user_model.objects.create_user(
+            username="smoke-tech-physician",
+            password="password123",
+            role=UserRole.RADIOLOGIC_TECH,
+        )
+
+        patient = Patient.objects.create(
+            first_name="Physician",
+            last_name="Smoke",
+            date_of_birth="1992-06-06",
+            sex="F",
+            contact_number="09170001111",
+        )
+
+        xray_record = XrayRecord.objects.create(
+            patient=patient,
+            uploader=cls.technologist,
+            raw_image=ReportSmokeTests._image_file("physician-smoke.png"),
+            status="COMPLETED",
+            file_format="png",
+        )
+
+        AIResult.objects.create(
+            xray_record=xray_record,
+            risk_score=0.89,
+            risk_label=AIResult.RiskLabel.HIGH,
+            model_version="smoke-v1",
+        )
+        Report.objects.create(
+            xray_record=xray_record,
+            findings="Dense right upper lobe infiltrate.",
+            impression="Highly suspicious for active TB.",
+            recommendation="Urgent physician follow-up.",
+            severity=Report.SeverityChoices.CRITICAL,
+            status="SUBMITTED",
+            created_by=cls.radiologist,
+        )
+        Notification.objects.create(
+            recipient=cls.physician,
+            message=f"Report ready for Physician Smoke (case {xray_record.transaction_id}).",
+            read_status=False,
+        )
+
+    def test_physician_dashboard_smoke_flow(self):
+        self.client.force_login(self.physician)
+
+        response = self.client.get("/api/physician/dashboard", {"severity": "CRITICAL"})
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertGreaterEqual(payload["summary"]["finalized_report_count"], 1)
+        self.assertIn("pending_alerts", payload)
+        self.assertTrue(any("Report ready" in item["message"] for item in payload["pending_alerts"]))
+
+
+class AIFailureRetrySmokeTests(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        user_model = get_user_model()
+        cls.technologist = user_model.objects.create_user(
+            username="smoke-tech-retry",
+            password="password123",
+            role=UserRole.RADIOLOGIC_TECH,
+        )
+        cls.patient = Patient.objects.create(
+            first_name="Retry",
+            last_name="Smoke",
+            date_of_birth="1993-03-03",
+            sex="M",
+            contact_number="09170002222",
+        )
+        cls.xray_record = XrayRecord.objects.create(
+            patient=cls.patient,
+            uploader=cls.technologist,
+            raw_image=ReportSmokeTests._image_file("retry-smoke.png"),
+            status="PENDING",
+            file_format="png",
+        )
+        ProcessedImage.objects.create(
+            xray_record=cls.xray_record,
+            processed_image=ReportSmokeTests._image_file("retry-processed.png"),
+            preprocessing_metadata={"source": "smoke_test"},
+        )
+
+    def test_ai_failure_then_retry_succeeds(self):
+        self.client.force_login(self.technologist)
+        endpoint = reverse("imaging:analyse_xray", kwargs={"transaction_id": str(self.xray_record.transaction_id)})
+
+        failing_inference = SimpleNamespace(
+            MODEL_VERSION="smoke-v1",
+            predict=mock.Mock(side_effect=RuntimeError("TIMEOUT: model runner unavailable")),
+            generate_heatmap=mock.Mock(return_value=""),
+        )
+
+        with mock.patch("apps.imaging.views._get_inference_module", return_value=failing_inference):
+            failed_response = self.client.post(endpoint, content_type="application/json")
+
+        self.assertEqual(failed_response.status_code, 202)
+        self.assertEqual(failed_response.data["status"], "MANUAL_REVIEW")
+        self.assertIn("errors", failed_response.data)
+
+        retry_inference = SimpleNamespace(
+            MODEL_VERSION="smoke-v1",
+            predict=mock.Mock(return_value={"risk_score": 0.62, "risk_label": "Moderate"}),
+            generate_heatmap=mock.Mock(return_value=""),
+        )
+
+        with mock.patch("apps.imaging.views._get_inference_module", return_value=retry_inference):
+            retry_response = self.client.post(endpoint, content_type="application/json")
+
+        self.assertIn(retry_response.status_code, (200, 201))
+        self.assertEqual(retry_response.data["risk_label"], "MODERATE")
+        self.xray_record.refresh_from_db()
+        self.assertEqual(self.xray_record.status, "AI_REVIEWED")
