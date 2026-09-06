@@ -5,6 +5,7 @@ import PatientsPage from './pages/PatientsPage'
 import PatientDetailPage from './pages/PatientDetailPage';
 import TechnologistDashboardPage from './pages/dashboard/TechnologistDashboardPage'
 import RadiologistDashboardPage from './pages/dashboard/RadiologistDashboardPage'
+import PhysicianDashboardPage from './pages/dashboard/PhysicianDashboardPage'
 import AnnotationReviewPage from './pages/AnnotationReviewPage'
 import ReportWritePage from './pages/ReportWritePage'
 import RoleGuard from './components/auth/RoleGuard'
@@ -31,6 +32,14 @@ function App() {
             element={
               <RoleGuard allowedRoles={['RADIOLOGIST']}>
                 <RadiologistDashboardPage />
+              </RoleGuard>
+            }
+          />
+          <Route
+            path="/dashboard/physician"
+            element={
+              <RoleGuard allowedRoles={['PHYSICIAN']}>
+                <PhysicianDashboardPage />
               </RoleGuard>
             }
           />
