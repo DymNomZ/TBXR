@@ -5,6 +5,7 @@ from django.conf import settings
 from datetime import date
 from django.contrib.auth.decorators import login_required
 from django.utils import timezone
+from django.utils.dateparse import parse_date
 from django.template.loader import render_to_string
 from django.http import FileResponse
 
@@ -126,6 +127,97 @@ import time
 import logging
 
 logger = logging.getLogger(__name__)
+
+
+def _serialize_physician_report(report):
+    patient = report.xray_record.patient
+    ai_result = getattr(report.xray_record, "ai_result", None)
+    radiologist = report.created_by
+
+    return {
+        "report_id": report.id,
+        "transaction_id": str(report.xray_record.transaction_id),
+        "reported_at": report.updated_at.isoformat(),
+        "severity": report.severity,
+        "patient": {
+            "patient_id": patient.patient_id,
+            "first_name": patient.first_name,
+            "last_name": patient.last_name,
+        },
+        "radiologist": {
+            "id": radiologist.id if radiologist else None,
+            "username": radiologist.username if radiologist else None,
+            "first_name": radiologist.first_name if radiologist else None,
+            "last_name": radiologist.last_name if radiologist else None,
+        },
+        "ai_result": {
+            "risk_label": ai_result.risk_label if ai_result else None,
+            "risk_score": ai_result.risk_score if ai_result else None,
+        },
+        "status": report.xray_record.status,
+    }
+
+
+def _serialize_physician_alert(alert):
+    return {
+        "id": alert.id,
+        "message": alert.message,
+        "read_status": alert.read_status,
+        "created_at": alert.created_at.isoformat(),
+        "updated_at": alert.updated_at.isoformat(),
+    }
+
+
+def _apply_physician_dashboard_filters(request, queryset):
+    severity = request.query_params.get("severity", "").strip().upper()
+    date_from_raw = request.query_params.get("date_from", "").strip()
+    date_to_raw = request.query_params.get("date_to", "").strip()
+
+    if severity:
+        if severity not in Report.SeverityChoices.values:
+            return None, Response(
+                {
+                    "detail": (
+                        f"Invalid severity '{severity}'. Allowed values: "
+                        f"{', '.join(Report.SeverityChoices.values)}."
+                    )
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            ), None
+        queryset = queryset.filter(severity=severity)
+
+    date_from = None
+    date_to = None
+
+    if date_from_raw:
+        date_from = parse_date(date_from_raw)
+        if date_from is None:
+            return None, Response(
+                {"detail": "Invalid date_from format. Use YYYY-MM-DD."},
+                status=status.HTTP_400_BAD_REQUEST,
+            ), None
+        queryset = queryset.filter(updated_at__date__gte=date_from)
+
+    if date_to_raw:
+        date_to = parse_date(date_to_raw)
+        if date_to is None:
+            return None, Response(
+                {"detail": "Invalid date_to format. Use YYYY-MM-DD."},
+                status=status.HTTP_400_BAD_REQUEST,
+            ), None
+        queryset = queryset.filter(updated_at__date__lte=date_to)
+
+    if date_from and date_to and date_from > date_to:
+        return None, Response(
+            {"detail": "date_from cannot be later than date_to."},
+            status=status.HTTP_400_BAD_REQUEST,
+        ), None
+
+    return queryset, None, {
+        "severity": severity or None,
+        "date_from": date_from.isoformat() if date_from else None,
+        "date_to": date_to.isoformat() if date_to else None,
+    }
 
 
 def _run_ai_inference(xray_record, processed_img, force_proceed=False):
@@ -580,6 +672,77 @@ def radiologist_queue(request):
     page = paginator.paginate_queryset(records, request)
     serializer = RadiologistQueueSerializer(page, many=True)
     return paginator.get_paginated_response(serializer.data)
+
+
+@api_view(["GET"])
+@role_required(UserRole.PHYSICIAN)
+def physician_dashboard(request):
+    finalized_reports = (
+        Report.objects.filter(status="SUBMITTED")
+        .select_related("xray_record__patient", "xray_record__ai_result", "created_by")
+        .order_by("-updated_at")
+    )
+
+    finalized_reports, filter_error, filter_meta = _apply_physician_dashboard_filters(
+        request,
+        finalized_reports,
+    )
+    if filter_error is not None:
+        return filter_error
+
+    finalized_report_count = finalized_reports.count()
+
+    recent_reports = list(finalized_reports[:5])
+    report_ready_items = list(finalized_reports[:10])
+    finalized_cases = list(finalized_reports[:20])
+
+    unread_alerts = (
+        Notification.objects.filter(recipient=request.user, read_status=False)
+        .order_by("-created_at")
+    )
+
+    patient_progress = []
+    grouped_by_patient = {}
+    for report in finalized_reports:
+        patient_id = report.xray_record.patient.patient_id
+        if patient_id not in grouped_by_patient:
+            grouped_by_patient[patient_id] = {
+                "patient": {
+                    "patient_id": patient_id,
+                    "first_name": report.xray_record.patient.first_name,
+                    "last_name": report.xray_record.patient.last_name,
+                },
+                "total_finalized_reports": 0,
+                "latest_transaction_id": str(report.xray_record.transaction_id),
+                "latest_reported_at": report.updated_at.isoformat(),
+                "latest_severity": report.severity,
+                "latest_status": report.xray_record.status,
+            }
+        grouped_by_patient[patient_id]["total_finalized_reports"] += 1
+
+    patient_progress = sorted(
+        grouped_by_patient.values(),
+        key=lambda item: item["latest_reported_at"],
+        reverse=True,
+    )[:10]
+
+    return Response(
+        {
+            "filters": filter_meta,
+            "summary": {
+                "finalized_report_count": finalized_report_count,
+                "recent_report_count": len(recent_reports),
+                "pending_alert_count": unread_alerts.count(),
+                "report_ready_count": len(report_ready_items),
+                "patient_progress_count": len(patient_progress),
+            },
+            "finalized_cases": [_serialize_physician_report(report) for report in finalized_cases],
+            "recent_reports": [_serialize_physician_report(report) for report in recent_reports],
+            "report_ready_items": [_serialize_physician_report(report) for report in report_ready_items],
+            "pending_alerts": [_serialize_physician_alert(alert) for alert in unread_alerts[:20]],
+            "patient_progress": patient_progress,
+        }
+    )
 
 @api_view(["GET"])
 @role_required(UserRole.RADIOLOGIC_TECH, UserRole.RADIOLOGIST)
