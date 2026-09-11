@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import math
 
-from django.conf import settings, Q
+from django.conf import settings
+from django.db.models import Q
 
 from .models import AIResult, XrayRecord
 
