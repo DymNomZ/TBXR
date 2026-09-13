@@ -6,7 +6,7 @@ from PIL import Image
 from django.core.files.base import ContentFile
 from rest_framework import serializers
 
-from .models import Annotation, XrayRecord, ProcessedImage, AIResult, Report
+from .models import Annotation, XrayRecord, ProcessedImage, AIResult, ProgressionStatus, Report
 from apps.patients.models import Patient
 from django.contrib.auth import get_user_model
 
@@ -94,6 +94,48 @@ class AIResultSerializer(serializers.ModelSerializer):
             "heatmap_url",    # Keeping your teammate's safe URL generator!
             "model_version",  # Your new Step 24 field
             "generated_at",   # Your new Step 24 field
+        ]
+
+
+class ProgressionStatusSerializer(serializers.ModelSerializer):
+    transaction_id = serializers.SerializerMethodField()
+    previous_transaction_id = serializers.SerializerMethodField()
+    timestamp = serializers.SerializerMethodField()
+    previous_timestamp = serializers.SerializerMethodField()
+
+    def get_transaction_id(self, obj):
+        return str(obj.xray_record.transaction_id)
+
+    def get_previous_transaction_id(self, obj):
+        if not obj.previous_record:
+            return None
+        return str(obj.previous_record.transaction_id)
+
+    def get_timestamp(self, obj):
+        return obj.xray_record.upload_timestamp.isoformat() if obj.xray_record.upload_timestamp else None
+
+    def get_previous_timestamp(self, obj):
+        if not obj.previous_record or not obj.previous_record.upload_timestamp:
+            return None
+        return obj.previous_record.upload_timestamp.isoformat()
+
+    class Meta:
+        model = ProgressionStatus
+        fields = [
+            "status",
+            "score",
+            "previous_score",
+            "delta",
+            "abs_delta",
+            "threshold",
+            "comparison_available",
+            "reason",
+            "transaction_id",
+            "previous_transaction_id",
+            "timestamp",
+            "previous_timestamp",
+            "recorded_at",
+            "source",
         ]
 
 

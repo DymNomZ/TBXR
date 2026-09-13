@@ -10,7 +10,7 @@ from django.utils import timezone
 from apps.accounts.enums import UserRole
 from apps.patients.models import Patient
 
-from .models import AIResult, XrayRecord
+from .models import AIResult, ProgressionStatus, XrayRecord
 from .services import ProgressionService
 
 
@@ -625,3 +625,109 @@ class GetForRecordTests(ProgressionDBMixin, TestCase):
         wide = ProgressionService.get_for_record(new, threshold=0.10)
         self.assertEqual(default["status"], ProgressionService.INCREASED_RISK)
         self.assertEqual(wide["status"], ProgressionService.STABLE)
+
+
+class ProgressionPersistenceAPITests(ProgressionDBMixin, TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls._media_root = TemporaryDirectory()
+        cls._media_override = override_settings(MEDIA_ROOT=cls._media_root.name)
+        cls._media_override.enable()
+        super().setUpClass()
+
+    @classmethod
+    def tearDownClass(cls):
+        super().tearDownClass()
+        cls._media_override.disable()
+        cls._media_root.cleanup()
+
+    @classmethod
+    def setUpTestData(cls):
+        user_model = get_user_model()
+        cls.tech = user_model.objects.create_user(
+            username="prog-api-tech",
+            password="password123",
+            role=UserRole.RADIOLOGIC_TECH,
+        )
+        cls.patient = Patient.objects.create(
+            first_name="Api",
+            last_name="Patient",
+            date_of_birth="1994-05-05",
+            sex="F",
+            contact_number="09170000005",
+        )
+
+    def test_persisted_snapshots_are_saved_per_case_and_returned_in_order(self):
+        base = timezone.now() - timedelta(minutes=30)
+        first = self._create_xray_record(
+            patient=self.patient,
+            uploader=self.tech,
+            filename="history-1.png",
+        )
+        self._create_ai_result(first, 0.20, model_version="m1")
+        self._set_upload_timestamp(first, base)
+
+        second = self._create_xray_record(
+            patient=self.patient,
+            uploader=self.tech,
+            filename="history-2.png",
+        )
+        self._create_ai_result(second, 0.60, model_version="m2")
+        self._set_upload_timestamp(second, base + timedelta(minutes=5))
+
+        third = self._create_xray_record(
+            patient=self.patient,
+            uploader=self.tech,
+            filename="history-3.png",
+        )
+        self._create_ai_result(third, 0.58, model_version="m3")
+        self._set_upload_timestamp(third, base + timedelta(minutes=10))
+
+        for record in (first, second, third):
+            ProgressionService.persist_for_record(record)
+
+        self.assertEqual(ProgressionStatus.objects.filter(patient=self.patient).count(), 3)
+
+        self.client.force_login(self.tech)
+        response = self.client.get(f"/api/imaging/cases/{third.pk}/progression/")
+        self.assertEqual(response.status_code, 200)
+
+        payload = response.json()
+        self.assertEqual(payload["count"], 3)
+        self.assertEqual(len(payload["results"]), 3)
+        self.assertEqual(
+            [item["status"] for item in payload["results"]],
+            [
+                ProgressionService.NO_PRIOR,
+                ProgressionService.INCREASED_RISK,
+                ProgressionService.STABLE,
+            ],
+        )
+        self.assertEqual(payload["results"][0]["transaction_id"], str(first.transaction_id))
+        self.assertEqual(payload["results"][1]["previous_transaction_id"], str(first.transaction_id))
+        self.assertIn("recorded_at", payload["results"][0])
+
+    def test_paginated_history_supports_longer_histories(self):
+        base = timezone.now() - timedelta(minutes=30)
+        records = []
+        for i, score in enumerate((0.20, 0.30, 0.55, 0.80, 0.76)):
+            record = self._create_xray_record(
+                patient=self.patient,
+                uploader=self.tech,
+                filename=f"history-long-{i}.png",
+            )
+            self._create_ai_result(record, score, model_version=f"m{i}")
+            self._set_upload_timestamp(record, base + timedelta(minutes=i * 5))
+            ProgressionService.persist_for_record(record)
+            records.append(record)
+
+        self.client.force_login(self.tech)
+        response = self.client.get(
+            f"/api/imaging/cases/{records[-1].pk}/progression/?page=1&page_size=2"
+        )
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["count"], 5)
+        self.assertEqual(len(payload["results"]), 2)
+        self.assertEqual(payload["results"][0]["status"], ProgressionService.NO_PRIOR)
+        self.assertEqual(payload["results"][1]["status"], ProgressionService.INCREASED_RISK)
