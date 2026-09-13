@@ -1,10 +1,18 @@
 import { useState, useEffect } from 'react'
 import { ArrowLeftRight, X } from 'lucide-react'
+import { useAuth } from '../../context/AuthContext'
 import Modal from '../ui/Modal'
 import HeatmapViewer from './HeatmapViewer'
 import StaticAnnotationOverlay from './StaticAnnotationOverlay'
 import AIRiskBadge from '../ui/AIRiskBadge'
 import StatusBadge from '../ui/StatusBadge'
+
+function getCsrfToken() {
+  return document.cookie
+    .split('; ')
+    .find((row) => row.startsWith('csrftoken='))
+    ?.split('=')[1] ?? ''
+}
 
 const PROGRESSION_META = {
   no_prior: { label: 'No prior', color: '#94a3b8', soft: 'bg-slate-100 text-slate-700' },
@@ -36,12 +44,80 @@ function TrendTooltip({ point }) {
         {typeof point.score === 'number' ? `${(point.score * 100).toFixed(0)}% risk` : 'No score'}
       </div>
       <div className="mt-1 text-[11px] text-[var(--text-muted)]">{formatDisplayDate(point.timestamp)}</div>
+      {point.clinical_note && (
+        <div className="mt-2 text-[11px] text-[var(--text-muted)]">{point.clinical_note}</div>
+      )}
       {point.delta !== null && point.delta !== undefined && (
         <div className="mt-2 text-[11px] text-[var(--text-muted)]">
           Δ {Number(point.delta).toFixed(3)} vs prior
         </div>
       )}
     </div>
+  )
+}
+
+function OverrideStatusModal({
+  isOpen,
+  onClose,
+  value,
+  onValueChange,
+  note,
+  onNoteChange,
+  error,
+  loading,
+  onSubmit,
+  caseId,
+}) {
+  return (
+    <Modal isOpen={isOpen} onClose={onClose} title="Manual progression override" size="lg">
+      <form className="space-y-5" onSubmit={onSubmit}>
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+          Manual override changes the interpreted progression state for case {caseId ?? 'this scan'}.
+        </div>
+
+        <div className="space-y-2">
+          <label htmlFor="override-status" className="block text-sm font-medium text-[var(--deep-navy)]">
+            Progression status
+          </label>
+          <select
+            id="override-status"
+            value={value}
+            onChange={(event) => onValueChange(event.target.value)}
+            className="w-full rounded-xl border border-[var(--border)] bg-white px-3 py-2.5 text-sm text-[var(--text)] outline-none focus:border-[var(--accent)]"
+          >
+            <option value="stable">Stable</option>
+            <option value="decreased_risk">Improvement</option>
+            <option value="increased_risk">Deterioration</option>
+            <option value="no_prior">No prior</option>
+          </select>
+        </div>
+
+        <div className="space-y-2">
+          <label htmlFor="override-note" className="block text-sm font-medium text-[var(--deep-navy)]">
+            Clinical note
+          </label>
+          <textarea
+            id="override-note"
+            rows={4}
+            value={note}
+            onChange={(event) => onNoteChange(event.target.value)}
+            placeholder="Document the clinical rationale for this override..."
+            className="w-full rounded-xl border border-[var(--border)] bg-white px-3 py-2.5 text-sm text-[var(--text)] outline-none resize-none focus:border-[var(--accent)]"
+          />
+        </div>
+
+        {error && <p className="text-sm text-red-600">{error}</p>}
+
+        <div className="flex justify-end gap-3 pt-2">
+          <button type="button" onClick={onClose} className="rounded-xl border border-[var(--border)] px-4 py-2.5 text-sm font-medium text-[var(--text)] hover:bg-[var(--surface-soft)]">
+            Cancel
+          </button>
+          <button type="submit" disabled={loading} className="rounded-xl bg-[var(--accent)] px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60">
+            {loading ? 'Saving...' : 'Submit override'}
+          </button>
+        </div>
+      </form>
+    </Modal>
   )
 }
 
@@ -320,15 +396,32 @@ export default function LongitudinalPanel({
   currentTransactionId = null,
   refreshKey = 0,
 }) {
+  const auth = useAuth()
+  const user = auth?.user ?? (typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('user') ?? 'null') : null)
   const [records, setRecords] = useState([])
   const [loading, setLoading] = useState(true)
   const [compareOpen, setCompareOpen] = useState(false)
   const [progression, setProgression] = useState([])
   const [progressionLoading, setProgressionLoading] = useState(true)
+  const [overrideOpen, setOverrideOpen] = useState(false)
+  const [overrideStatus, setOverrideStatus] = useState('stable')
+  const [overrideNote, setOverrideNote] = useState('')
+  const [overrideError, setOverrideError] = useState('')
+  const [submittingOverride, setSubmittingOverride] = useState(false)
 
   // Slots store full record objects — annotations travel with them
   const [slotA, setSlotA] = useState(null)
   const [slotB, setSlotB] = useState(null)
+
+  const latestCaseId = records[records.length - 1]?.transaction_id ?? progression[progression.length - 1]?.transaction_id ?? null
+  const canOverride = user?.role === 'RADIOLOGIST' && Boolean(latestCaseId)
+  const manualOverrideHistory = progression.filter((point) => point.is_overridden || point.source === 'manual_override')
+
+  useEffect(() => {
+    if (!progression.length) return
+    const newestStatus = progression[progression.length - 1]?.status ?? 'stable'
+    setOverrideStatus((current) => (current === newestStatus ? current : newestStatus))
+  }, [progression])
 
   useEffect(() => {
     if (!patientId) return
@@ -401,6 +494,57 @@ export default function LongitudinalPanel({
     setSlotB(null)
   }
 
+  const handleOverrideSubmit = async (event) => {
+    event.preventDefault()
+
+    if (!latestCaseId) {
+      setOverrideError('No case is available to override.')
+      return
+    }
+
+    if (!overrideNote.trim()) {
+      setOverrideError('Clinical note is required.')
+      return
+    }
+
+    setSubmittingOverride(true)
+    setOverrideError('')
+
+    try {
+      const response = await fetch(`/api/imaging/cases/${latestCaseId}/progression/override/`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': getCsrfToken(),
+        },
+        body: JSON.stringify({
+          status: overrideStatus,
+          clinical_note: overrideNote.trim(),
+        }),
+      })
+
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}))
+        throw new Error(data?.clinical_note?.[0] ?? data?.status?.[0] ?? data?.detail ?? `Override failed (${response.status})`)
+      }
+
+      const saved = await response.json()
+      setProgression((current) => {
+        const next = current.map((point) => point.transaction_id === saved.transaction_id ? { ...point, ...saved } : point)
+        if (next.some((point) => point.transaction_id === saved.transaction_id)) return next
+        return [saved, ...current]
+      })
+      setOverrideOpen(false)
+      setOverrideNote('')
+      setOverrideStatus(saved.status ?? overrideStatus)
+    } catch (err) {
+      setOverrideError(err.message)
+    } finally {
+      setSubmittingOverride(false)
+    }
+  }
+
   return (
     <>
       <div className="bg-white rounded-2xl border border-[var(--border)] shadow-sm p-5 flex flex-col gap-4">
@@ -442,9 +586,63 @@ export default function LongitudinalPanel({
             <div className="mt-4 h-52 w-full rounded-2xl bg-[var(--surface-soft)] animate-pulse" />
           </div>
         ) : (
-          <ProgressionTrendChart points={progression} />
+          <>
+            <ProgressionTrendChart points={progression} />
+            {canOverride && (
+              <div className="mt-4 flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOverrideOpen(true)
+                    setOverrideError('')
+                  }}
+                  className="rounded-xl bg-[var(--accent)] px-3.5 py-2 text-sm font-semibold text-white shadow-sm hover:opacity-95"
+                >
+                  Override status
+                </button>
+              </div>
+            )}
+            {manualOverrideHistory.length > 0 && (
+              <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4">
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <h4 className="text-sm font-bold text-amber-900">Override history</h4>
+                  <span className="rounded-full bg-amber-200 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-amber-800">
+                    {manualOverrideHistory.length} record{manualOverrideHistory.length !== 1 ? 's' : ''}
+                  </span>
+                </div>
+                <div className="space-y-2">
+                  {manualOverrideHistory.map((point) => (
+                    <div key={`${point.transaction_id}-${point.override_timestamp ?? point.timestamp}`} className="rounded-xl border border-amber-200 bg-white p-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-xs font-semibold uppercase tracking-[0.12em] text-amber-700">Manual override</span>
+                        <span className="text-[10px] text-[var(--text-muted)]">{formatDisplayDate(point.override_timestamp ?? point.timestamp)}</span>
+                      </div>
+                      <div className="mt-2 text-sm font-medium text-[var(--deep-navy)]">{PROGRESSION_META[point.status]?.label ?? 'Overridden'} </div>
+                      <p className="mt-1 text-xs text-[var(--text-muted)]">{point.clinical_note || 'No clinical note was recorded.'}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </>
         )}
       </div>
+
+      <OverrideStatusModal
+        isOpen={overrideOpen}
+        onClose={() => {
+          setOverrideOpen(false)
+          setOverrideError('')
+        }}
+        value={overrideStatus}
+        onValueChange={setOverrideStatus}
+        note={overrideNote}
+        onNoteChange={setOverrideNote}
+        error={overrideError}
+        loading={submittingOverride}
+        onSubmit={handleOverrideSubmit}
+        caseId={latestCaseId}
+      />
 
       <Modal isOpen={compareOpen} onClose={handleClose} title="" hideClose noPadding size="3xl">
         <div className="flex flex-col gap-5 p-6">
