@@ -5,7 +5,7 @@ import math
 from django.conf import settings
 from django.db.models import Q
 
-from .models import AIResult, XrayRecord
+from .models import AIResult, ProgressionStatus, XrayRecord
 
 class ProgressionService:
     """
@@ -388,3 +388,35 @@ class ProgressionService:
         })
 
         return result
+
+    @classmethod
+    def persist_for_record(
+        cls,
+        current_record: XrayRecord,
+        threshold: float | None = None,
+    ) -> ProgressionStatus:
+        """
+        Persist the computed progression state for a single X-ray record.
+        """
+        result = cls.get_for_record(current_record, threshold=threshold)
+        previous_result = cls.get_previous_result(current_record)
+        previous_record = previous_result.xray_record if previous_result else None
+
+        snapshot, _ = ProgressionStatus.objects.update_or_create(
+            xray_record=current_record,
+            defaults={
+                "patient": current_record.patient,
+                "previous_record": previous_record,
+                "status": result["status"],
+                "score": result.get("current_score"),
+                "previous_score": result.get("previous_score"),
+                "delta": result.get("delta"),
+                "abs_delta": result.get("abs_delta"),
+                "threshold": result.get("threshold", cls.get_threshold()),
+                "comparison_available": bool(result.get("comparison_available", False)),
+                "reason": result.get("reason", ""),
+                "source": "ai",
+            },
+        )
+
+        return snapshot

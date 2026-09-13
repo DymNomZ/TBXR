@@ -36,7 +36,7 @@ from apps.accounts.enums import UserRole
 from apps.patients.models import Patient
 
 from .preprocessing import preprocess_xray
-from .models import Annotation, XrayRecord, ProcessedImage, AIResult, Report, Notification
+from .models import Annotation, XrayRecord, ProcessedImage, AIResult, ProgressionStatus, ProgressionOverrideAuditLog, Report, Notification
 from django.db import models
 from .serializers import (
     XrayRecordUploadSerializer,
@@ -47,9 +47,11 @@ from .serializers import (
     XrayRecordHistorySerializer,
     AIResultSerializer,
     PatientHistorySerializer,
+    ProgressionStatusSerializer,
     ReportSerializer,
     ReportCreateSerializer,
 )
+from .services import ProgressionService
 
 _INFERENCE_MODULE = None
 
@@ -127,6 +129,12 @@ import time
 import logging
 
 logger = logging.getLogger(__name__)
+
+
+class ProgressionHistoryPagination(PageNumberPagination):
+    page_size = 25
+    page_size_query_param = 'page_size'
+    max_page_size = 100
 
 
 def _serialize_physician_report(report):
@@ -780,6 +788,135 @@ def patient_history(request, patient_id):
     serializer = PatientHistorySerializer(
         records, many=True, context={"request": request}
     )
+    return Response(serializer.data)
+
+
+def _resolve_case_record(case_id):
+    try:
+        return XrayRecord.objects.select_related("patient").get(pk=case_id)
+    except (TypeError, ValueError, XrayRecord.DoesNotExist):
+        try:
+            return XrayRecord.objects.select_related("patient").get(transaction_id=case_id)
+        except XrayRecord.DoesNotExist:
+            return None
+
+
+@api_view(["GET"])
+@login_required
+def case_progression_history(request, case_id):
+    case_record = _resolve_case_record(case_id)
+    if case_record is None:
+        return Response({"detail": "Case not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    queryset = ProgressionStatus.objects.filter(
+        patient=case_record.patient
+    ).select_related(
+        "xray_record",
+        "previous_record",
+    ).order_by("xray_record__upload_timestamp", "xray_record__pk")
+
+    if not queryset.exists():
+        for record in XrayRecord.objects.filter(patient=case_record.patient).order_by("upload_timestamp", "pk"):
+            ProgressionService.persist_for_record(record)
+        queryset = ProgressionStatus.objects.filter(patient=case_record.patient).select_related(
+            "xray_record",
+            "previous_record",
+        ).order_by("xray_record__upload_timestamp", "xray_record__pk")
+
+    paginator = ProgressionHistoryPagination()
+    page = paginator.paginate_queryset(queryset, request)
+    serializer = ProgressionStatusSerializer(page, many=True, context={"request": request}) if page is not None else ProgressionStatusSerializer(queryset, many=True, context={"request": request})
+    if page is not None:
+        return paginator.get_paginated_response(serializer.data)
+    return Response(serializer.data)
+
+
+@api_view(["POST"])
+@role_required(UserRole.RADIOLOGIST)
+def case_progression_override(request, case_id):
+    case_record = _resolve_case_record(case_id)
+    if case_record is None:
+        return Response({"detail": "Case not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    status_value = request.data.get("status")
+    clinical_note = request.data.get("clinical_note")
+    if clinical_note is None or not str(clinical_note).strip():
+        return Response({"clinical_note": ["This field is required."]}, status=status.HTTP_400_BAD_REQUEST)
+
+    valid_statuses = {
+        ProgressionService.NO_PRIOR,
+        ProgressionService.STABLE,
+        ProgressionService.DECREASED_RISK,
+        ProgressionService.INCREASED_RISK,
+    }
+    if status_value not in valid_statuses:
+        return Response({"status": ["Invalid progression status."]}, status=status.HTTP_400_BAD_REQUEST)
+
+    progression = ProgressionStatus.objects.filter(
+        patient=case_record.patient,
+        xray_record=case_record,
+    ).first()
+    if progression is None:
+        ProgressionService.persist_for_record(case_record)
+        progression = ProgressionStatus.objects.get(
+            patient=case_record.patient,
+            xray_record=case_record,
+        )
+
+    previous_status = progression.status
+    progression.status = status_value
+    progression.source = "manual_override"
+    progression.is_overridden = True
+    progression.clinical_note = str(clinical_note).strip()
+    progression.overridden_by = request.user
+    progression.override_timestamp = timezone.now()
+    progression.reason = "Manual override"
+    progression.save(update_fields=[
+        "status",
+        "source",
+        "clinical_note",
+        "is_overridden",
+        "overridden_by",
+        "override_timestamp",
+        "reason",
+    ])
+
+    audit_log = ProgressionOverrideAuditLog.objects.create(
+        patient=case_record.patient,
+        xray_record=case_record,
+        radiologist=request.user,
+        previous_status=previous_status,
+        new_status=status_value,
+        clinical_note=progression.clinical_note,
+    )
+
+    payload = ProgressionStatusSerializer(progression, context={"request": request}).data
+    payload["audit_log_id"] = audit_log.id
+    return Response(payload, status=status.HTTP_201_CREATED)
+
+
+@api_view(["GET"])
+@login_required
+def patient_progression_history(request, patient_id):
+    patient = get_object_or_404(Patient, patient_id=patient_id)
+    queryset = ProgressionStatus.objects.filter(patient=patient).select_related(
+        "xray_record",
+        "previous_record",
+    ).order_by("xray_record__upload_timestamp", "xray_record__pk")
+
+    if not queryset.exists():
+        for record in XrayRecord.objects.filter(patient=patient).order_by("upload_timestamp", "pk"):
+            ProgressionService.persist_for_record(record)
+        queryset = ProgressionStatus.objects.filter(patient=patient).select_related(
+            "xray_record",
+            "previous_record",
+        ).order_by("xray_record__upload_timestamp", "xray_record__pk")
+
+    paginator = ProgressionHistoryPagination()
+    page = paginator.paginate_queryset(queryset, request)
+    serializer = ProgressionStatusSerializer(page, many=True, context={"request": request}) if page is not None else ProgressionStatusSerializer(queryset, many=True, context={"request": request})
+    if page is not None:
+        return paginator.get_paginated_response(serializer.data)
     return Response(serializer.data)
 
 

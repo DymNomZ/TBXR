@@ -36,6 +36,21 @@ urlpatterns = [
         name="patient_history",
     ),
     path(
+        "cases/<str:case_id>/progression/",
+        views.case_progression_history,
+        name="case_progression_history",
+    ),
+    path(
+        "cases/<str:case_id>/progression/override/",
+        views.case_progression_override,
+        name="case_progression_override",
+    ),
+    path(
+        "patients/<int:patient_id>/progression/",
+        views.patient_progression_history,
+        name="patient_progression_history",
+    ),
+    path(
         "dashboard/technologist/",
         views.technologist_dashboard,
         name="technologist_dashboard",
