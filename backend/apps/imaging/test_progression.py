@@ -10,7 +10,7 @@ from django.utils import timezone
 from apps.accounts.enums import UserRole
 from apps.patients.models import Patient
 
-from .models import AIResult, ProgressionStatus, XrayRecord
+from .models import AIResult, ProgressionOverrideAuditLog, ProgressionStatus, XrayRecord
 from .services import ProgressionService
 
 
@@ -506,6 +506,23 @@ class CompareHistoryTests(ProgressionDBMixin, TestCase):
         )
         self.assertEqual(second_wide["status"], ProgressionService.STABLE)
 
+    def test_conflicting_reversal_within_threshold_is_stable(self):
+        self._make_ordered([0.42, 0.48, 0.43])
+        results = ProgressionService.compare_history(
+            self.patient.patient_id, threshold=0.05
+        )
+
+        self.assertEqual(
+            [item["status"] for item in results],
+            [
+                ProgressionService.NO_PRIOR,
+                ProgressionService.INCREASED_RISK,
+                ProgressionService.STABLE,
+            ],
+        )
+        self.assertEqual(results[2]["delta"], -0.05)
+        self.assertEqual(results[2]["abs_delta"], 0.05)
+
     def test_invalid_threshold_rejected(self):
         self._make_ordered([0.2, 0.4])
         with self.assertRaisesMessage(
@@ -596,6 +613,21 @@ class GetForRecordTests(ProgressionDBMixin, TestCase):
         self.assertIsNone(result["previous_transaction_id"])
         self.assertEqual(result["current_model_version"], "m-solo")
         self.assertIsNone(result["previous_model_version"])
+
+    def test_single_image_history_stays_no_prior_even_at_high_risk(self):
+        record = self._create_xray_record(
+            patient=self.patient,
+            uploader=self.tech,
+            filename="solo-high-risk.png",
+        )
+        self._create_ai_result(record, 0.92, model_version="m-high")
+
+        result = ProgressionService.get_for_record(record, threshold=0.05)
+
+        self.assertEqual(result["status"], ProgressionService.NO_PRIOR)
+        self.assertEqual(result["current_score"], 0.92)
+        self.assertIsNone(result["previous_score"])
+        self.assertFalse(result["comparison_available"])
 
     def test_with_previous_full_metadata(self):
         old, new = self._make_pair(old_score=0.3, new_score=0.7)
@@ -755,6 +787,41 @@ class ProgressionPersistenceAPITests(ProgressionDBMixin, TestCase):
 
         self.assertEqual(response.status_code, 400)
         self.assertIn("clinical_note", response.json())
+
+    def test_manual_override_creates_audit_log_entry(self):
+        radiologist = get_user_model().objects.create_user(
+            username="override-radiologist-audit",
+            password="password123",
+            role=UserRole.RADIOLOGIST,
+        )
+        record = self._create_xray_record(
+            patient=self.patient,
+            uploader=self.tech,
+            filename="override-audit.png",
+        )
+        self._create_ai_result(record, 0.80, model_version="m-override")
+        ProgressionService.persist_for_record(record)
+
+        self.client.force_login(radiologist)
+        clinical_note = (
+            "Radiologist reviewed the longitudinal trend and changed the "
+            "classification based on clinical context."
+        )
+        response = self.client.post(
+            f"/api/imaging/cases/{record.pk}/progression/override/",
+            {
+                "status": ProgressionService.DECREASED_RISK,
+                "clinical_note": clinical_note,
+            },
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 201)
+        audit_log = ProgressionOverrideAuditLog.objects.get(xray_record=record)
+        self.assertEqual(audit_log.previous_status, ProgressionService.NO_PRIOR)
+        self.assertEqual(audit_log.new_status, ProgressionService.DECREASED_RISK)
+        self.assertEqual(audit_log.clinical_note, clinical_note)
+        self.assertEqual(audit_log.radiologist_id, radiologist.id)
 
     def test_manual_override_persists_status_and_audit_entry(self):
         radiologist = get_user_model().objects.create_user(
