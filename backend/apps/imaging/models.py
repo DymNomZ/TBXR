@@ -229,6 +229,16 @@ class ProgressionStatus(models.Model):
     comparison_available = models.BooleanField(default=False)
     reason = models.CharField(max_length=64, blank=True, default='')
     source = models.CharField(max_length=32, default='ai')
+    clinical_note = models.TextField(blank=True, default='')
+    is_overridden = models.BooleanField(default=False)
+    overridden_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='progression_overrides',
+    )
+    override_timestamp = models.DateTimeField(null=True, blank=True)
     recorded_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -236,3 +246,32 @@ class ProgressionStatus(models.Model):
 
     def __str__(self):
         return f'ProgressionStatus for {self.xray_record.transaction_id}: {self.status}'
+
+
+class ProgressionOverrideAuditLog(models.Model):
+    patient = models.ForeignKey(
+        Patient,
+        on_delete=models.CASCADE,
+        related_name='progression_override_audit_logs',
+    )
+    xray_record = models.ForeignKey(
+        XrayRecord,
+        on_delete=models.CASCADE,
+        related_name='progression_override_audit_logs',
+    )
+    radiologist = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name='progression_override_audit_logs',
+    )
+    previous_status = models.CharField(max_length=32, blank=True, default='')
+    new_status = models.CharField(max_length=32, blank=True, default='')
+    clinical_note = models.TextField(blank=True, default='')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'Progression override on {self.xray_record.transaction_id} by {self.radiologist}'

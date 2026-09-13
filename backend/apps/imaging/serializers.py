@@ -102,6 +102,7 @@ class ProgressionStatusSerializer(serializers.ModelSerializer):
     previous_transaction_id = serializers.SerializerMethodField()
     timestamp = serializers.SerializerMethodField()
     previous_timestamp = serializers.SerializerMethodField()
+    overridden_by = serializers.IntegerField(source='overridden_by_id', read_only=True, allow_null=True)
 
     def get_transaction_id(self, obj):
         return str(obj.xray_record.transaction_id)
@@ -130,6 +131,10 @@ class ProgressionStatusSerializer(serializers.ModelSerializer):
             "threshold",
             "comparison_available",
             "reason",
+            "clinical_note",
+            "is_overridden",
+            "overridden_by",
+            "override_timestamp",
             "transaction_id",
             "previous_transaction_id",
             "timestamp",

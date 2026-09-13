@@ -731,3 +731,65 @@ class ProgressionPersistenceAPITests(ProgressionDBMixin, TestCase):
         self.assertEqual(len(payload["results"]), 2)
         self.assertEqual(payload["results"][0]["status"], ProgressionService.NO_PRIOR)
         self.assertEqual(payload["results"][1]["status"], ProgressionService.INCREASED_RISK)
+
+    def test_manual_override_requires_non_empty_clinical_note(self):
+        radiologist = get_user_model().objects.create_user(
+            username="override-radiologist",
+            password="password123",
+            role=UserRole.RADIOLOGIST,
+        )
+        record = self._create_xray_record(
+            patient=self.patient,
+            uploader=self.tech,
+            filename="override-empty-note.png",
+        )
+        self._create_ai_result(record, 0.30, model_version="m-override")
+        ProgressionService.persist_for_record(record)
+
+        self.client.force_login(radiologist)
+        response = self.client.post(
+            f"/api/imaging/cases/{record.pk}/progression/override/",
+            {"status": ProgressionService.DECREASED_RISK, "clinical_note": "   "},
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("clinical_note", response.json())
+
+    def test_manual_override_persists_status_and_audit_entry(self):
+        radiologist = get_user_model().objects.create_user(
+            username="override-radiologist-valid",
+            password="password123",
+            role=UserRole.RADIOLOGIST,
+        )
+        record = self._create_xray_record(
+            patient=self.patient,
+            uploader=self.tech,
+            filename="override-valid.png",
+        )
+        self._create_ai_result(record, 0.80, model_version="m-override")
+        ProgressionService.persist_for_record(record)
+
+        self.client.force_login(radiologist)
+        response = self.client.post(
+            f"/api/imaging/cases/{record.pk}/progression/override/",
+            {
+                "status": ProgressionService.DECREASED_RISK,
+                "clinical_note": "Radiologist reviewed the current lesion trend and downgraded the risk based on clinical context.",
+            },
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 201)
+        payload = response.json()
+        self.assertEqual(payload["status"], ProgressionService.DECREASED_RISK)
+        self.assertTrue(payload["is_overridden"])
+        self.assertEqual(payload["source"], "manual_override")
+        self.assertEqual(payload["overridden_by"], radiologist.id)
+
+        progression = ProgressionStatus.objects.get(xray_record=record)
+        self.assertTrue(progression.is_overridden)
+        self.assertEqual(progression.clinical_note, payload["clinical_note"])
+        self.assertEqual(progression.status, ProgressionService.DECREASED_RISK)
+        self.assertEqual(progression.overridden_by_id, radiologist.id)
+        self.assertIsNotNone(progression.override_timestamp)
