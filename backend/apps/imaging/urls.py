@@ -60,8 +60,8 @@ urlpatterns = [
         views.physician_dashboard,
         name="physician_dashboard",
     ),
-    path('queue/', views.radiologist_queue, name='radiologist-queue'),
-    path('xray/<str:transaction_id>/', views.xray_detail, name='xray-detail'),
+    path("queue/", views.radiologist_queue, name="radiologist-queue"),
+    path("xray/<str:transaction_id>/", views.xray_detail, name="xray-detail"),
     path(
         "xray/<uuid:transaction_id>/report/",
         views.report_detail,
@@ -74,4 +74,5 @@ urlpatterns = [
     ),
     path("notifications/", views.notifications, name="notifications"),
     path("notifications/<int:notification_id>/mark-read/", views.notification_mark_read, name="notification_mark_read"),
+    path("analytics/summary/", views.analytics_summary, name="analytics_summary"),
 ]
