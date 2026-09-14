@@ -16,11 +16,12 @@ import importlib.util
 import pydicom
 from io import BytesIO
 from pathlib import Path
+from collections import Counter
 
 from PIL import Image
 from django.core.files import File
 from django.core.files.base import ContentFile
-from drf_spectacular.utils import extend_schema
+from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiTypes
 
 from django.contrib.auth import get_user_model
 from django.shortcuts import get_object_or_404
@@ -1121,3 +1122,162 @@ def generate_report(request, transaction_id):
     finally:
         if temp_html_path:
             Path(temp_html_path).unlink(missing_ok=True)
+
+
+def _parse_date_param(value: str, param_name: str):
+    """Parse a date string in YYYY-MM-DD format. Returns (date, error_response)."""
+    parsed = parse_date(value)
+    if parsed is None:
+        return None, Response(
+            {"detail": f"Invalid {param_name} format. Use YYYY-MM-DD."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    return parsed, None
+
+
+def _apply_date_filter(queryset, date_from, date_to, date_field: str):
+    """Apply date range filter to queryset using the specified date field."""
+    if date_from:
+        queryset = queryset.filter(**{f"{date_field}__date__gte": date_from})
+    if date_to:
+        queryset = queryset.filter(**{f"{date_field}__date__lte": date_to})
+    return queryset
+
+
+@extend_schema(
+    parameters=[
+        OpenApiParameter(
+            name="date_from",
+            type=OpenApiTypes.DATE,
+            description="Start date (inclusive) in YYYY-MM-DD format. Filters by X-ray upload date.",
+        ),
+        OpenApiParameter(
+            name="date_to",
+            type=OpenApiTypes.DATE,
+            description="End date (inclusive) in YYYY-MM-DD format. Filters by X-ray upload date.",
+        ),
+        OpenApiParameter(
+            name="severity",
+            type=OpenApiTypes.STR,
+            enum=Report.SeverityChoices.values,
+            description="Filter reports by severity level.",
+        ),
+    ],
+    responses={200: {
+        "type": "object",
+        "properties": {
+            "filters": {
+                "type": "object",
+                "properties": {
+                    "date_from": {"type": "string", "format": "date", "nullable": True},
+                    "date_to": {"type": "string", "format": "date", "nullable": True},
+                    "severity": {"type": "string", "nullable": True},
+                },
+            },
+            "cases": {
+                "type": "object",
+                "properties": {
+                    "total": {"type": "integer"},
+                    "by_status": {"type": "object", "additionalProperties": {"type": "integer"}},
+                    "by_ai_risk_label": {"type": "object", "additionalProperties": {"type": "integer"}},
+                },
+            },
+            "reports": {
+                "type": "object",
+                "properties": {
+                    "total": {"type": "integer"},
+                    "by_severity": {"type": "object", "additionalProperties": {"type": "integer"}},
+                    "by_status": {"type": "object", "additionalProperties": {"type": "integer"}},
+                },
+            },
+        },
+    }},
+)
+@api_view(["GET"])
+@role_required(UserRole.RADIOLOGIST, UserRole.PHYSICIAN)
+def analytics_summary(request):
+    """
+    Returns aggregate case metrics for a selected date range and severity set.
+    Supports filtering by upload date range and report severity.
+    """
+    date_from_raw = request.query_params.get("date_from", "").strip()
+    date_to_raw = request.query_params.get("date_to", "").strip()
+    severity = request.query_params.get("severity", "").strip().upper()
+
+    date_from, error = _parse_date_param(date_from_raw, "date_from") if date_from_raw else (None, None)
+    if error:
+        return error
+
+    date_to, error = _parse_date_param(date_to_raw, "date_to") if date_to_raw else (None, None)
+    if error:
+        return error
+
+    if date_from and date_to and date_from > date_to:
+        return Response(
+            {"detail": "date_from cannot be later than date_to."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    if severity and severity not in Report.SeverityChoices.values:
+        return Response(
+            {
+                "detail": (
+                    f"Invalid severity '{severity}'. Allowed values: "
+                    f"{', '.join(Report.SeverityChoices.values)}."
+                )
+            },
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    # Base querysets
+    xray_qs = XrayRecord.objects.all()
+    report_qs = Report.objects.select_related("xray_record").all()
+
+    # Apply date filters (on X-ray upload_timestamp for cases, report created_at for reports)
+    xray_qs = _apply_date_filter(xray_qs, date_from, date_to, "upload_timestamp")
+    report_qs = _apply_date_filter(report_qs, date_from, date_to, "created_at")
+
+    # Apply severity filter to reports
+    if severity:
+        report_qs = report_qs.filter(severity=severity)
+
+    # Aggregate cases
+    total_cases = xray_qs.count()
+    status_counts = dict(
+        xray_qs.values_list("status").order_by().annotate(count=models.Count("status"))
+    )
+
+    # AI risk label breakdown (only for records with AI results)
+    ai_qs = AIResult.objects.filter(xray_record__in=xray_qs)
+    ai_risk_counts = dict(
+        ai_qs.values_list("risk_label").order_by().annotate(count=models.Count("risk_label"))
+    )
+
+    # Aggregate reports
+    total_reports = report_qs.count()
+    severity_counts = dict(
+        report_qs.values_list("severity").order_by().annotate(count=models.Count("severity"))
+    )
+    report_status_counts = dict(
+        report_qs.values_list("status").order_by().annotate(count=models.Count("status"))
+    )
+
+    return Response(
+        {
+            "filters": {
+                "date_from": date_from.isoformat() if date_from else None,
+                "date_to": date_to.isoformat() if date_to else None,
+                "severity": severity or None,
+            },
+            "cases": {
+                "total": total_cases,
+                "by_status": status_counts,
+                "by_ai_risk_label": ai_risk_counts,
+            },
+            "reports": {
+                "total": total_reports,
+                "by_severity": severity_counts,
+                "by_status": report_status_counts,
+            },
+        }
+    )

@@ -18,7 +18,7 @@ from django.utils import timezone
 from apps.accounts.enums import UserRole
 from apps.patients.models import Patient
 
-from .models import AIResult, Annotation, ProcessedImage, XrayRecord
+from .models import AIResult, Annotation, ProcessedImage, XrayRecord, Report
 
 
 class ImagingAccessTests(TestCase):
@@ -459,3 +459,434 @@ class ImagingAccessTests(TestCase):
             [item["transaction_id"] for item in payload],
             [str(first.transaction_id), str(second.transaction_id), str(third.transaction_id)],
         )
+
+
+class AnalyticsSummaryTests(TestCase):
+    endpoint = "/api/analytics/summary/"
+
+    @classmethod
+    def _image_file(cls, filename="xray.png"):
+        buffer = BytesIO()
+        Image.new("RGB", (1, 1), color="white").save(buffer, format="PNG")
+        buffer.seek(0)
+        return SimpleUploadedFile(filename, buffer.getvalue(), content_type="image/png")
+
+    @classmethod
+    def setUpTestData(cls):
+        user_model = get_user_model()
+        cls.radiologist = user_model.objects.create_user(
+            username="rad-analytics",
+            password="password123",
+            role=UserRole.RADIOLOGIST,
+        )
+        cls.physician = user_model.objects.create_user(
+            username="phys-analytics",
+            password="password123",
+            role=UserRole.PHYSICIAN,
+        )
+        cls.technologist = user_model.objects.create_user(
+            username="tech-analytics",
+            password="password123",
+            role=UserRole.RADIOLOGIC_TECH,
+        )
+
+        cls.patient_one = Patient.objects.create(
+            first_name="Juan",
+            last_name="Dela Cruz",
+            date_of_birth="1990-01-01",
+            sex="M",
+            contact_number="09171234567",
+        )
+        cls.patient_two = Patient.objects.create(
+            first_name="Maria",
+            last_name="Santos",
+            date_of_birth="1991-02-02",
+            sex="F",
+            contact_number="09179876543",
+        )
+        cls.patient_three = Patient.objects.create(
+            first_name="Pedro",
+            last_name="Garcia",
+            date_of_birth="1985-03-03",
+            sex="M",
+            contact_number="09175555555",
+        )
+
+        base_time = timezone.now() - timedelta(days=30)
+
+        # Create X-ray records with different statuses and dates
+        cls.case_1 = XrayRecord.objects.create(
+            patient=cls.patient_one,
+            uploader=cls.technologist,
+            raw_image=cls._image_file("case1.png"),
+            status="PENDING",
+            file_format="png",
+        )
+        XrayRecord.objects.filter(pk=cls.case_1.pk).update(upload_timestamp=base_time + timedelta(days=1))
+
+        cls.case_2 = XrayRecord.objects.create(
+            patient=cls.patient_one,
+            uploader=cls.technologist,
+            raw_image=cls._image_file("case2.png"),
+            status="AI_REVIEWED",
+            file_format="png",
+        )
+        XrayRecord.objects.filter(pk=cls.case_2.pk).update(upload_timestamp=base_time + timedelta(days=5))
+
+        cls.case_3 = XrayRecord.objects.create(
+            patient=cls.patient_two,
+            uploader=cls.technologist,
+            raw_image=cls._image_file("case3.png"),
+            status="IN_REVIEW",
+            file_format="png",
+        )
+        XrayRecord.objects.filter(pk=cls.case_3.pk).update(upload_timestamp=base_time + timedelta(days=10))
+
+        cls.case_4 = XrayRecord.objects.create(
+            patient=cls.patient_two,
+            uploader=cls.technologist,
+            raw_image=cls._image_file("case4.png"),
+            status="COMPLETED",
+            file_format="png",
+        )
+        XrayRecord.objects.filter(pk=cls.case_4.pk).update(upload_timestamp=base_time + timedelta(days=15))
+
+        cls.case_5 = XrayRecord.objects.create(
+            patient=cls.patient_three,
+            uploader=cls.technologist,
+            raw_image=cls._image_file("case5.png"),
+            status="COMPLETED",
+            file_format="png",
+        )
+        XrayRecord.objects.filter(pk=cls.case_5.pk).update(upload_timestamp=base_time + timedelta(days=20))
+
+        cls.case_6 = XrayRecord.objects.create(
+            patient=cls.patient_three,
+            uploader=cls.technologist,
+            raw_image=cls._image_file("case6.png"),
+            status="MANUAL_REVIEW",
+            file_format="png",
+        )
+        XrayRecord.objects.filter(pk=cls.case_6.pk).update(upload_timestamp=base_time + timedelta(days=25))
+
+        # AI results for some cases
+        AIResult.objects.create(
+            xray_record=cls.case_1,
+            risk_score=0.15,
+            risk_label=AIResult.RiskLabel.LOW,
+            model_version="v-test",
+        )
+        AIResult.objects.create(
+            xray_record=cls.case_2,
+            risk_score=0.65,
+            risk_label=AIResult.RiskLabel.MODERATE,
+            model_version="v-test",
+        )
+        AIResult.objects.create(
+            xray_record=cls.case_3,
+            risk_score=0.85,
+            risk_label=AIResult.RiskLabel.HIGH,
+            model_version="v-test",
+        )
+        AIResult.objects.create(
+            xray_record=cls.case_4,
+            risk_score=0.72,
+            risk_label=AIResult.RiskLabel.HIGH,
+            model_version="v-test",
+        )
+        # case_5 and case_6 have no AI results
+
+        # Reports for completed cases with different severities
+        cls.report_1 = Report.objects.create(
+            xray_record=cls.case_4,
+            findings="Findings 1",
+            impression="Impression 1",
+            recommendation="Recommendation 1",
+            severity=Report.SeverityChoices.CRITICAL,
+            status="SUBMITTED",
+            created_by=cls.radiologist,
+        )
+        Report.objects.filter(pk=cls.report_1.pk).update(
+            created_at=base_time + timedelta(days=16),
+            updated_at=base_time + timedelta(days=16)
+        )
+
+        cls.report_2 = Report.objects.create(
+            xray_record=cls.case_5,
+            findings="Findings 2",
+            impression="Impression 2",
+            recommendation="Recommendation 2",
+            severity=Report.SeverityChoices.MODERATE,
+            status="SUBMITTED",
+            created_by=cls.radiologist,
+        )
+        Report.objects.filter(pk=cls.report_2.pk).update(
+            created_at=base_time + timedelta(days=21),
+            updated_at=base_time + timedelta(days=21)
+        )
+
+        # Create a new case for the third report (DRAFT)
+        cls.case_7 = XrayRecord.objects.create(
+            patient=cls.patient_three,
+            uploader=cls.technologist,
+            raw_image=cls._image_file("case7.png"),
+            status="COMPLETED",
+            file_format="png",
+        )
+        XrayRecord.objects.filter(pk=cls.case_7.pk).update(upload_timestamp=base_time + timedelta(days=22))
+
+        cls.report_3 = Report.objects.create(
+            xray_record=cls.case_7,
+            findings="Findings 3",
+            impression="Impression 3",
+            recommendation="Recommendation 3",
+            severity=Report.SeverityChoices.NORMAL,
+            status="DRAFT",
+            created_by=cls.radiologist,
+        )
+        Report.objects.filter(pk=cls.report_3.pk).update(
+            created_at=base_time + timedelta(days=22),
+            updated_at=base_time + timedelta(days=22)
+        )
+
+    def test_analytics_summary_requires_auth(self):
+        response = self.client.get(self.endpoint)
+        # Django's @login_required redirects to login page (302) rather than returning 401
+        self.assertIn(response.status_code, [302, 401])
+
+    def test_analytics_summary_requires_radiologist_or_physician(self):
+        self.client.force_login(self.technologist)
+        response = self.client.get(self.endpoint)
+        self.assertEqual(response.status_code, 403)
+
+    def test_analytics_summary_radiologist_access(self):
+        self.client.force_login(self.radiologist)
+        response = self.client.get(self.endpoint)
+        self.assertEqual(response.status_code, 200)
+
+    def test_analytics_summary_physician_access(self):
+        self.client.force_login(self.physician)
+        response = self.client.get(self.endpoint)
+        self.assertEqual(response.status_code, 200)
+
+    def test_analytics_summary_response_structure(self):
+        self.client.force_login(self.radiologist)
+        response = self.client.get(self.endpoint)
+        self.assertEqual(response.status_code, 200)
+
+        payload = response.json()
+        self.assertIn("filters", payload)
+        self.assertIn("cases", payload)
+        self.assertIn("reports", payload)
+
+        # Check filters structure
+        self.assertIn("date_from", payload["filters"])
+        self.assertIn("date_to", payload["filters"])
+        self.assertIn("severity", payload["filters"])
+
+        # Check cases structure
+        self.assertIn("total", payload["cases"])
+        self.assertIn("by_status", payload["cases"])
+        self.assertIn("by_ai_risk_label", payload["cases"])
+
+        # Check reports structure
+        self.assertIn("total", payload["reports"])
+        self.assertIn("by_severity", payload["reports"])
+        self.assertIn("by_status", payload["reports"])
+
+    def test_analytics_summary_total_counts_match_raw_data(self):
+        self.client.force_login(self.radiologist)
+        response = self.client.get(self.endpoint)
+        self.assertEqual(response.status_code, 200)
+
+        payload = response.json()
+
+        # Total cases should match XrayRecord count (7)
+        self.assertEqual(payload["cases"]["total"], 7)
+
+        # Total reports should match Report count (3)
+        self.assertEqual(payload["reports"]["total"], 3)
+
+    def test_analytics_summary_status_breakdown(self):
+        self.client.force_login(self.radiologist)
+        response = self.client.get(self.endpoint)
+        self.assertEqual(response.status_code, 200)
+
+        payload = response.json()
+        by_status = payload["cases"]["by_status"]
+
+        # Verify each status count
+        self.assertEqual(by_status.get("PENDING", 0), 1)
+        self.assertEqual(by_status.get("AI_REVIEWED", 0), 1)
+        self.assertEqual(by_status.get("IN_REVIEW", 0), 1)
+        self.assertEqual(by_status.get("COMPLETED", 0), 3)
+        self.assertEqual(by_status.get("MANUAL_REVIEW", 0), 1)
+
+        # Sum should equal total
+        self.assertEqual(sum(by_status.values()), payload["cases"]["total"])
+
+    def test_analytics_summary_ai_risk_label_breakdown(self):
+        self.client.force_login(self.radiologist)
+        response = self.client.get(self.endpoint)
+        self.assertEqual(response.status_code, 200)
+
+        payload = response.json()
+        by_risk = payload["cases"]["by_ai_risk_label"]
+
+        self.assertEqual(by_risk.get("LOW", 0), 1)
+        self.assertEqual(by_risk.get("MODERATE", 0), 1)
+        self.assertEqual(by_risk.get("HIGH", 0), 2)
+
+        # Sum should equal AI results count (4, since 2 cases have no AI result)
+        self.assertEqual(sum(by_risk.values()), 4)
+
+    def test_analytics_summary_report_severity_breakdown(self):
+        self.client.force_login(self.radiologist)
+        response = self.client.get(self.endpoint)
+        self.assertEqual(response.status_code, 200)
+
+        payload = response.json()
+        by_severity = payload["reports"]["by_severity"]
+
+        self.assertEqual(by_severity.get("CRITICAL", 0), 1)
+        self.assertEqual(by_severity.get("MODERATE", 0), 1)
+        self.assertEqual(by_severity.get("NORMAL", 0), 1)
+
+        # Sum should equal total reports
+        self.assertEqual(sum(by_severity.values()), payload["reports"]["total"])
+
+    def test_analytics_summary_report_status_breakdown(self):
+        self.client.force_login(self.radiologist)
+        response = self.client.get(self.endpoint)
+        self.assertEqual(response.status_code, 200)
+
+        payload = response.json()
+        by_status = payload["reports"]["by_status"]
+
+        self.assertEqual(by_status.get("SUBMITTED", 0), 2)
+        self.assertEqual(by_status.get("DRAFT", 0), 1)
+
+        # Sum should equal total reports
+        self.assertEqual(sum(by_status.values()), payload["reports"]["total"])
+
+    def test_analytics_summary_date_from_filter(self):
+        self.client.force_login(self.radiologist)
+        # Filter to last 20 days (should include cases 3, 4, 5, 6, 7 - days 10, 15, 20, 25, 22)
+        date_from = (timezone.now() - timedelta(days=20)).date().isoformat()
+        response = self.client.get(self.endpoint, {"date_from": date_from})
+        self.assertEqual(response.status_code, 200)
+
+        payload = response.json()
+        # Cases 3, 4, 5, 6, 7 fall in this range
+        self.assertEqual(payload["cases"]["total"], 5)
+
+        # Reports 1, 2, 3 fall in this range (created at days 16, 21, 22)
+        self.assertEqual(payload["reports"]["total"], 3)
+
+    def test_analytics_summary_date_to_filter(self):
+        self.client.force_login(self.radiologist)
+        # Filter to first 10 days (should include cases 1, 2, 3)
+        date_to = (timezone.now() - timedelta(days=20)).date().isoformat()
+        response = self.client.get(self.endpoint, {"date_to": date_to})
+        self.assertEqual(response.status_code, 200)
+
+        payload = response.json()
+        # Cases 1, 2, 3 fall in this range
+        self.assertEqual(payload["cases"]["total"], 3)
+
+        # No reports fall in this range (earliest report at day 16)
+        self.assertEqual(payload["reports"]["total"], 0)
+
+    def test_analytics_summary_date_range_filter(self):
+        self.client.force_login(self.radiologist)
+        base_time = timezone.now() - timedelta(days=30)
+        date_from = (base_time + timedelta(days=5)).date().isoformat()
+        date_to = (base_time + timedelta(days=20)).date().isoformat()
+        response = self.client.get(self.endpoint, {"date_from": date_from, "date_to": date_to})
+        self.assertEqual(response.status_code, 200)
+
+        payload = response.json()
+        # Cases 2, 3, 4, 5 fall in this range (days 5, 10, 15, 20)
+        self.assertEqual(payload["cases"]["total"], 4)
+
+        # Reports 1, 2 fall in this range (days 16, 21 - wait, day 21 is outside)
+        # Actually report 1 at day 16, report 2 at day 21 (outside), report 3 at day 22 (outside)
+        self.assertEqual(payload["reports"]["total"], 1)
+
+    def test_analytics_summary_invalid_date_range(self):
+        self.client.force_login(self.radiologist)
+        date_from = "2026-09-10"
+        date_to = "2026-09-01"
+        response = self.client.get(self.endpoint, {"date_from": date_from, "date_to": date_to})
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("detail", response.json())
+
+    def test_analytics_summary_invalid_date_format(self):
+        self.client.force_login(self.radiologist)
+        response = self.client.get(self.endpoint, {"date_from": "2026/01/01"})
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("detail", response.json())
+
+    def test_analytics_summary_severity_filter(self):
+        self.client.force_login(self.radiologist)
+        response = self.client.get(self.endpoint, {"severity": "CRITICAL"})
+        self.assertEqual(response.status_code, 200)
+
+        payload = response.json()
+        self.assertEqual(payload["reports"]["total"], 1)
+        self.assertEqual(payload["reports"]["by_severity"].get("CRITICAL", 0), 1)
+        self.assertEqual(payload["filters"]["severity"], "CRITICAL")
+
+    def test_analytics_summary_invalid_severity(self):
+        self.client.force_login(self.radiologist)
+        response = self.client.get(self.endpoint, {"severity": "EXTREME"})
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("detail", response.json())
+
+    def test_analytics_summary_combined_filters(self):
+        self.client.force_login(self.radiologist)
+        base_time = timezone.now() - timedelta(days=30)
+        date_from = (base_time + timedelta(days=10)).date().isoformat()
+        date_to = (base_time + timedelta(days=25)).date().isoformat()
+        response = self.client.get(
+            self.endpoint,
+            {"date_from": date_from, "date_to": date_to, "severity": "MODERATE"},
+        )
+        self.assertEqual(response.status_code, 200)
+
+        payload = response.json()
+        # Only report_2 (MODERATE, day 21) should match
+        self.assertEqual(payload["reports"]["total"], 1)
+        self.assertEqual(payload["reports"]["by_severity"].get("MODERATE", 0), 1)
+
+    def test_analytics_summary_empty_result_set(self):
+        self.client.force_login(self.radiologist)
+        # Future date range with no data
+        future_date = (timezone.now() + timedelta(days=30)).date().isoformat()
+        response = self.client.get(self.endpoint, {"date_from": future_date})
+        self.assertEqual(response.status_code, 200)
+
+        payload = response.json()
+        self.assertEqual(payload["cases"]["total"], 0)
+        self.assertEqual(payload["reports"]["total"], 0)
+        self.assertEqual(payload["cases"]["by_status"], {})
+        self.assertEqual(payload["cases"]["by_ai_risk_label"], {})
+        self.assertEqual(payload["reports"]["by_severity"], {})
+        self.assertEqual(payload["reports"]["by_status"], {})
+
+    def test_analytics_summary_filters_echoed_in_response(self):
+        self.client.force_login(self.radiologist)
+        # Use fixed dates that are valid and will work with test data
+        # Test data spans from ~30 days ago to ~5 days ago
+        date_from = "2024-01-01"
+        date_to = "2030-12-31"
+        severity = "CRITICAL"  # Valid report severity
+        response = self.client.get(
+            self.endpoint, {"date_from": date_from, "date_to": date_to, "severity": severity}
+        )
+        self.assertEqual(response.status_code, 200)
+
+        payload = response.json()
+        self.assertEqual(payload["filters"]["date_from"], date_from)
+        self.assertEqual(payload["filters"]["date_to"], date_to)
+        self.assertEqual(payload["filters"]["severity"], severity)
