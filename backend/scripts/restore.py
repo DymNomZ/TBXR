@@ -228,7 +228,7 @@ def replace_media_tree(staging: Path, media_root: Path) -> None:
         raise
     else:
         if old.is_dir() and not old.is_symlink():
-            shutil.rmtree(old, ignore_errors=True)
+            shutil.rmtree(old)
         else:
             old.unlink(missing_ok=True)
 
