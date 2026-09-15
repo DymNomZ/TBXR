@@ -82,3 +82,4 @@ feat(frontend): build static upload confirmation page #17
 
 - Week 1 API contract freeze: `documentation/W1-CONTRACT-FREEZE-2026-08-22.md`
 - Team coding standards: `documentation/CODING-STANDARDS.md`
+- Backup & restore runbook: `documentation/backup-restore.md`

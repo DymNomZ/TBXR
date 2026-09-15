@@ -176,6 +176,9 @@ ai/weights/
 media/
 staticfiles/
 
+# Backups (database + media archives)
+backups/
+
 # Temporary files
 *.tmp
 *.temp
