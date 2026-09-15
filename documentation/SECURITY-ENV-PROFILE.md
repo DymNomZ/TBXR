@@ -28,6 +28,22 @@ This document defines the required environment-hygiene baseline for TB-XR deploy
 - SECURE_SSL_REDIRECT=true (when behind HTTPS)
 - USE_X_FORWARDED_PROTO=true (when using a reverse proxy)
 
+## Django Production Guardrails
+
+- DJANGO_ENV=production enforces DEBUG=false.
+- ALLOWED_HOSTS must be explicitly set and cannot contain localhost/testserver values.
+- CSRF_TRUSTED_ORIGINS must be explicitly set and use https:// origins only.
+- HSTS, frame, and content-type hardening defaults are enabled for production.
+
+## Trusted Host And CSRF Matrix
+
+- App URL example: https://app.example.com
+- API URL example: https://api.example.com
+- ALLOWED_HOSTS: api.example.com
+- CSRF_TRUSTED_ORIGINS: https://app.example.com,https://api.example.com
+
+Use the smallest possible origin list to reduce cross-site request risk.
+
 ## Verification Checklist
 
 1. Confirm no live secrets are present in tracked files.
@@ -35,3 +51,4 @@ This document defines the required environment-hygiene baseline for TB-XR deploy
 3. Confirm backend/.env.production.example contains placeholders only.
 4. Confirm app starts using only environment-provided settings.
 5. Confirm deployment docs point to external secret storage.
+6. Run `python manage.py check --deploy` with production env values.

@@ -54,9 +54,15 @@ def _env_list(name: str, default: list[str] | None = None) -> list[str]:
 
 # SECURITY WARNING: keep the secret key used in production secret!
 DJANGO_ENV = os.environ.get("DJANGO_ENV", "development").strip().lower()
+IS_PRODUCTION = DJANGO_ENV == "production"
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = _env_bool("DEBUG", default=False)
+
+if IS_PRODUCTION and DEBUG:
+    raise ImproperlyConfigured(
+        "DEBUG must be False when DJANGO_ENV is 'production'."
+    )
 
 SECRET_KEY = os.environ.get("SECRET_KEY", "")
 if not SECRET_KEY:
@@ -78,10 +84,37 @@ CSRF_TRUSTED_ORIGINS = _env_list(
     default=["http://localhost:5173"],
 )
 
+if IS_PRODUCTION:
+    if not ALLOWED_HOSTS:
+        raise ImproperlyConfigured(
+            "ALLOWED_HOSTS must be explicitly configured in production."
+        )
+    if any(host in {"localhost", "127.0.0.1", "testserver"} for host in ALLOWED_HOSTS):
+        raise ImproperlyConfigured(
+            "ALLOWED_HOSTS cannot contain localhost/testserver values in production."
+        )
+
+    if not CSRF_TRUSTED_ORIGINS:
+        raise ImproperlyConfigured(
+            "CSRF_TRUSTED_ORIGINS must be explicitly configured in production."
+        )
+    if any(not origin.startswith("https://") for origin in CSRF_TRUSTED_ORIGINS):
+        raise ImproperlyConfigured(
+            "CSRF_TRUSTED_ORIGINS entries must use https:// in production."
+        )
+
 SESSION_COOKIE_SECURE = _env_bool("SESSION_COOKIE_SECURE", default=not DEBUG)
 CSRF_COOKIE_SECURE = _env_bool("CSRF_COOKIE_SECURE", default=not DEBUG)
-SECURE_SSL_REDIRECT = _env_bool("SECURE_SSL_REDIRECT", default=False)
+SESSION_COOKIE_SAMESITE = os.environ.get("SESSION_COOKIE_SAMESITE", "Lax")
+CSRF_COOKIE_SAMESITE = os.environ.get("CSRF_COOKIE_SAMESITE", "Lax")
+SECURE_SSL_REDIRECT = _env_bool("SECURE_SSL_REDIRECT", default=not DEBUG)
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https") if _env_bool("USE_X_FORWARDED_PROTO", default=False) else None
+SECURE_CONTENT_TYPE_NOSNIFF = True
+SECURE_REFERRER_POLICY = os.environ.get("SECURE_REFERRER_POLICY", "strict-origin-when-cross-origin")
+X_FRAME_OPTIONS = os.environ.get("X_FRAME_OPTIONS", "DENY")
+SECURE_HSTS_SECONDS = int(os.environ.get("SECURE_HSTS_SECONDS", "31536000" if IS_PRODUCTION else "0"))
+SECURE_HSTS_INCLUDE_SUBDOMAINS = _env_bool("SECURE_HSTS_INCLUDE_SUBDOMAINS", default=IS_PRODUCTION)
+SECURE_HSTS_PRELOAD = _env_bool("SECURE_HSTS_PRELOAD", default=False)
 
 
 # Application definition
