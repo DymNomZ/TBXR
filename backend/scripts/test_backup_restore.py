@@ -132,6 +132,7 @@ class BackupScriptTests(SimpleTestCase):
 
     def test_list_backup_dirs_skips_hidden_temp_dirs(self):
         (self.backup_root / "2026-01-01T000000Z").mkdir()
+        (self.backup_root / "2026-01-01T000000Z" / "manifest.json").write_text("{}")
         (self.backup_root / ".2026-01-02T000000Z.tmp-abc").mkdir()
         (self.backup_root / "notes.txt").write_text("x")
 
@@ -143,30 +144,37 @@ class BackupScriptTests(SimpleTestCase):
     def test_rename_into_place_disambiguates_with_zero_padded_suffix(self):
         first = self.backup_root / "2026-01-01T000000Z"
         first.mkdir()
+        (first / "manifest.json").write_text("{}")
         second_staging = self.backup_root / ".staging2"
         second_staging.mkdir()
+        (second_staging / "manifest.json").write_text("{}")
 
         second = backup._rename_into_place(second_staging, self.backup_root, "2026-01-01T000000Z")
         self.assertEqual(second.name, "2026-01-01T000000Z-01")
 
         third_staging = self.backup_root / ".staging3"
         third_staging.mkdir()
+        (third_staging / "manifest.json").write_text("{}")
         third = backup._rename_into_place(third_staging, self.backup_root, "2026-01-01T000000Z")
         self.assertEqual(third.name, "2026-01-01T000000Z-02")
 
-    def test_rename_into_place_cleans_reservation_on_rename_failure(self):
+    def test_rename_into_place_propagates_unexpected_failure(self):
         staging = self.tmp / "staging"
         staging.mkdir()
+        (staging / "manifest.json").write_text("{}")
 
         with mock.patch.object(os, "rename", side_effect=OSError("simulated failure")):
             with self.assertRaises(OSError):
                 backup._rename_into_place(staging, self.backup_root, "2026-01-01T000000Z")
 
         self.assertEqual(list(self.backup_root.iterdir()), [])
+        self.assertTrue(staging.exists())
 
     def test_prune_backups_keeps_most_recent(self):
         for name in ("2026-01-01T000000Z", "2026-01-02T000000Z", "2026-01-03T000000Z"):
-            (self.backup_root / name).mkdir()
+            d = self.backup_root / name
+            d.mkdir()
+            (d / "manifest.json").write_text("{}")
 
         removed = backup.prune_backups(self.backup_root, keep=2)
 
@@ -178,12 +186,32 @@ class BackupScriptTests(SimpleTestCase):
 
     def test_prune_backups_keep_zero_disables_pruning(self):
         for name in ("2026-01-01T000000Z", "2026-01-02T000000Z"):
-            (self.backup_root / name).mkdir()
+            d = self.backup_root / name
+            d.mkdir()
+            (d / "manifest.json").write_text("{}")
 
         removed = backup.prune_backups(self.backup_root, keep=0)
 
         self.assertEqual(removed, [])
         self.assertEqual(len(backup.list_backup_dirs(self.backup_root)), 2)
+
+    def test_prune_backups_ignores_unrelated_directories(self):
+        for name in ("2026-01-01T000000Z", "2026-01-02T000000Z"):
+            d = self.backup_root / name
+            d.mkdir()
+            (d / "manifest.json").write_text("{}")
+        unrelated = self.backup_root / "not-a-backup"
+        unrelated.mkdir()
+        (unrelated / "notes.txt").write_text("x")
+
+        removed = backup.prune_backups(self.backup_root, keep=1)
+
+        self.assertEqual([p.name for p in removed], ["2026-01-01T000000Z"])
+        self.assertTrue(unrelated.exists())
+        self.assertEqual(
+            [p.name for p in backup.list_backup_dirs(self.backup_root)],
+            ["2026-01-02T000000Z"],
+        )
 
     def test_verify_backup_requires_declared_restore_targets(self):
         result = self._create_backup()
@@ -374,12 +402,56 @@ class RestoreScriptTests(SimpleTestCase):
         backup_root = self.tmp / "backups"
         backup_root.mkdir()
         (backup_root / "2026-01-01T000000Z").mkdir()
+        (backup_root / "2026-01-01T000000Z" / "manifest.json").write_text("{}")
         (backup_root / ".2026-01-02T000000Z.tmp-abc").mkdir()
 
         with mock.patch.object(restore, "get_backup_dir", return_value=backup_root):
             resolved = restore.resolve_backup_dir(None)
 
         self.assertEqual(resolved.name, "2026-01-01T000000Z")
+
+    def test_restore_sqlite3_removes_stale_sidecars(self):
+        dump_path = self.tmp / "dump.sqlite3"
+        _make_sqlite_db(dump_path, rows=("restored",))
+
+        for suffix in ("-wal", "-shm", "-journal"):
+            Path(str(self.db_path) + suffix).write_bytes(b"stale")
+
+        with self._settings():
+            restore.restore_sqlite3(settings_db_config(), dump_path)
+
+        self.assertEqual(_read_rows(self.db_path), ["restored"])
+        for suffix in ("-wal", "-shm", "-journal"):
+            self.assertFalse(Path(str(self.db_path) + suffix).exists())
+
+    def test_load_manifest_rejects_invalid_json(self):
+        backup_dir = self.tmp / "backup"
+        backup_dir.mkdir()
+        (backup_dir / "manifest.json").write_text("{not valid json")
+
+        with self.assertRaises(SystemExit):
+            restore.load_manifest(backup_dir)
+
+    def test_restore_main_handles_missing_manifest_field(self):
+        self.backup_root = self.tmp / "backups"
+        with self._settings():
+            with mock.patch.object(backup, "get_backup_dir", return_value=self.backup_root):
+                result = backup.create_backup(timestamp="2026-01-01T000000Z")
+            backup_dir = result["backup_dir"]
+
+            manifest_path = backup_dir / "manifest.json"
+            manifest = json.loads(manifest_path.read_text())
+            manifest.pop("database_file")
+            manifest_path.write_text(json.dumps(manifest))
+
+            old_argv = sys.argv
+            sys.argv = ["restore.py", str(backup_dir), "--database-only"]
+            try:
+                rc = restore.main()
+            finally:
+                sys.argv = old_argv
+
+            self.assertEqual(rc, 1)
 
 
 def settings_db_config():

@@ -26,6 +26,7 @@ Configuration (environment variables):
 """
 
 import argparse
+import errno
 import hashlib
 import json
 import os
@@ -155,28 +156,24 @@ def write_manifest(backup_dir: Path, metadata: dict) -> Path:
 def _rename_into_place(staging: Path, backup_root: Path, timestamp: str) -> Path:
     """Atomically publish a fully-built backup dir under a unique timestamped name.
 
-    The final name is reserved with ``os.mkdir`` (so two concurrent runs cannot
-    claim the same name) and the staging directory is then renamed over the
-    empty reservation. A zero-padded suffix disambiguates multiple runs in the
-    same second and keeps lexicographic order chronological.
+    ``os.rename`` replaces an existing *empty* directory on POSIX but fails with
+    EEXIST/ENOTEMPTY on Windows. We rely on that failure to advance the
+    zero-padded suffix, so two concurrent runs can never claim (or overwrite) the
+    same name. A zero-padded suffix disambiguates multiple runs in the same
+    second and keeps lexicographic order chronological.
     """
     counter = 0
     while True:
         suffix = f"-{counter:02d}" if counter else ""
         candidate = backup_root / f"{timestamp}{suffix}"
         try:
-            os.mkdir(candidate)
-        except FileExistsError:
-            counter += 1
-            continue
-        try:
             os.rename(staging, candidate)
-        except Exception:
-            # Roll back the empty reservation so a failed publish never leaves a
-            # stray directory behind.
-            shutil.rmtree(candidate, ignore_errors=True)
+            return candidate
+        except OSError as exc:
+            if exc.errno in (errno.EEXIST, errno.ENOTEMPTY):
+                counter += 1
+                continue
             raise
-        return candidate
 
 
 def _reject_overlapping_backup_media(backup_root: Path, media_root: Path) -> None:
@@ -263,12 +260,16 @@ def create_backup(timestamp: str | None = None) -> dict:
     }
 
 
+def _is_backup_dir(path: Path) -> bool:
+    return path.is_dir() and (path / "manifest.json").is_file()
+
+
 def list_backup_dirs(backup_root: Path) -> list[Path]:
     if not backup_root.exists():
         return []
     return sorted(
         (path for path in backup_root.iterdir()
-         if path.is_dir() and not path.name.startswith(".")),
+         if not path.name.startswith(".") and _is_backup_dir(path)),
         key=lambda path: path.name,
     )
 
@@ -288,7 +289,7 @@ def resolve_backup_file(backup_dir: Path, name: str) -> Path:
     """Resolve a manifest file name, refusing paths outside the backup dir."""
     base = backup_dir.resolve()
     candidate = (backup_dir / name).resolve()
-    if candidate != base and base not in candidate.parents:
+    if candidate == base or base not in candidate.parents:
         raise ValueError(f"Unsafe backup file path: {name!r}")
     return candidate
 

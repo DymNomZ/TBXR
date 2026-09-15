@@ -70,7 +70,10 @@ def load_manifest(backup_dir: Path) -> dict:
     manifest_path = backup_dir / "manifest.json"
     if not manifest_path.exists():
         raise SystemExit(f"No manifest.json in {backup_dir}.")
-    return json.loads(manifest_path.read_text())
+    try:
+        return json.loads(manifest_path.read_text())
+    except json.JSONDecodeError as exc:
+        raise SystemExit(f"Manifest is not valid JSON: {manifest_path} ({exc})")
 
 
 def _pg_env(db_config: dict) -> dict:
@@ -118,6 +121,10 @@ def restore_sqlite3(db_config: dict, dump_path: Path) -> None:
     temp_path = live_path.with_name(live_path.name + ".restore-tmp")
     try:
         shutil.copy2(str(dump_path), str(temp_path))
+        # Drop stale WAL/rollback sidecars so a freshly restored snapshot cannot
+        # be polluted by journal frames from the previous live database.
+        for suffix in ("-wal", "-shm", "-journal"):
+            live_path.with_name(live_path.name + suffix).unlink(missing_ok=True)
         os.replace(str(temp_path), str(live_path))
     except Exception:
         temp_path.unlink(missing_ok=True)
@@ -196,18 +203,31 @@ def main() -> int:
     restore_db = not args.media_only
     restore_assets = not args.database_only
 
+    database_file = manifest.get("database_file")
+    media_file = manifest.get("media_file")
+    backend = manifest.get("database_backend")
+    if restore_db and not isinstance(database_file, str):
+        print(f"[FAIL] Manifest in {backup_dir} has an invalid 'database_file'.")
+        return 1
+    if restore_assets and not isinstance(media_file, str):
+        print(f"[FAIL] Manifest in {backup_dir} has an invalid 'media_file'.")
+        return 1
+    if restore_db and not isinstance(backend, str):
+        print(f"[FAIL] Manifest in {backup_dir} has an invalid 'database_backend'.")
+        return 1
+
     # Verify only the components this run will actually restore, so a corrupt
     # media archive does not block a --database-only restore (and vice versa).
     verify_files = []
     if restore_db:
-        verify_files.append(manifest["database_file"])
+        verify_files.append(database_file)
     if restore_assets:
-        verify_files.append(manifest["media_file"])
+        verify_files.append(media_file)
 
     try:
         verification = verify_backup(backup_dir, files=verify_files)
-        dump_path = resolve_backup_file(backup_dir, manifest["database_file"]) if restore_db else None
-        media_path = resolve_backup_file(backup_dir, manifest["media_file"]) if restore_assets else None
+        dump_path = resolve_backup_file(backup_dir, database_file) if restore_db else None
+        media_path = resolve_backup_file(backup_dir, media_file) if restore_assets else None
     except (FileNotFoundError, ValueError) as exc:
         print(f"[FAIL] {exc}")
         return 1
@@ -219,7 +239,6 @@ def main() -> int:
             print(f"- {name}: {status}")
         return 1
 
-    backend = manifest["database_backend"]
     current_backend = database_backend()
     if restore_db and backend != current_backend:
         print(
@@ -229,8 +248,8 @@ def main() -> int:
         return 1
 
     print(f"[{'APPLY' if args.apply else 'DRY-RUN'}] Restoring from {backup_dir}")
-    print(f"- Database ({backend}): {manifest['database_file']} -> {'restore' if restore_db else 'skip'}")
-    print(f"- Media: {manifest['media_file']} -> {'restore' if restore_assets else 'skip'} (MEDIA_ROOT={settings.MEDIA_ROOT})")
+    print(f"- Database ({backend}): {database_file} -> {'restore' if restore_db else 'skip'}")
+    print(f"- Media: {media_file} -> {'restore' if restore_assets else 'skip'} (MEDIA_ROOT={settings.MEDIA_ROOT})")
 
     if not args.apply:
         print("Dry-run complete. Re-run with --apply to perform the restore.")
