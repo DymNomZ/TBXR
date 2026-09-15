@@ -266,7 +266,7 @@ npm run dev
 ### Backup and Restore
 
 Automated database + media backups and the restore procedure are documented in
-[`documentation/backup-restore.md`](../documentation/backup-restore.md).
+[`documentation/backup-restore.md`](documentation/backup-restore.md).
 
 ```bash
 cd backend

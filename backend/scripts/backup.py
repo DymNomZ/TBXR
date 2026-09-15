@@ -165,6 +165,7 @@ def create_backup(timestamp: str | None = None) -> dict:
     timestamp = timestamp or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H%M%SZ")
     backup_dir = unique_backup_dir(get_backup_dir(), timestamp)
     backup_dir.mkdir(parents=True, exist_ok=False)
+    backup_dir.chmod(0o700)
 
     try:
         db_config = settings.DATABASES["default"]
@@ -186,6 +187,8 @@ def create_backup(timestamp: str | None = None) -> dict:
             database_filename: (backup_dir / database_filename),
             media_archive.name: media_archive,
         }
+        for path in files.values():
+            path.chmod(0o600)
         manifest = {
             "created_at": backup_dir.name,
             "database_backend": backend,
@@ -201,6 +204,7 @@ def create_backup(timestamp: str | None = None) -> dict:
             },
         }
         manifest_path = write_manifest(backup_dir, manifest)
+        manifest_path.chmod(0o600)
     except Exception:
         shutil.rmtree(backup_dir, ignore_errors=True)
         raise
@@ -301,6 +305,7 @@ def main() -> int:
 
     backup_root = get_backup_dir()
     backup_root.mkdir(parents=True, exist_ok=True)
+    backup_root.chmod(0o700)
 
     try:
         result = create_backup()

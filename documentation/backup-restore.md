@@ -33,6 +33,11 @@ backups use `pg_dump` (plain SQL), which must be on `PATH`. The password is
 read from `backend/.env` and passed via `PGPASSWORD`; it is never written to
 disk.
 
+Backups contain PHI, so the script creates the backup root and each per-run
+directory with mode `0700`, and the database dump, media archive, and manifest
+with mode `0600`. Keep `BACKUP_DIR` on storage you control and ensure it is
+not world-readable.
+
 ## Running a backup
 
 ```bash
@@ -100,6 +105,12 @@ objective and available storage.
 
 The restore script refuses to run if the manifest checksums do not match.
 
+The PostgreSQL restore runs inside a single transaction (`--single-transaction`),
+so a failed restore rolls back rather than leaving a half-restored database.
+Media is staged to a temporary directory and validated before the database is
+touched, then written into the active `MEDIA_ROOT` (the path recorded in the
+manifest is informational only).
+
 ## Verification / operational checklist
 
 - After each backup, run `python scripts/backup.py --verify <dir>` and confirm
@@ -116,8 +127,9 @@ The restore script refuses to run if the manifest checksums do not match.
   replication (object storage, NFS, tape, cloud snapshot) is **out of scope**
   and must be provided by the deployment environment.
 - PostgreSQL uses a **plain-SQL** `pg_dump` (`--clean --if-exists`), restored
-  with `psql`, so restore drops and re-creates existing objects. Both tools
-  must be available on `PATH`.
+  with `psql --single-transaction`, so restore drops and re-creates existing
+  objects and rolls back on any failure. Both tools must be available on
+  `PATH`.
 - SQLite backups use SQLite's online backup API, producing a consistent copy of
   the live database file.
 - Media assets are the only critical uploaded content; the archive captures

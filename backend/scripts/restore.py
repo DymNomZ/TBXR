@@ -26,6 +26,7 @@ import shutil
 import subprocess
 import sys
 import tarfile
+import tempfile
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parents[1]
@@ -81,7 +82,7 @@ def restore_postgresql(db_config: dict, dump_path: Path) -> None:
     if not name:
         raise SystemExit("PostgreSQL restore requires DB_NAME to be set.")
 
-    command = ["psql", "--set", "ON_ERROR_STOP=1"]
+    command = ["psql", "--set", "ON_ERROR_STOP=1", "--single-transaction"]
     host = db_config.get("HOST") or ""
     if host:
         command += ["--host", host]
@@ -117,18 +118,32 @@ def restore_sqlite3(db_config: dict, dump_path: Path) -> None:
         raise
 
 
-def restore_media(media_root: Path, archive_path: Path) -> None:
-    media_root.mkdir(parents=True, exist_ok=True)
-    with tarfile.open(str(archive_path), "r:gz") as tar:
-        for member in tar.getmembers():
-            if (
-                member.issym()
-                or member.islnk()
-                or member.name.startswith("/")
-                or ".." in Path(member.name).parts
-            ):
-                raise RuntimeError(f"Unsafe entry in media archive: {member.name!r}")
-        tar.extractall(str(media_root), filter="data")
+def stage_media(archive_path: Path, staging_parent: Path) -> Path:
+    """Validate a media archive and extract it into a fresh temp directory.
+
+    Extracting into a staging directory first means an unsafe or corrupt
+    archive fails before the live database or media is touched.
+    """
+    staging = Path(tempfile.mkdtemp(prefix=".tbxr-restore-", dir=str(staging_parent)))
+    try:
+        with tarfile.open(str(archive_path), "r:gz") as tar:
+            for member in tar.getmembers():
+                if (
+                    member.issym()
+                    or member.islnk()
+                    or member.name.startswith("/")
+                    or ".." in Path(member.name).parts
+                ):
+                    raise RuntimeError(f"Unsafe entry in media archive: {member.name!r}")
+            try:
+                tar.extractall(str(staging), filter="data")
+            except TypeError:
+                # Python < 3.11.4 has no filter kwarg; the member check above is the guard.
+                tar.extractall(str(staging))
+    except Exception:
+        shutil.rmtree(staging, ignore_errors=True)
+        raise
+    return staging
 
 
 def main() -> int:
@@ -156,35 +171,45 @@ def main() -> int:
         return 1
 
     manifest = load_manifest(backup_dir)
+    restore_db = not args.media_only
+    restore_assets = not args.database_only
+
     try:
+        required_files = (manifest["database_file"], manifest["media_file"])
+        if any(name not in verification["files"] for name in required_files):
+            raise ValueError("Manifest restore targets are not listed in the checksum manifest.")
         dump_path = resolve_backup_file(backup_dir, manifest["database_file"])
         media_path = resolve_backup_file(backup_dir, manifest["media_file"])
     except ValueError as exc:
         print(f"[FAIL] {exc}")
         return 1
 
-    db_config = settings.DATABASES["default"]
     backend = manifest["database_backend"]
     current_backend = database_backend()
-    if backend != current_backend:
+    if restore_db and backend != current_backend:
         print(
             f"[FAIL] Backup was created for '{backend}' but the active database is "
             f"'{current_backend}'. Refusing to restore across database backends."
         )
         return 1
 
-    restore_db = not args.media_only
-    restore_assets = not args.database_only
-
     print(f"[{'APPLY' if args.apply else 'DRY-RUN'}] Restoring from {backup_dir}")
     print(f"- Database ({backend}): {manifest['database_file']} -> {'restore' if restore_db else 'skip'}")
-    print(f"- Media: {manifest['media_file']} -> {'restore' if restore_assets else 'skip'} (MEDIA_ROOT={manifest['media_root']})")
+    print(f"- Media: {manifest['media_file']} -> {'restore' if restore_assets else 'skip'} (MEDIA_ROOT={settings.MEDIA_ROOT})")
 
     if not args.apply:
         print("Dry-run complete. Re-run with --apply to perform the restore.")
         return 0
 
+    media_root = Path(settings.MEDIA_ROOT)
+    staging = None
+    if restore_assets:
+        # Validate and stage media before touching the database so a bad archive
+        # cannot leave the live database restored over a failed media restore.
+        staging = stage_media(media_path, media_root.parent)
+
     if restore_db:
+        db_config = settings.DATABASES["default"]
         if backend == "postgresql":
             restore_postgresql(db_config, dump_path)
         elif backend == "sqlite3":
@@ -193,7 +218,9 @@ def main() -> int:
             raise SystemExit(f"Unsupported database backend in manifest: {backend}")
 
     if restore_assets:
-        restore_media(Path(manifest["media_root"]), media_path)
+        media_root.mkdir(parents=True, exist_ok=True)
+        shutil.copytree(staging, media_root, dirs_exist_ok=True)
+        shutil.rmtree(staging, ignore_errors=True)
 
     print("Restore complete.")
     return 0
