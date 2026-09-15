@@ -33,6 +33,7 @@ import shutil
 import sqlite3
 import subprocess
 import sys
+import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -151,21 +152,38 @@ def write_manifest(backup_dir: Path, metadata: dict) -> Path:
     return manifest_path
 
 
-def unique_backup_dir(backup_root: Path, timestamp: str) -> Path:
-    """Return a non-existing backup directory, disambiguating rapid runs."""
-    candidate = backup_root / timestamp
-    counter = 1
-    while candidate.exists():
-        candidate = backup_root / f"{timestamp}-{counter}"
-        counter += 1
-    return candidate
+def _rename_into_place(staging: Path, backup_root: Path, timestamp: str) -> Path:
+    """Atomically publish a fully-built backup dir under a unique timestamped name.
+
+    The final name is reserved with ``os.mkdir`` (so two concurrent runs cannot
+    claim the same name) and the staging directory is then renamed over the
+    empty reservation. A zero-padded suffix disambiguates multiple runs in the
+    same second and keeps lexicographic order chronological.
+    """
+    counter = 0
+    while True:
+        suffix = f"-{counter:02d}" if counter else ""
+        candidate = backup_root / f"{timestamp}{suffix}"
+        try:
+            os.mkdir(candidate)
+        except FileExistsError:
+            counter += 1
+            continue
+        os.rename(staging, candidate)
+        return candidate
 
 
 def create_backup(timestamp: str | None = None) -> dict:
     timestamp = timestamp or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H%M%SZ")
-    backup_dir = unique_backup_dir(get_backup_dir(), timestamp)
-    backup_dir.mkdir(parents=True, exist_ok=False)
-    backup_dir.chmod(0o700)
+    backup_root = get_backup_dir()
+    backup_root.mkdir(parents=True, exist_ok=True)
+    backup_root.chmod(0o700)
+
+    # Build the whole backup in a hidden temp directory, then rename it into
+    # place atomically. A failed run therefore never leaves a half-written
+    # backup directory visible to list_backup_dirs or restore.
+    staging = Path(tempfile.mkdtemp(prefix=f".{timestamp}.tmp-", dir=str(backup_root)))
+    staging.chmod(0o700)
 
     try:
         db_config = settings.DATABASES["default"]
@@ -173,24 +191,24 @@ def create_backup(timestamp: str | None = None) -> dict:
 
         if backend == "postgresql":
             database_filename = "database.sql"
-            dump_postgresql(db_config, backup_dir / database_filename)
+            dump_postgresql(db_config, staging / database_filename)
         else:
             database_filename = "database.sqlite3"
-            dump_sqlite3(db_config, backup_dir / database_filename)
+            dump_sqlite3(db_config, staging / database_filename)
 
         media_archive = archive_media(
             Path(settings.MEDIA_ROOT),
-            backup_dir / "media",
+            staging / "media",
         )
 
         files = {
-            database_filename: (backup_dir / database_filename),
+            database_filename: (staging / database_filename),
             media_archive.name: media_archive,
         }
         for path in files.values():
             path.chmod(0o600)
         manifest = {
-            "created_at": backup_dir.name,
+            "created_at": timestamp,
             "database_backend": backend,
             "database_file": database_filename,
             "media_file": media_archive.name,
@@ -203,16 +221,20 @@ def create_backup(timestamp: str | None = None) -> dict:
                 for name, path in files.items()
             },
         }
-        manifest_path = write_manifest(backup_dir, manifest)
+        manifest_path = write_manifest(staging, manifest)
         manifest_path.chmod(0o600)
+
+        final_dir = _rename_into_place(staging, backup_root, timestamp)
+        staging = None
     except Exception:
-        shutil.rmtree(backup_dir, ignore_errors=True)
+        if staging is not None:
+            shutil.rmtree(staging, ignore_errors=True)
         raise
 
     return {
-        "backup_dir": backup_dir,
-        "manifest_path": manifest_path,
-        "files": [str(backup_dir / database_filename), str(media_archive)],
+        "backup_dir": final_dir,
+        "manifest_path": final_dir / "manifest.json",
+        "files": [str(final_dir / manifest["database_file"]), str(final_dir / manifest["media_file"])],
     }
 
 
@@ -220,7 +242,8 @@ def list_backup_dirs(backup_root: Path) -> list[Path]:
     if not backup_root.exists():
         return []
     return sorted(
-        (path for path in backup_root.iterdir() if path.is_dir()),
+        (path for path in backup_root.iterdir()
+         if path.is_dir() and not path.name.startswith(".")),
         key=lambda path: path.name,
     )
 
@@ -245,7 +268,7 @@ def resolve_backup_file(backup_dir: Path, name: str) -> Path:
     return candidate
 
 
-def verify_backup(backup_dir: Path) -> dict:
+def verify_backup(backup_dir: Path, files: list[str] | None = None) -> dict:
     manifest_path = backup_dir / "manifest.json"
     if not manifest_path.exists():
         raise FileNotFoundError(f"No manifest.json in {backup_dir}")
@@ -255,9 +278,25 @@ def verify_backup(backup_dir: Path) -> dict:
     if not isinstance(files_meta, dict) or not files_meta:
         raise ValueError(f"No files listed in {manifest_path}")
 
+    if files is None:
+        # Verifying the whole backup: every file listed in the manifest must be
+        # present, and the declared database/media restore targets must exist so
+        # a truncated manifest can't pass as a complete backup.
+        names = list(files_meta)
+        for required in (manifest.get("database_file"), manifest.get("media_file")):
+            if not required or required not in files_meta:
+                raise ValueError(
+                    f"Manifest is missing its declared restore target: {required!r}"
+                )
+    else:
+        names = list(files)
+        for name in names:
+            if name not in files_meta:
+                raise ValueError(f"File not listed in manifest: {name!r}")
+
     results = {}
     ok = True
-    for name, meta in files_meta.items():
+    for name in names:
         try:
             path = resolve_backup_file(backup_dir, name)
         except ValueError as exc:
@@ -269,7 +308,7 @@ def verify_backup(backup_dir: Path) -> dict:
             ok = False
             continue
         actual = sha256_of(path)
-        expected = meta["sha256"]
+        expected = files_meta[name]["sha256"]
         results[name] = {"ok": actual == expected, "sha256": actual, "expected": expected}
         ok = ok and actual == expected
 

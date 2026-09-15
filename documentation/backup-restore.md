@@ -60,7 +60,7 @@ Run daily (or as often as your data changes). Example crontab entry for a
 daily backup at 02:00:
 
 ```cron
-0 2 * * * cd /srv/tbxr/backend && /srv/tbxr/backend/venv/bin/python scripts/backup.py >> backups/backup.log 2>&1
+0 2 * * * mkdir -p /srv/tbxr/backend/backups && cd /srv/tbxr/backend && /srv/tbxr/backend/venv/bin/python scripts/backup.py >> backups/backup.log 2>&1
 ```
 
 A `systemd` timer is equally valid. Point `BACKUP_DIR` at a location that is
@@ -134,3 +134,9 @@ manifest is informational only).
   the live database file.
 - Media assets are the only critical uploaded content; the archive captures
   everything under `MEDIA_ROOT`.
+- Backups are **crash-consistent, not transactionally consistent** across the
+  database and media. The database dump and media archive are captured
+  sequentially, so a record written after its upload finished (or an upload
+  that lands while the archive is being built) may not line up perfectly
+  between the two. For point-in-time consistency across both, schedule backups
+  during a low-activity window or quiesce writes first.

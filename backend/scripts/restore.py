@@ -132,7 +132,9 @@ def stage_media(archive_path: Path, staging_parent: Path) -> Path:
                     member.issym()
                     or member.islnk()
                     or member.name.startswith("/")
+                    or Path(member.name).is_absolute()
                     or ".." in Path(member.name).parts
+                    or not (member.isfile() or member.isdir())
                 ):
                     raise RuntimeError(f"Unsafe entry in media archive: {member.name!r}")
             try:
@@ -146,6 +148,34 @@ def stage_media(archive_path: Path, staging_parent: Path) -> Path:
     return staging
 
 
+def replace_media_tree(staging: Path, media_root: Path) -> None:
+    """Swap the staged media into place, replacing the live tree atomically.
+
+    The live ``MEDIA_ROOT`` is renamed aside first, the staging directory is
+    renamed to ``MEDIA_ROOT``, and only then is the old tree removed. This means
+    restored media replaces (rather than merges with) whatever was there before,
+    and a failure mid-swap can restore the previous tree rather than leaving the
+    media directory missing.
+    """
+    parent = media_root.parent
+    parent.mkdir(parents=True, exist_ok=True)
+    old = Path(tempfile.mkdtemp(prefix=".tbxr-media-old-", dir=str(parent)))
+    os.rmdir(old)
+    if media_root.exists():
+        os.rename(media_root, old)
+    try:
+        os.rename(staging, media_root)
+    except Exception:
+        if not media_root.exists() and old.exists():
+            os.rename(old, media_root)
+        raise
+    else:
+        if old.is_dir() and not old.is_symlink():
+            shutil.rmtree(old, ignore_errors=True)
+        else:
+            old.unlink(missing_ok=True)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Restore the TB-XR database and media.")
     parser.add_argument("backup_dir", nargs="?", default=None)
@@ -156,9 +186,22 @@ def main() -> int:
     args = parser.parse_args()
 
     backup_dir = resolve_backup_dir(args.backup_dir)
+    manifest = load_manifest(backup_dir)
+    restore_db = not args.media_only
+    restore_assets = not args.database_only
+
+    # Verify only the components this run will actually restore, so a corrupt
+    # media archive does not block a --database-only restore (and vice versa).
+    verify_files = []
+    if restore_db:
+        verify_files.append(manifest["database_file"])
+    if restore_assets:
+        verify_files.append(manifest["media_file"])
 
     try:
-        verification = verify_backup(backup_dir)
+        verification = verify_backup(backup_dir, files=verify_files)
+        dump_path = resolve_backup_file(backup_dir, manifest["database_file"]) if restore_db else None
+        media_path = resolve_backup_file(backup_dir, manifest["media_file"]) if restore_assets else None
     except (FileNotFoundError, ValueError) as exc:
         print(f"[FAIL] {exc}")
         return 1
@@ -168,20 +211,6 @@ def main() -> int:
         for name, detail in verification["files"].items():
             status = detail.get("error") or ("OK" if detail["ok"] else "MISMATCH")
             print(f"- {name}: {status}")
-        return 1
-
-    manifest = load_manifest(backup_dir)
-    restore_db = not args.media_only
-    restore_assets = not args.database_only
-
-    try:
-        required_files = (manifest["database_file"], manifest["media_file"])
-        if any(name not in verification["files"] for name in required_files):
-            raise ValueError("Manifest restore targets are not listed in the checksum manifest.")
-        dump_path = resolve_backup_file(backup_dir, manifest["database_file"])
-        media_path = resolve_backup_file(backup_dir, manifest["media_file"])
-    except ValueError as exc:
-        print(f"[FAIL] {exc}")
         return 1
 
     backend = manifest["database_backend"]
@@ -203,24 +232,28 @@ def main() -> int:
 
     media_root = Path(settings.MEDIA_ROOT)
     staging = None
-    if restore_assets:
-        # Validate and stage media before touching the database so a bad archive
-        # cannot leave the live database restored over a failed media restore.
-        staging = stage_media(media_path, media_root.parent)
+    try:
+        if restore_assets:
+            # Validate and stage media before touching the database so a bad
+            # archive cannot leave the live database restored over a failed
+            # media restore.
+            staging = stage_media(media_path, media_root.parent)
 
-    if restore_db:
-        db_config = settings.DATABASES["default"]
-        if backend == "postgresql":
-            restore_postgresql(db_config, dump_path)
-        elif backend == "sqlite3":
-            restore_sqlite3(db_config, dump_path)
-        else:
-            raise SystemExit(f"Unsupported database backend in manifest: {backend}")
+        if restore_db:
+            db_config = settings.DATABASES["default"]
+            if backend == "postgresql":
+                restore_postgresql(db_config, dump_path)
+            elif backend == "sqlite3":
+                restore_sqlite3(db_config, dump_path)
+            else:
+                raise SystemExit(f"Unsupported database backend in manifest: {backend}")
 
-    if restore_assets:
-        media_root.mkdir(parents=True, exist_ok=True)
-        shutil.copytree(staging, media_root, dirs_exist_ok=True)
-        shutil.rmtree(staging, ignore_errors=True)
+        if restore_assets:
+            replace_media_tree(staging, media_root)
+            staging = None
+    finally:
+        if staging is not None:
+            shutil.rmtree(staging, ignore_errors=True)
 
     print("Restore complete.")
     return 0
