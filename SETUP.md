@@ -57,10 +57,10 @@ If you want to use SQLite for a local throwaway setup, remove `DB_NAME` from `.e
 Example PostgreSQL `.env` values:
 
 ```env
-SECRET_KEY=replace-me
-DB_NAME=tbxr_db
-DB_USER=postgres
-DB_PASSWORD=replace-me
+SECRET_KEY=<set-a-strong-random-secret>
+DB_NAME=<postgres-db-name>
+DB_USER=<postgres-db-user>
+DB_PASSWORD=<postgres-db-password>
 DB_HOST=localhost
 DB_PORT=5432
 ```
@@ -68,7 +68,7 @@ DB_PORT=5432
 Example SQLite `.env` values:
 
 ```env
-SECRET_KEY=replace-me
+SECRET_KEY=<set-a-strong-random-secret>
 ```
 
 ### Switching Databases For SUS Testing
@@ -82,19 +82,19 @@ sudo -u postgres psql
 ```
 
 ```sql
-CREATE USER postgres_sus WITH PASSWORD 'databasepassword_SUS';
-CREATE DATABASE tbxr_db_sus OWNER postgres_sus;
-GRANT ALL PRIVILEGES ON DATABASE tbxr_db_sus TO postgres_sus;
+CREATE USER <sus_db_user> WITH PASSWORD '<sus_db_password>';
+CREATE DATABASE <sus_db_name> OWNER <sus_db_user>;
+GRANT ALL PRIVILEGES ON DATABASE <sus_db_name> TO <sus_db_user>;
 \q
 ```
 
 2. Update `backend/.env` to point to the SUS database.
 
 ```env
-SECRET_KEY=replace-me
-DB_NAME=tbxr_db_sus
-DB_USER=postgres_sus
-DB_PASSWORD=databasepassword_SUS
+SECRET_KEY=<set-a-strong-random-secret>
+DB_NAME=<sus-db-name>
+DB_USER=<sus-db-user>
+DB_PASSWORD=<sus-db-password>
 DB_HOST=localhost
 DB_PORT=5432
 ```
@@ -135,10 +135,10 @@ To return to the original development database, reverse the same steps:
 1. Restore the old values in `backend/.env`.
 
 ```env
-SECRET_KEY=replace-me
-DB_NAME=tbxr_db
-DB_USER=postgres
-DB_PASSWORD=databasepassword
+SECRET_KEY=<set-a-strong-random-secret>
+DB_NAME=<postgres-db-name>
+DB_USER=<postgres-db-user>
+DB_PASSWORD=<postgres-db-password>
 DB_HOST=localhost
 DB_PORT=5432
 ```
@@ -244,9 +244,11 @@ def create_role_user(username, password, role, email=""):
     user.save()
     return user
 
-create_role_user("tech1", "demo123", "RADIOLOGIC_TECH", "tech1@example.com")
-create_role_user("rad1", "demo123", "RADIOLOGIST", "rad1@example.com")
+create_role_user("tech1", "<local-test-password>", "RADIOLOGIC_TECH", "tech1@example.com")
+create_role_user("rad1", "<local-test-password>", "RADIOLOGIST", "rad1@example.com")
 ```
+
+For local demo accounts, choose your own non-production test password and never reuse real credentials.
 ``` bash
 python manage.py runserver
 ```
@@ -260,6 +262,13 @@ npm run dev
 ```
 
 **Note**: If you want to check the database structure with GUI you can download DBeaver and connect the PostgreSQL there. Use the .env variables you have set.
+
+## Environment Security Rules
+
+- Never commit real secrets or credentials (for example: SECRET_KEY, DB_PASSWORD, API keys).
+- Keep `.env` local-only; commit placeholders in `.env.example` only.
+- Store production secrets in your deployment platform secret manager or protected CI/CD variables.
+- Rotate credentials immediately if a secret is exposed.
 
 For testing Back end automatically.
 ``` bash

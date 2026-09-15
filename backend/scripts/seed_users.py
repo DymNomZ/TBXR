@@ -4,9 +4,9 @@ from __future__ import annotations
 Seed demo users and sample records.
 
 Test credentials:
-- tech1 / demo123 -> RADIOLOGIC_TECH
-- rad1 / demo123 -> RADIOLOGIST
-- physician1 / demo123 -> PHYSICIAN
+- tech1 / SEED_DEFAULT_PASSWORD -> RADIOLOGIC_TECH
+- rad1 / SEED_DEFAULT_PASSWORD -> RADIOLOGIST
+- physician1 / SEED_DEFAULT_PASSWORD -> PHYSICIAN
 """
 
 import os
@@ -39,7 +39,7 @@ from apps.accounts.enums import UserRole
 from apps.imaging.models import AIResult, Notification, ProcessedImage, Report, XrayRecord
 from apps.patients.models import Patient
 
-SEED_PASSWORD = "demo123"
+SEED_PASSWORD = os.environ.get("SEED_DEFAULT_PASSWORD", "seed-password-change-me")
 SEED_XRAY_TRANSACTION_ID = uuid.UUID("11111111-1111-1111-1111-111111111111")
 SEED_FINALIZED_XRAY_TRANSACTION_ID = uuid.UUID("22222222-2222-2222-2222-222222222222")
 

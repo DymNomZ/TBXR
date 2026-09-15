@@ -12,6 +12,7 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 
 import os
 from pathlib import Path
+from django.core.exceptions import ImproperlyConfigured
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -34,22 +35,53 @@ def _load_env_file(env_path: Path) -> None:
 _load_env_file(BASE_DIR / ".env")
 
 
+def _env_bool(name: str, default: bool = False) -> bool:
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _env_list(name: str, default: list[str] | None = None) -> list[str]:
+    value = os.environ.get(name)
+    if value is None:
+        return default or []
+    return [item.strip() for item in value.split(",") if item.strip()]
+
+
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = os.environ.get(
-    "SECRET_KEY",
-    "django-insecure-%&wk2z+_hkjcgsr)-)+^@*ore!mp^6v-qrb%-wp@4(*b+@b(q4",
-)
+DJANGO_ENV = os.environ.get("DJANGO_ENV", "development").strip().lower()
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = _env_bool("DEBUG", default=False)
+
+SECRET_KEY = os.environ.get("SECRET_KEY", "")
+if not SECRET_KEY:
+    if DEBUG:
+        SECRET_KEY = "dev-only-insecure-secret-key"
+    else:
+        raise ImproperlyConfigured(
+            "SECRET_KEY must be set when DEBUG is False."
+        )
 
 REVIEW_LOCK_TIMEOUT_MINUTES = int(os.environ.get("REVIEW_LOCK_TIMEOUT_MINUTES", "60"))
 
-ALLOWED_HOSTS = ['localhost', '127.0.0.1', 'testserver']
-CSRF_TRUSTED_ORIGINS = ['http://localhost:5173']
+ALLOWED_HOSTS = _env_list(
+    "ALLOWED_HOSTS",
+    default=["localhost", "127.0.0.1", "testserver"],
+)
+CSRF_TRUSTED_ORIGINS = _env_list(
+    "CSRF_TRUSTED_ORIGINS",
+    default=["http://localhost:5173"],
+)
+
+SESSION_COOKIE_SECURE = _env_bool("SESSION_COOKIE_SECURE", default=not DEBUG)
+CSRF_COOKIE_SECURE = _env_bool("CSRF_COOKIE_SECURE", default=not DEBUG)
+SECURE_SSL_REDIRECT = _env_bool("SECURE_SSL_REDIRECT", default=False)
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https") if _env_bool("USE_X_FORWARDED_PROTO", default=False) else None
 
 
 # Application definition

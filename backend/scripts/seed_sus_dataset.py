@@ -45,7 +45,7 @@ from apps.accounts.enums import UserRole
 from apps.imaging.models import AIResult, Notification, ProcessedImage, Report, XrayRecord
 from apps.patients.models import Patient
 
-SEED_PASSWORD = "demo123"
+SEED_PASSWORD = os.environ.get("SEED_DEFAULT_PASSWORD", "seed-password-change-me")
 
 USER_FIXTURES = [
     {
