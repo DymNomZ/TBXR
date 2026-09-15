@@ -57,7 +57,7 @@ DJANGO_ENV = os.environ.get("DJANGO_ENV", "development").strip().lower()
 IS_PRODUCTION = DJANGO_ENV == "production"
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = _env_bool("DEBUG", default=False)
+DEBUG = _env_bool("DEBUG", default=not IS_PRODUCTION)
 
 if IS_PRODUCTION and DEBUG:
     raise ImproperlyConfigured(
@@ -66,6 +66,10 @@ if IS_PRODUCTION and DEBUG:
 
 SECRET_KEY = os.environ.get("SECRET_KEY", "")
 if not SECRET_KEY:
+    if IS_PRODUCTION:
+        raise ImproperlyConfigured(
+            "SECRET_KEY must be set when DJANGO_ENV is 'production'."
+        )
     if DEBUG:
         SECRET_KEY = "dev-only-insecure-secret-key"
     else:
