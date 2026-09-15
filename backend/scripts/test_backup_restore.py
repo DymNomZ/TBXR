@@ -437,13 +437,18 @@ class RestoreScriptTests(SimpleTestCase):
                 result = backup.create_backup(timestamp="2026-01-01T000000Z")
             backup_dir = result["backup_dir"]
 
+            # Rewrite the backup as a PostgreSQL backup so the manifest stays
+            # internally consistent and this test reaches the backend-mismatch
+            # refusal instead of the earlier target-binding validation.
+            database_path = backup_dir / "database.sqlite3"
+            renamed_database_path = backup_dir / "database.sql"
+            database_path.rename(renamed_database_path)
+
             manifest_path = backup_dir / "manifest.json"
             manifest = json.loads(manifest_path.read_text())
             manifest["database_backend"] = "postgresql"
-            # Keep the declared database file consistent with the new backend so
-            # this test exercises the backend-mismatch refusal, not the
-            # target-binding validation that runs first.
             manifest["database_file"] = "database.sql"
+            manifest["files"]["database.sql"] = manifest["files"].pop("database.sqlite3")
             manifest_path.write_text(json.dumps(manifest))
 
             old_argv = sys.argv

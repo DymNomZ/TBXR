@@ -320,7 +320,7 @@ def verify_backup(backup_dir: Path, files: list[str] | None = None) -> dict:
         # a truncated manifest can't pass as a complete backup.
         names = list(files_meta)
         for required in (manifest.get("database_file"), manifest.get("media_file")):
-            if not required or required not in files_meta:
+            if not isinstance(required, str) or not required or required not in files_meta:
                 raise ValueError(
                     f"Manifest is missing its declared restore target: {required!r}"
                 )
@@ -344,8 +344,8 @@ def verify_backup(backup_dir: Path, files: list[str] | None = None) -> dict:
             results[name] = {"ok": False, "error": str(exc)}
             ok = False
             continue
-        if not path.exists():
-            results[name] = {"ok": False, "error": "missing"}
+        if not path.is_file():
+            results[name] = {"ok": False, "error": "not a regular file"}
             ok = False
             continue
         expected = meta.get("sha256")
@@ -353,7 +353,12 @@ def verify_backup(backup_dir: Path, files: list[str] | None = None) -> dict:
             results[name] = {"ok": False, "error": "missing checksum"}
             ok = False
             continue
-        actual = sha256_of(path)
+        try:
+            actual = sha256_of(path)
+        except OSError as exc:
+            results[name] = {"ok": False, "error": str(exc)}
+            ok = False
+            continue
         results[name] = {"ok": actual == expected, "sha256": actual, "expected": expected}
         ok = ok and actual == expected
 
@@ -400,9 +405,16 @@ def main() -> int:
     for path in result["files"]:
         print(f"  - {path}")
 
-    keep = get_retention_count()
-    removed = prune_backups(backup_root, keep)
-    if removed:
+    try:
+        keep = get_retention_count()
+        removed = prune_backups(backup_root, keep)
+    except (ValueError, OSError) as exc:
+        print(f"[WARN] Retention pruning skipped: {exc}")
+        return 0
+
+    if keep == 0:
+        print("Retention check: BACKUP_RETENTION_COUNT=0, keeping all backups.")
+    elif removed:
         print(f"Pruned {len(removed)} old backup(s) (retention={keep}):")
         for stale in removed:
             print(f"- {stale.name}")

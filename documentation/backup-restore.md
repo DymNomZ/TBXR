@@ -123,9 +123,9 @@ unchanged. Re-run the media restore (or use `--media-only`) to retry.
 
 ## Verification / operational checklist
 
-- After each backup, run `python scripts/backup.py --verify <dir>` and confirm
+- After each backup, run `python scripts/backup.py --verify backups/2026-09-15T020000Z` and confirm
   `[PASS]`.
-- Confirm files exist in `backend/backups/<timestamp>/` (database dump, media
+- Confirm files exist in `backend/backups/2026-09-15T020000Z/` (database dump, media
   archive, manifest).
 - Periodically (e.g. monthly) run a restore drill into a scratch database to
   prove the backups are restorable, not just present.
