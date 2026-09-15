@@ -91,10 +91,10 @@ class RolePermissionTests(TestCase):
     def setUpTestData(cls):
         user_model = get_user_model()
         cls.tech = user_model.objects.create_user(
-            username='tech1', password='demo123', role=UserRole.RADIOLOGIC_TECH
+            username='tech1', password='password123', role=UserRole.RADIOLOGIC_TECH
         )
         cls.rad = user_model.objects.create_user(
-            username='rad1', password='demo123', role=UserRole.RADIOLOGIST
+            username='rad1', password='password123', role=UserRole.RADIOLOGIST
         )
         cls.rfactory = RequestFactory()
 

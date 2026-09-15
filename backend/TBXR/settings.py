@@ -12,6 +12,7 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 
 import os
 from pathlib import Path
+from django.core.exceptions import ImproperlyConfigured
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -34,22 +35,90 @@ def _load_env_file(env_path: Path) -> None:
 _load_env_file(BASE_DIR / ".env")
 
 
+def _env_bool(name: str, default: bool = False) -> bool:
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _env_list(name: str, default: list[str] | None = None) -> list[str]:
+    value = os.environ.get(name)
+    if value is None:
+        return default or []
+    return [item.strip() for item in value.split(",") if item.strip()]
+
+
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = os.environ.get(
-    "SECRET_KEY",
-    "django-insecure-%&wk2z+_hkjcgsr)-)+^@*ore!mp^6v-qrb%-wp@4(*b+@b(q4",
-)
+DJANGO_ENV = os.environ.get("DJANGO_ENV", "development").strip().lower()
+IS_PRODUCTION = DJANGO_ENV == "production"
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = _env_bool("DEBUG", default=not IS_PRODUCTION)
+
+if IS_PRODUCTION and DEBUG:
+    raise ImproperlyConfigured(
+        "DEBUG must be False when DJANGO_ENV is 'production'."
+    )
+
+SECRET_KEY = os.environ.get("SECRET_KEY", "")
+if not SECRET_KEY:
+    if IS_PRODUCTION:
+        raise ImproperlyConfigured(
+            "SECRET_KEY must be set when DJANGO_ENV is 'production'."
+        )
+    if DEBUG:
+        SECRET_KEY = "dev-only-insecure-secret-key"
+    else:
+        raise ImproperlyConfigured(
+            "SECRET_KEY must be set when DEBUG is False."
+        )
 
 REVIEW_LOCK_TIMEOUT_MINUTES = int(os.environ.get("REVIEW_LOCK_TIMEOUT_MINUTES", "60"))
 
-ALLOWED_HOSTS = ['localhost', '127.0.0.1', 'testserver']
-CSRF_TRUSTED_ORIGINS = ['http://localhost:5173']
+ALLOWED_HOSTS = _env_list(
+    "ALLOWED_HOSTS",
+    default=["localhost", "127.0.0.1", "testserver"],
+)
+CSRF_TRUSTED_ORIGINS = _env_list(
+    "CSRF_TRUSTED_ORIGINS",
+    default=["http://localhost:5173"],
+)
+
+if IS_PRODUCTION:
+    if not ALLOWED_HOSTS:
+        raise ImproperlyConfigured(
+            "ALLOWED_HOSTS must be explicitly configured in production."
+        )
+    if any(host in {"localhost", "127.0.0.1", "testserver"} for host in ALLOWED_HOSTS):
+        raise ImproperlyConfigured(
+            "ALLOWED_HOSTS cannot contain localhost/testserver values in production."
+        )
+
+    if not CSRF_TRUSTED_ORIGINS:
+        raise ImproperlyConfigured(
+            "CSRF_TRUSTED_ORIGINS must be explicitly configured in production."
+        )
+    if any(not origin.startswith("https://") for origin in CSRF_TRUSTED_ORIGINS):
+        raise ImproperlyConfigured(
+            "CSRF_TRUSTED_ORIGINS entries must use https:// in production."
+        )
+
+SESSION_COOKIE_SECURE = _env_bool("SESSION_COOKIE_SECURE", default=not DEBUG)
+CSRF_COOKIE_SECURE = _env_bool("CSRF_COOKIE_SECURE", default=not DEBUG)
+SESSION_COOKIE_SAMESITE = os.environ.get("SESSION_COOKIE_SAMESITE", "Lax")
+CSRF_COOKIE_SAMESITE = os.environ.get("CSRF_COOKIE_SAMESITE", "Lax")
+SECURE_SSL_REDIRECT = _env_bool("SECURE_SSL_REDIRECT", default=not DEBUG)
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https") if _env_bool("USE_X_FORWARDED_PROTO", default=False) else None
+SECURE_CONTENT_TYPE_NOSNIFF = True
+SECURE_REFERRER_POLICY = os.environ.get("SECURE_REFERRER_POLICY", "strict-origin-when-cross-origin")
+X_FRAME_OPTIONS = os.environ.get("X_FRAME_OPTIONS", "DENY")
+SECURE_HSTS_SECONDS = int(os.environ.get("SECURE_HSTS_SECONDS", "31536000" if IS_PRODUCTION else "0"))
+SECURE_HSTS_INCLUDE_SUBDOMAINS = _env_bool("SECURE_HSTS_INCLUDE_SUBDOMAINS", default=IS_PRODUCTION)
+SECURE_HSTS_PRELOAD = _env_bool("SECURE_HSTS_PRELOAD", default=False)
 
 
 # Application definition
