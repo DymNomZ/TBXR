@@ -13,6 +13,11 @@ The script verifies checksums before touching anything and defaults to a
 dry-run so a mistake cannot silently overwrite data. Restore is destructive:
 stop the application server before applying, and keep a fresh backup.
 
+A full restore is not atomic across the database and media: the database is
+restored first, then media is swapped into place. If the media swap fails after
+the database has been restored, the database is restored but media may remain
+unchanged. Re-run the media restore (or use --media-only) to retry.
+
 Options:
     --apply          actually perform the restore (default is dry-run)
     --database-only  restore the database, skip media
@@ -41,7 +46,13 @@ from django.conf import settings
 if not settings.configured:
     django.setup()
 
-from scripts.backup import database_backend, get_backup_dir, resolve_backup_file, verify_backup
+from scripts.backup import (
+    database_backend,
+    get_backup_dir,
+    list_backup_dirs,
+    resolve_backup_file,
+    verify_backup,
+)
 
 
 def resolve_backup_dir(explicit: str | None) -> Path:
@@ -49,12 +60,7 @@ def resolve_backup_dir(explicit: str | None) -> Path:
         return Path(explicit)
 
     backup_root = get_backup_dir()
-    if not backup_root.exists():
-        raise SystemExit(f"No backups found under {backup_root}.")
-    dirs = sorted(
-        (path for path in backup_root.iterdir() if path.is_dir()),
-        key=lambda path: path.name,
-    )
+    dirs = list_backup_dirs(backup_root)
     if not dirs:
         raise SystemExit(f"No backups found under {backup_root}.")
     return dirs[-1]

@@ -169,13 +169,38 @@ def _rename_into_place(staging: Path, backup_root: Path, timestamp: str) -> Path
         except FileExistsError:
             counter += 1
             continue
-        os.rename(staging, candidate)
+        try:
+            os.rename(staging, candidate)
+        except Exception:
+            # Roll back the empty reservation so a failed publish never leaves a
+            # stray directory behind.
+            shutil.rmtree(candidate, ignore_errors=True)
+            raise
         return candidate
+
+
+def _reject_overlapping_backup_media(backup_root: Path, media_root: Path) -> None:
+    """Refuse a configuration where the backup output nests inside the media tree
+    (or vice versa).
+
+    If BACKUP_DIR lives under MEDIA_ROOT, the media archive would include its own
+    output, and a media restore that replaces MEDIA_ROOT would delete the backups.
+    The reverse nesting is rejected for the same reason.
+    """
+    backup_root = backup_root.resolve()
+    media_root = media_root.resolve()
+    if backup_root.is_relative_to(media_root) or media_root.is_relative_to(backup_root):
+        raise RuntimeError(
+            "BACKUP_DIR and MEDIA_ROOT must be disjoint so a backup never archives "
+            "its own output or is removed by a media restore. "
+            f"BACKUP_DIR={backup_root}, MEDIA_ROOT={media_root}"
+        )
 
 
 def create_backup(timestamp: str | None = None) -> dict:
     timestamp = timestamp or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H%M%SZ")
     backup_root = get_backup_dir()
+    _reject_overlapping_backup_media(backup_root, Path(settings.MEDIA_ROOT))
     backup_root.mkdir(parents=True, exist_ok=True)
     backup_root.chmod(0o700)
 

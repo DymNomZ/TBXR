@@ -116,6 +116,20 @@ class BackupScriptTests(SimpleTestCase):
         self.assertEqual(list(self.backup_root.iterdir()), [])
         self.assertEqual(backup.list_backup_dirs(self.backup_root), [])
 
+    def test_create_backup_rejects_backup_dir_under_media_root(self):
+        overlapping_backup_root = self.media_root / "backups"
+        with self._settings():
+            with mock.patch.object(backup, "get_backup_dir", return_value=overlapping_backup_root):
+                with self.assertRaises(RuntimeError):
+                    backup.create_backup(timestamp="2026-01-01T000000Z")
+
+    def test_create_backup_rejects_media_root_under_backup_dir(self):
+        nested_media = self.backup_root / "media"
+        with _override_db_settings(nested_media, self.db_path):
+            with mock.patch.object(backup, "get_backup_dir", return_value=self.backup_root):
+                with self.assertRaises(RuntimeError):
+                    backup.create_backup(timestamp="2026-01-01T000000Z")
+
     def test_list_backup_dirs_skips_hidden_temp_dirs(self):
         (self.backup_root / "2026-01-01T000000Z").mkdir()
         (self.backup_root / ".2026-01-02T000000Z.tmp-abc").mkdir()
@@ -139,6 +153,16 @@ class BackupScriptTests(SimpleTestCase):
         third_staging.mkdir()
         third = backup._rename_into_place(third_staging, self.backup_root, "2026-01-01T000000Z")
         self.assertEqual(third.name, "2026-01-01T000000Z-02")
+
+    def test_rename_into_place_cleans_reservation_on_rename_failure(self):
+        staging = self.tmp / "staging"
+        staging.mkdir()
+
+        with mock.patch.object(os, "rename", side_effect=OSError("simulated failure")):
+            with self.assertRaises(OSError):
+                backup._rename_into_place(staging, self.backup_root, "2026-01-01T000000Z")
+
+        self.assertEqual(list(self.backup_root.iterdir()), [])
 
     def test_prune_backups_keeps_most_recent(self):
         for name in ("2026-01-01T000000Z", "2026-01-02T000000Z", "2026-01-03T000000Z"):
@@ -345,6 +369,17 @@ class RestoreScriptTests(SimpleTestCase):
                 sys.argv = old_argv
 
             self.assertEqual(rc, 1)
+
+    def test_resolve_backup_dir_skips_hidden_staging_dirs(self):
+        backup_root = self.tmp / "backups"
+        backup_root.mkdir()
+        (backup_root / "2026-01-01T000000Z").mkdir()
+        (backup_root / ".2026-01-02T000000Z.tmp-abc").mkdir()
+
+        with mock.patch.object(restore, "get_backup_dir", return_value=backup_root):
+            resolved = restore.resolve_backup_dir(None)
+
+        self.assertEqual(resolved.name, "2026-01-01T000000Z")
 
 
 def settings_db_config():

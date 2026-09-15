@@ -38,6 +38,11 @@ directory with mode `0700`, and the database dump, media archive, and manifest
 with mode `0600`. Keep `BACKUP_DIR` on storage you control and ensure it is
 not world-readable.
 
+`BACKUP_DIR` and `MEDIA_ROOT` must be disjoint: neither path may contain the
+other. If `BACKUP_DIR` were nested under `MEDIA_ROOT`, the media archive would
+include its own output, and a media restore that replaces `MEDIA_ROOT` would
+delete the backups. The backup script refuses to run when the two paths overlap.
+
 ## Running a backup
 
 ```bash
@@ -110,6 +115,11 @@ so a failed restore rolls back rather than leaving a half-restored database.
 Media is staged to a temporary directory and validated before the database is
 touched, then written into the active `MEDIA_ROOT` (the path recorded in the
 manifest is informational only).
+
+A full restore is not atomic across the database and media: the database is
+restored first, then media is swapped into place. If the media swap fails after
+the database restore succeeds, the database is restored but media may remain
+unchanged. Re-run the media restore (or use `--media-only`) to retry.
 
 ## Verification / operational checklist
 
