@@ -75,4 +75,5 @@ urlpatterns = [
     path("notifications/", views.notifications, name="notifications"),
     path("notifications/<int:notification_id>/mark-read/", views.notification_mark_read, name="notification_mark_read"),
     path("analytics/summary/", views.analytics_summary, name="analytics_summary"),
+    path("analytics/export/", views.analytics_export, name="analytics_export"),
 ]
