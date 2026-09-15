@@ -32,7 +32,7 @@ import subprocess
 import sys
 import tarfile
 import tempfile
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 BASE_DIR = Path(__file__).resolve().parents[1]
 if str(BASE_DIR) not in sys.path:
@@ -71,9 +71,12 @@ def load_manifest(backup_dir: Path) -> dict:
     if not manifest_path.exists():
         raise SystemExit(f"No manifest.json in {backup_dir}.")
     try:
-        return json.loads(manifest_path.read_text())
+        manifest = json.loads(manifest_path.read_text())
     except json.JSONDecodeError as exc:
         raise SystemExit(f"Manifest is not valid JSON: {manifest_path} ({exc})")
+    if not isinstance(manifest, dict):
+        raise SystemExit(f"Manifest is not a JSON object: {manifest_path}")
+    return manifest
 
 
 def _pg_env(db_config: dict) -> dict:
@@ -118,17 +121,59 @@ def restore_postgresql(db_config: dict, dump_path: Path) -> None:
 def restore_sqlite3(db_config: dict, dump_path: Path) -> None:
     live_path = Path(db_config["NAME"])
     live_path.parent.mkdir(parents=True, exist_ok=True)
+
     temp_path = live_path.with_name(live_path.name + ".restore-tmp")
+    old_path = live_path.with_name(live_path.name + ".restore-old")
+    moved = []  # (original, parked) pairs, for rollback and cleanup
+
     try:
         shutil.copy2(str(dump_path), str(temp_path))
-        # Drop stale WAL/rollback sidecars so a freshly restored snapshot cannot
-        # be polluted by journal frames from the previous live database.
+        # Park the live database and its WAL/rollback sidecars aside rather than
+        # deleting them up front, so a failure mid-swap can put them back instead
+        # of leaving the database missing or its journal state lost.
+        if live_path.exists():
+            os.replace(str(live_path), str(old_path))
+            moved.append((live_path, old_path))
         for suffix in ("-wal", "-shm", "-journal"):
-            live_path.with_name(live_path.name + suffix).unlink(missing_ok=True)
+            sidecar = live_path.with_name(live_path.name + suffix)
+            if sidecar.exists():
+                parked = sidecar.with_name(sidecar.name + ".restore-old")
+                os.replace(str(sidecar), str(parked))
+                moved.append((sidecar, parked))
         os.replace(str(temp_path), str(live_path))
     except Exception:
         temp_path.unlink(missing_ok=True)
+        for original, parked in reversed(moved):
+            if not original.exists() and parked.exists():
+                os.replace(str(parked), str(original))
         raise
+    else:
+        for _, parked in moved:
+            parked.unlink(missing_ok=True)
+
+
+def _unsafe_archive_member(member: tarfile.TarInfo) -> bool:
+    """Return True if a tar member could escape the staging directory or is unsafe.
+
+    The pre-extraction check is a defense-in-depth layer on top of Python's
+    ``filter="data"``. It rejects links, non-regular/non-directory entries, and
+    names that are absolute, contain ``..``, use backslash separators, or are
+    drive-rooted (e.g. ``C:\\evil``) so Windows-style traversal cannot slip past
+    a POSIX ``PurePosixPath`` check.
+    """
+    if member.issym() or member.islnk():
+        return True
+    if not (member.isfile() or member.isdir()):
+        return True
+    name = member.name
+    posix = PurePosixPath(name)
+    if posix.is_absolute() or ".." in posix.parts:
+        return True
+    if "\\" in name:
+        return True
+    if len(name) >= 2 and name[1] == ":" and name[0].isalpha():
+        return True
+    return False
 
 
 def stage_media(archive_path: Path, staging_parent: Path) -> Path:
@@ -137,24 +182,23 @@ def stage_media(archive_path: Path, staging_parent: Path) -> Path:
     Extracting into a staging directory first means an unsafe or corrupt
     archive fails before the live database or media is touched.
     """
+    staging_parent.mkdir(parents=True, exist_ok=True)
     staging = Path(tempfile.mkdtemp(prefix=".tbxr-restore-", dir=str(staging_parent)))
     try:
         with tarfile.open(str(archive_path), "r:gz") as tar:
             for member in tar.getmembers():
-                if (
-                    member.issym()
-                    or member.islnk()
-                    or member.name.startswith("/")
-                    or Path(member.name).is_absolute()
-                    or ".." in Path(member.name).parts
-                    or not (member.isfile() or member.isdir())
-                ):
+                if _unsafe_archive_member(member):
                     raise RuntimeError(f"Unsafe entry in media archive: {member.name!r}")
             try:
                 tar.extractall(str(staging), filter="data")
-            except TypeError:
-                # Python < 3.11.4 has no filter kwarg; the member check above is the guard.
-                tar.extractall(str(staging))
+            except TypeError as exc:
+                # `filter="data"` is the only safe extraction mode; a TypeError
+                # means the interpreter predates Python 3.11.4 and cannot safely
+                # sanitize modes/ownership. Refuse rather than fall back to an
+                # unfiltered extraction.
+                raise RuntimeError(
+                    "Media extraction requires Python 3.11.4+ for safe tar filtering."
+                ) from exc
     except Exception:
         shutil.rmtree(staging, ignore_errors=True)
         raise
@@ -189,6 +233,13 @@ def replace_media_tree(staging: Path, media_root: Path) -> None:
             old.unlink(missing_ok=True)
 
 
+def _paths_overlap(a: Path, b: Path) -> bool:
+    """Return True if either path contains the other (after resolving symlinks)."""
+    a = a.resolve()
+    b = b.resolve()
+    return a.is_relative_to(b) or b.is_relative_to(a)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Restore the TB-XR database and media.")
     parser.add_argument("backup_dir", nargs="?", default=None)
@@ -206,14 +257,35 @@ def main() -> int:
     database_file = manifest.get("database_file")
     media_file = manifest.get("media_file")
     backend = manifest.get("database_backend")
+    if restore_db and not isinstance(backend, str):
+        print(f"[FAIL] Manifest in {backup_dir} has an invalid 'database_backend'.")
+        return 1
     if restore_db and not isinstance(database_file, str):
         print(f"[FAIL] Manifest in {backup_dir} has an invalid 'database_file'.")
         return 1
     if restore_assets and not isinstance(media_file, str):
         print(f"[FAIL] Manifest in {backup_dir} has an invalid 'media_file'.")
         return 1
-    if restore_db and not isinstance(backend, str):
-        print(f"[FAIL] Manifest in {backup_dir} has an invalid 'database_backend'.")
+
+    # Bind each restore target to the backend that produced it. Without this, a
+    # tampered manifest could name the media archive as the database file (or
+    # vice versa) and cause the wrong artifact to be installed.
+    if restore_db:
+        expected_database_file = {
+            "postgresql": "database.sql",
+            "sqlite3": "database.sqlite3",
+        }.get(backend)
+        if database_file != expected_database_file:
+            print(
+                f"[FAIL] Manifest in {backup_dir} declares database_file "
+                f"{database_file!r}, inconsistent with backend {backend!r}."
+            )
+            return 1
+    if restore_assets and media_file != "media.tar.gz":
+        print(
+            f"[FAIL] Manifest in {backup_dir} declares media_file "
+            f"{media_file!r}, expected 'media.tar.gz'."
+        )
         return 1
 
     # Verify only the components this run will actually restore, so a corrupt
@@ -256,6 +328,14 @@ def main() -> int:
         return 0
 
     media_root = Path(settings.MEDIA_ROOT)
+    if restore_assets and _paths_overlap(backup_dir, media_root):
+        print(
+            f"[FAIL] The backup directory {backup_dir} and MEDIA_ROOT {media_root} "
+            "must be disjoint, otherwise a media restore would delete the very "
+            "backup it is restoring from."
+        )
+        return 1
+
     staging = None
     try:
         if restore_assets:
@@ -271,11 +351,14 @@ def main() -> int:
             elif backend == "sqlite3":
                 restore_sqlite3(db_config, dump_path)
             else:
-                raise SystemExit(f"Unsupported database backend in manifest: {backend}")
+                raise RuntimeError(f"Unsupported database backend in manifest: {backend}")
 
         if restore_assets:
             replace_media_tree(staging, media_root)
             staging = None
+    except Exception as exc:
+        print(f"[FAIL] Restore failed: {exc}")
+        return 1
     finally:
         if staging is not None:
             shutil.rmtree(staging, ignore_errors=True)

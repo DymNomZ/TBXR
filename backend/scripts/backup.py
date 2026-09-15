@@ -280,7 +280,11 @@ def prune_backups(backup_root: Path, keep: int) -> list[Path]:
         return []
     removed = []
     for stale in list_backup_dirs(backup_root)[:-keep]:
-        shutil.rmtree(stale)
+        try:
+            shutil.rmtree(stale)
+        except FileNotFoundError:
+            # A concurrent backup run already pruned this directory.
+            continue
         removed.append(stale)
     return removed
 
@@ -299,7 +303,13 @@ def verify_backup(backup_dir: Path, files: list[str] | None = None) -> dict:
     if not manifest_path.exists():
         raise FileNotFoundError(f"No manifest.json in {backup_dir}")
 
-    manifest = json.loads(manifest_path.read_text())
+    try:
+        manifest = json.loads(manifest_path.read_text())
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"Manifest is not valid JSON: {manifest_path} ({exc})")
+    if not isinstance(manifest, dict):
+        raise ValueError(f"Manifest is not a JSON object: {manifest_path}")
+
     files_meta = manifest.get("files")
     if not isinstance(files_meta, dict) or not files_meta:
         raise ValueError(f"No files listed in {manifest_path}")
@@ -323,6 +333,11 @@ def verify_backup(backup_dir: Path, files: list[str] | None = None) -> dict:
     results = {}
     ok = True
     for name in names:
+        meta = files_meta.get(name)
+        if not isinstance(meta, dict):
+            results[name] = {"ok": False, "error": "invalid metadata"}
+            ok = False
+            continue
         try:
             path = resolve_backup_file(backup_dir, name)
         except ValueError as exc:
@@ -333,8 +348,12 @@ def verify_backup(backup_dir: Path, files: list[str] | None = None) -> dict:
             results[name] = {"ok": False, "error": "missing"}
             ok = False
             continue
+        expected = meta.get("sha256")
+        if not isinstance(expected, str):
+            results[name] = {"ok": False, "error": "missing checksum"}
+            ok = False
+            continue
         actual = sha256_of(path)
-        expected = files_meta[name]["sha256"]
         results[name] = {"ok": actual == expected, "sha256": actual, "expected": expected}
         ok = ok and actual == expected
 
@@ -369,8 +388,6 @@ def main() -> int:
         return 1
 
     backup_root = get_backup_dir()
-    backup_root.mkdir(parents=True, exist_ok=True)
-    backup_root.chmod(0o700)
 
     try:
         result = create_backup()
