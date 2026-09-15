@@ -890,3 +890,25 @@ class AnalyticsSummaryTests(TestCase):
         self.assertEqual(payload["filters"]["date_from"], date_from)
         self.assertEqual(payload["filters"]["date_to"], date_to)
         self.assertEqual(payload["filters"]["severity"], severity)
+
+    def test_analytics_export_csv(self):
+        self.client.force_login(self.radiologist)
+        response = self.client.post("/api/analytics/export/", {"format": "csv", "filters": {"severity": "CRITICAL"}}, content_type="application/json")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response['Content-Type'], 'text/csv')
+        self.assertIn('attachment; filename="analytics_export.csv"', response['Content-Disposition'])
+        content = response.content.decode('utf-8')
+        self.assertIn("Category,Metric,Value", content)
+        self.assertIn("Reports,Total Reports,1", content)
+        self.assertIn("Reports,Severity: CRITICAL,1", content)
+
+    def test_analytics_export_pdf(self):
+        self.client.force_login(self.radiologist)
+        response = self.client.post("/api/analytics/export/", {"format": "pdf", "filters": {"severity": "MODERATE"}}, content_type="application/json")
+        if response.status_code != 200:
+            print("PDF generation error:", response.content)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response['Content-Type'], 'application/pdf')
+        self.assertIn('attachment; filename="analytics_export.pdf"', response['Content-Disposition'])
+        content = b''.join(response.streaming_content)
+        self.assertTrue(content.startswith(b'%PDF'))

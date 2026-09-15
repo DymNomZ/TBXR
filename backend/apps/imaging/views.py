@@ -1144,6 +1144,59 @@ def _apply_date_filter(queryset, date_from, date_to, date_field: str):
     return queryset
 
 
+def _get_analytics_data(date_from, date_to, severity):
+    # Base querysets
+    xray_qs = XrayRecord.objects.all()
+    report_qs = Report.objects.select_related("xray_record").all()
+
+    # Apply date filters (on X-ray upload_timestamp for cases, report created_at for reports)
+    xray_qs = _apply_date_filter(xray_qs, date_from, date_to, "upload_timestamp")
+    report_qs = _apply_date_filter(report_qs, date_from, date_to, "created_at")
+
+    # Apply severity filter to reports
+    if severity:
+        report_qs = report_qs.filter(severity=severity)
+
+    # Aggregate cases
+    total_cases = xray_qs.count()
+    status_counts = dict(
+        xray_qs.values_list("status").order_by().annotate(count=models.Count("status"))
+    )
+
+    # AI risk label breakdown (only for records with AI results)
+    ai_qs = AIResult.objects.filter(xray_record__in=xray_qs)
+    ai_risk_counts = dict(
+        ai_qs.values_list("risk_label").order_by().annotate(count=models.Count("risk_label"))
+    )
+
+    # Aggregate reports
+    total_reports = report_qs.count()
+    severity_counts = dict(
+        report_qs.values_list("severity").order_by().annotate(count=models.Count("severity"))
+    )
+    report_status_counts = dict(
+        report_qs.values_list("status").order_by().annotate(count=models.Count("status"))
+    )
+
+    return {
+        "filters": {
+            "date_from": date_from.isoformat() if date_from else None,
+            "date_to": date_to.isoformat() if date_to else None,
+            "severity": severity or None,
+        },
+        "cases": {
+            "total": total_cases,
+            "by_status": status_counts,
+            "by_ai_risk_label": ai_risk_counts,
+        },
+        "reports": {
+            "total": total_reports,
+            "by_severity": severity_counts,
+            "by_status": report_status_counts,
+        }
+    }
+
+
 @extend_schema(
     parameters=[
         OpenApiParameter(
@@ -1229,55 +1282,140 @@ def analytics_summary(request):
             status=status.HTTP_400_BAD_REQUEST,
         )
 
-    # Base querysets
-    xray_qs = XrayRecord.objects.all()
-    report_qs = Report.objects.select_related("xray_record").all()
+    data = _get_analytics_data(date_from, date_to, severity)
+    return Response(data)
 
-    # Apply date filters (on X-ray upload_timestamp for cases, report created_at for reports)
-    xray_qs = _apply_date_filter(xray_qs, date_from, date_to, "upload_timestamp")
-    report_qs = _apply_date_filter(report_qs, date_from, date_to, "created_at")
 
-    # Apply severity filter to reports
-    if severity:
-        report_qs = report_qs.filter(severity=severity)
+import csv
+from django.http import HttpResponse
 
-    # Aggregate cases
-    total_cases = xray_qs.count()
-    status_counts = dict(
-        xray_qs.values_list("status").order_by().annotate(count=models.Count("status"))
-    )
-
-    # AI risk label breakdown (only for records with AI results)
-    ai_qs = AIResult.objects.filter(xray_record__in=xray_qs)
-    ai_risk_counts = dict(
-        ai_qs.values_list("risk_label").order_by().annotate(count=models.Count("risk_label"))
-    )
-
-    # Aggregate reports
-    total_reports = report_qs.count()
-    severity_counts = dict(
-        report_qs.values_list("severity").order_by().annotate(count=models.Count("severity"))
-    )
-    report_status_counts = dict(
-        report_qs.values_list("status").order_by().annotate(count=models.Count("status"))
-    )
-
-    return Response(
-        {
-            "filters": {
-                "date_from": date_from.isoformat() if date_from else None,
-                "date_to": date_to.isoformat() if date_to else None,
-                "severity": severity or None,
+@extend_schema(
+    request={
+        "application/json": {
+            "type": "object",
+            "properties": {
+                "format": {"type": "string", "enum": ["csv", "pdf"]},
+                "filters": {
+                    "type": "object",
+                    "properties": {
+                        "date_from": {"type": "string", "format": "date"},
+                        "date_to": {"type": "string", "format": "date"},
+                        "severity": {"type": "string"}
+                    }
+                }
             },
-            "cases": {
-                "total": total_cases,
-                "by_status": status_counts,
-                "by_ai_risk_label": ai_risk_counts,
-            },
-            "reports": {
-                "total": total_reports,
-                "by_severity": severity_counts,
-                "by_status": report_status_counts,
-            },
+            "required": ["format"]
         }
-    )
+    },
+    responses={
+        200: OpenApiTypes.BINARY,
+    }
+)
+@api_view(["POST"])
+@role_required(UserRole.RADIOLOGIST, UserRole.PHYSICIAN)
+def analytics_export(request):
+    """
+    Export analytics data to CSV or PDF based on requested format and filters.
+    """
+    format_type = request.data.get("format")
+    filters = request.data.get("filters", {})
+
+    if format_type not in ["csv", "pdf"]:
+        return Response(
+            {"detail": "Invalid format. Must be 'csv' or 'pdf'."},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    date_from_raw = filters.get("date_from", "")
+    date_to_raw = filters.get("date_to", "")
+    severity = filters.get("severity", "")
+
+    # Ensure these are strings before calling strip()
+    if date_from_raw is None: date_from_raw = ""
+    if date_to_raw is None: date_to_raw = ""
+    if severity is None: severity = ""
+
+    date_from_raw = str(date_from_raw).strip()
+    date_to_raw = str(date_to_raw).strip()
+    severity = str(severity).strip().upper()
+
+    date_from, error = _parse_date_param(date_from_raw, "date_from") if date_from_raw else (None, None)
+    if error: return error
+
+    date_to, error = _parse_date_param(date_to_raw, "date_to") if date_to_raw else (None, None)
+    if error: return error
+
+    if date_from and date_to and date_from > date_to:
+        return Response(
+            {"detail": "date_from cannot be later than date_to."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    if severity and severity not in Report.SeverityChoices.values:
+        return Response(
+            {
+                "detail": (
+                    f"Invalid severity '{severity}'. Allowed values: "
+                    f"{', '.join(Report.SeverityChoices.values)}."
+                )
+            },
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    data = _get_analytics_data(date_from, date_to, severity)
+
+    if format_type == "csv":
+        response = HttpResponse(content_type='text/csv')
+        response['Content-Disposition'] = 'attachment; filename="analytics_export.csv"'
+        
+        writer = csv.writer(response)
+        writer.writerow(["Category", "Metric", "Value"])
+        
+        writer.writerow(["Cases", "Total Cases", data["cases"]["total"]])
+        for s, c in data["cases"]["by_status"].items():
+            writer.writerow(["Cases", f"Status: {s}", c])
+        for r, c in data["cases"]["by_ai_risk_label"].items():
+            writer.writerow(["Cases", f"AI Risk: {r}", c])
+            
+        writer.writerow(["Reports", "Total Reports", data["reports"]["total"]])
+        for s, c in data["reports"]["by_severity"].items():
+            writer.writerow(["Reports", f"Severity: {s}", c])
+        for s, c in data["reports"]["by_status"].items():
+            writer.writerow(["Reports", f"Status: {s}", c])
+            
+        return response
+
+    elif format_type == "pdf":
+        context = {
+            "data": data,
+            "generated_at": timezone.now().strftime("%Y-%m-%d %H:%M:%S")
+        }
+        html_content = render_to_string("reports/analytics_export.html", context)
+        
+        try:
+            with tempfile.NamedTemporaryFile(suffix=".html", delete=False, mode="w", encoding="utf-8") as temp_html:
+                temp_html.write(html_content)
+                temp_html_path = temp_html.name
+
+            script_path = settings.BASE_DIR / "pdf_scripts" / "generate.js"
+            result = subprocess.run(
+                ["node", str(script_path), temp_html_path],
+                capture_output=True,
+                check=True
+            )
+
+            pdf_bytes = result.stdout
+            response = FileResponse(BytesIO(pdf_bytes), content_type='application/pdf')
+            response['Content-Disposition'] = 'attachment; filename="analytics_export.pdf"'
+            return response
+
+        except subprocess.CalledProcessError as e:
+            return Response(
+                {"error": "Failed to generate PDF via Node script.", "details": e.stderr.decode()},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+        except Exception as e:
+            return Response(
+                {"error": str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )

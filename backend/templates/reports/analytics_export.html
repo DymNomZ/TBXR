@@ -1,0 +1,281 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>Analytics Export</title>
+		<style>
+			:root {
+				--ink: #1e2430;
+				--muted: #6b7280;
+				--border: #e5e7eb;
+				--accent: #1f7a6c;
+				--soft: #f7f8fa;
+			}
+
+			* {
+				box-sizing: border-box;
+			}
+
+			body {
+				margin: 0;
+				font-family: "Segoe UI", Tahoma, Arial, sans-serif;
+				color: var(--ink);
+				background: #ffffff;
+			}
+
+			.page {
+				max-width: 980px;
+				margin: 0 auto;
+				padding: 32px 40px 40px;
+			}
+
+			.header {
+				display: flex;
+				justify-content: space-between;
+				align-items: center;
+				border-bottom: 2px solid var(--border);
+				padding-bottom: 16px;
+				margin-bottom: 24px;
+			}
+
+			.brand {
+				display: flex;
+				flex-direction: column;
+				gap: 6px;
+			}
+
+			.brand h1 {
+				margin: 0;
+				font-size: 22px;
+				letter-spacing: 0.5px;
+			}
+
+			.brand span {
+				color: var(--muted);
+				font-size: 12px;
+				text-transform: uppercase;
+				letter-spacing: 1.5px;
+			}
+
+			.meta {
+				text-align: right;
+				font-size: 12px;
+				color: var(--muted);
+				line-height: 1.6;
+			}
+
+			.section {
+				border: 1px solid var(--border);
+				border-radius: 12px;
+				padding: 18px 20px;
+				margin-bottom: 18px;
+			}
+
+			.section h2 {
+				margin: 0 0 12px;
+				font-size: 15px;
+				text-transform: uppercase;
+				letter-spacing: 1px;
+				color: var(--muted);
+			}
+
+			.grid {
+				display: grid;
+				grid-template-columns: repeat(2, minmax(0, 1fr));
+				gap: 12px 20px;
+			}
+
+			.field {
+				display: flex;
+				flex-direction: column;
+				gap: 4px;
+			}
+
+			.field label {
+				font-size: 11px;
+				text-transform: uppercase;
+				letter-spacing: 1px;
+				color: var(--muted);
+			}
+
+			.field .value {
+				font-size: 14px;
+				font-weight: 600;
+			}
+
+			table {
+				width: 100%;
+				border-collapse: collapse;
+				margin-top: 10px;
+			}
+
+			th, td {
+				padding: 10px;
+				text-align: left;
+				border-bottom: 1px solid var(--border);
+			}
+
+			th {
+				font-size: 12px;
+				text-transform: uppercase;
+				color: var(--muted);
+				background: var(--soft);
+			}
+
+			td {
+				font-size: 14px;
+			}
+
+			.footer {
+				margin-top: 24px;
+				border-top: 1px solid var(--border);
+				padding-top: 14px;
+				display: flex;
+				justify-content: space-between;
+				font-size: 11px;
+				color: var(--muted);
+			}
+
+			@media print {
+				body {
+					background: #ffffff;
+				}
+				.page {
+					padding: 0;
+				}
+				.section {
+					break-inside: avoid;
+				}
+			}
+		</style>
+	</head>
+	<body>
+		<div class="page">
+			<div class="header">
+				<div class="brand">
+					<span>TB-XR</span>
+					<h1>Analytics Summary</h1>
+				</div>
+				<div class="meta">
+					<div>Date From: {{ data.filters.date_from|default:"All time" }}</div>
+					<div>Date To: {{ data.filters.date_to|default:"All time" }}</div>
+					<div>Severity Filter: {{ data.filters.severity|default:"None" }}</div>
+				</div>
+			</div>
+
+			<div class="section">
+				<h2>Case Metrics</h2>
+				<div class="grid">
+					<div class="field">
+						<label>Total Cases</label>
+						<div class="value">{{ data.cases.total }}</div>
+					</div>
+				</div>
+
+				<h3 style="font-size: 13px; color: var(--muted); margin-top: 20px;">By Status</h3>
+				<table>
+					<thead>
+						<tr>
+							<th>Status</th>
+							<th>Count</th>
+						</tr>
+					</thead>
+					<tbody>
+						{% for status, count in data.cases.by_status.items %}
+						<tr>
+							<td>{{ status }}</td>
+							<td>{{ count }}</td>
+						</tr>
+						{% empty %}
+						<tr>
+							<td colspan="2" class="muted">No data available.</td>
+						</tr>
+						{% endfor %}
+					</tbody>
+				</table>
+
+				<h3 style="font-size: 13px; color: var(--muted); margin-top: 20px;">By AI Risk Label</h3>
+				<table>
+					<thead>
+						<tr>
+							<th>Risk Label</th>
+							<th>Count</th>
+						</tr>
+					</thead>
+					<tbody>
+						{% for label, count in data.cases.by_ai_risk_label.items %}
+						<tr>
+							<td>{{ label }}</td>
+							<td>{{ count }}</td>
+						</tr>
+						{% empty %}
+						<tr>
+							<td colspan="2" class="muted">No data available.</td>
+						</tr>
+						{% endfor %}
+					</tbody>
+				</table>
+			</div>
+
+			<div class="section">
+				<h2>Report Metrics</h2>
+				<div class="grid">
+					<div class="field">
+						<label>Total Reports</label>
+						<div class="value">{{ data.reports.total }}</div>
+					</div>
+				</div>
+
+				<h3 style="font-size: 13px; color: var(--muted); margin-top: 20px;">By Severity</h3>
+				<table>
+					<thead>
+						<tr>
+							<th>Severity</th>
+							<th>Count</th>
+						</tr>
+					</thead>
+					<tbody>
+						{% for severity, count in data.reports.by_severity.items %}
+						<tr>
+							<td>{{ severity }}</td>
+							<td>{{ count }}</td>
+						</tr>
+						{% empty %}
+						<tr>
+							<td colspan="2" class="muted">No data available.</td>
+						</tr>
+						{% endfor %}
+					</tbody>
+				</table>
+
+				<h3 style="font-size: 13px; color: var(--muted); margin-top: 20px;">By Status</h3>
+				<table>
+					<thead>
+						<tr>
+							<th>Status</th>
+							<th>Count</th>
+						</tr>
+					</thead>
+					<tbody>
+						{% for status, count in data.reports.by_status.items %}
+						<tr>
+							<td>{{ status }}</td>
+							<td>{{ count }}</td>
+						</tr>
+						{% empty %}
+						<tr>
+							<td colspan="2" class="muted">No data available.</td>
+						</tr>
+						{% endfor %}
+					</tbody>
+				</table>
+			</div>
+
+			<div class="footer">
+				<div>TB-XR Analytics Export</div>
+				<div>Generated at {{ generated_at }}</div>
+			</div>
+		</div>
+	</body>
+</html>
