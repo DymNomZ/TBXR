@@ -22,8 +22,8 @@ def backup_operation_lock(backup_root: Path):
         raise RuntimeError("backup_operation_lock requires a POSIX environment supporting fcntl.")
 
     backup_root = Path(backup_root)
-backup_root.mkdir(parents=True, exist_ok=True, mode=0o700)
-backup_root.chmod(0o700)
+    backup_root.mkdir(parents=True, exist_ok=True, mode=0o700)
+    backup_root.chmod(0o700)
     lock_path = backup_root / LOCK_FILENAME
 
     is_new = not lock_path.exists()

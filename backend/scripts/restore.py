@@ -50,7 +50,7 @@ if not settings.configured:
 
 from scripts import backup_lock
 
-from .backup import (
+from scripts.backup import (
     database_backend,
     get_backup_dir,
     list_backup_dirs,
