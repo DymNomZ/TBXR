@@ -48,7 +48,7 @@ from django.conf import settings
 if not settings.configured:
     django.setup()
 
-from . import backup_lock
+from scripts import backup_lock
 
 from .backup import (
     database_backend,
