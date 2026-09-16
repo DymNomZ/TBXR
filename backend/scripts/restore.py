@@ -132,7 +132,7 @@ def restore_sqlite3(db_config: dict, dump_path: Path) -> None:
     # guess which file is the live database; the operator must resolve it first.
     stale = []
     for pattern in ("restore-tmp-", "restore-old-"):
-        stale.extend(live_path.parent.glob(f"{live_path.name}.{pattern}*"))
+        stale.extend(live_path.parent.glob(f"{live_path.name}*{pattern}*"))
     if stale:
         names = ", ".join(sorted(p.name for p in stale))
         raise RuntimeError(
