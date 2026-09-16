@@ -1,9 +1,10 @@
 """Tests for the backup and restore scripts.
 
 These tests exercise the SQLite path (the CI database backend) and the
-media-archive validation / atomic-swap logic. PostgreSQL-specific code paths
-are guarded by subprocess calls and are not covered here because CI has no
-PostgreSQL server.
+media-archive validation / atomic-swap logic. The PostgreSQL code paths are
+covered by mocking ``subprocess.run``, since CI has no PostgreSQL server, so
+command construction, environment handling, and error propagation are tested
+without a live database.
 """
 
 import io
@@ -11,6 +12,7 @@ import json
 import os
 import shutil
 import sqlite3
+import subprocess
 import sys
 import tarfile
 import tempfile
@@ -310,6 +312,63 @@ class BackupScriptTests(SimpleTestCase):
         # The concurrent-deletion race was tolerated: neither directory was
         # actually removed by the mocked rmtree.
         self.assertEqual(len(backup.list_backup_dirs(self.backup_root)), 2)
+
+    def test_dump_postgresql_builds_command_and_env(self):
+        destination = self.tmp / "database.sql"
+        db_config = {
+            "NAME": "tbxr",
+            "USER": "backup-user",
+            "PASSWORD": "secret",
+            "HOST": "db.internal",
+            "PORT": 5433,
+        }
+
+        captured = {}
+
+        def fake_run(command, **kwargs):
+            captured["command"] = command
+            captured["env"] = kwargs.get("env")
+            return mock.Mock(returncode=0, stdout="", stderr="")
+
+        with mock.patch.object(subprocess, "run", side_effect=fake_run):
+            backup.dump_postgresql(db_config, destination)
+
+        cmd = captured["command"]
+        self.assertEqual(cmd[0], "pg_dump")
+        self.assertIn("--no-password", cmd)
+        self.assertIn("--clean", cmd)
+        self.assertEqual(cmd[cmd.index("--host") + 1], "db.internal")
+        self.assertEqual(cmd[cmd.index("--port") + 1], "5433")
+        self.assertEqual(cmd[cmd.index("--username") + 1], "backup-user")
+        self.assertEqual(cmd[-3:], ["--file", str(destination), "tbxr"])
+        self.assertEqual(captured["env"].get("PGPASSWORD"), "secret")
+
+    def test_dump_postgresql_omits_pgpassword_when_unconfigured(self):
+        captured = {}
+
+        def fake_run(command, **kwargs):
+            captured["env"] = kwargs.get("env")
+            return mock.Mock(returncode=0, stdout="", stderr="")
+
+        with mock.patch.object(subprocess, "run", side_effect=fake_run):
+            backup.dump_postgresql({"NAME": "tbxr"}, self.tmp / "database.sql")
+
+        self.assertNotIn("PGPASSWORD", captured["env"])
+
+    def test_dump_postgresql_raises_on_nonzero_exit(self):
+        with mock.patch.object(
+            subprocess,
+            "run",
+            return_value=mock.Mock(returncode=1, stdout="", stderr="pg_dump: error"),
+        ):
+            with self.assertRaises(RuntimeError):
+                backup.dump_postgresql({"NAME": "tbxr"}, self.tmp / "database.sql")
+
+    def test_dump_postgresql_requires_name(self):
+        with mock.patch.object(subprocess, "run") as run:
+            with self.assertRaises(RuntimeError):
+                backup.dump_postgresql({"NAME": ""}, self.tmp / "database.sql")
+        run.assert_not_called()
 
 
 class RestoreScriptTests(SimpleTestCase):
@@ -672,6 +731,51 @@ class RestoreScriptTests(SimpleTestCase):
                 sys.argv = old_argv
 
             self.assertEqual(rc, 1)
+
+    def test_restore_postgresql_builds_command_and_env(self):
+        dump_path = self.tmp / "database.sql"
+        db_config = {
+            "NAME": "tbxr",
+            "USER": "restore-user",
+            "PASSWORD": "secret",
+            "HOST": "db.internal",
+            "PORT": 5433,
+        }
+        captured = {}
+
+        def fake_run(command, **kwargs):
+            captured["command"] = command
+            captured["env"] = kwargs.get("env")
+            return mock.Mock(returncode=0, stdout="", stderr="")
+
+        with mock.patch.object(subprocess, "run", side_effect=fake_run):
+            restore.restore_postgresql(db_config, dump_path)
+
+        cmd = captured["command"]
+        self.assertEqual(
+            cmd[:5],
+            ["psql", "--no-password", "--set", "ON_ERROR_STOP=1", "--single-transaction"],
+        )
+        self.assertEqual(cmd[cmd.index("--host") + 1], "db.internal")
+        self.assertEqual(cmd[cmd.index("--port") + 1], "5433")
+        self.assertEqual(cmd[cmd.index("--username") + 1], "restore-user")
+        self.assertEqual(cmd[-4:], ["--dbname", "tbxr", "--file", str(dump_path)])
+        self.assertEqual(captured["env"].get("PGPASSWORD"), "secret")
+
+    def test_restore_postgresql_raises_on_nonzero_exit(self):
+        with mock.patch.object(
+            subprocess,
+            "run",
+            return_value=mock.Mock(returncode=2, stdout="", stderr="psql: error"),
+        ):
+            with self.assertRaises(RuntimeError):
+                restore.restore_postgresql({"NAME": "tbxr"}, self.tmp / "database.sql")
+
+    def test_restore_postgresql_requires_name(self):
+        with mock.patch.object(subprocess, "run") as run:
+            with self.assertRaises(SystemExit):
+                restore.restore_postgresql({"NAME": ""}, self.tmp / "database.sql")
+        run.assert_not_called()
 
 
 def settings_db_config():

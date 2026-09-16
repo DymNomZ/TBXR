@@ -27,6 +27,7 @@ Options:
 import argparse
 import json
 import os
+import secrets
 import shutil
 import subprocess
 import sys
@@ -94,7 +95,7 @@ def restore_postgresql(db_config: dict, dump_path: Path) -> None:
     if not name:
         raise SystemExit("PostgreSQL restore requires DB_NAME to be set.")
 
-    command = ["psql", "--set", "ON_ERROR_STOP=1", "--single-transaction"]
+    command = ["psql", "--no-password", "--set", "ON_ERROR_STOP=1", "--single-transaction"]
     host = db_config.get("HOST") or ""
     if host:
         command += ["--host", host]
@@ -122,8 +123,23 @@ def restore_sqlite3(db_config: dict, dump_path: Path) -> None:
     live_path = Path(db_config["NAME"])
     live_path.parent.mkdir(parents=True, exist_ok=True)
 
-    temp_path = live_path.with_name(live_path.name + ".restore-tmp")
-    old_path = live_path.with_name(live_path.name + ".restore-old")
+    token = secrets.token_hex(8)
+    temp_path = live_path.with_name(f"{live_path.name}.restore-tmp-{token}")
+    old_path = live_path.with_name(f"{live_path.name}.restore-old-{token}")
+
+    # A crashed restore can leave a parked database or sidecars behind under
+    # fixed names. Refuse to run if any such leftover state exists so we never
+    # guess which file is the live database; the operator must resolve it first.
+    stale = []
+    for pattern in ("restore-tmp-", "restore-old-"):
+        stale.extend(live_path.parent.glob(f"{live_path.name}.{pattern}*"))
+    if stale:
+        names = ", ".join(sorted(p.name for p in stale))
+        raise RuntimeError(
+            f"Stale restore files present for {live_path.name}; resolve them "
+            f"before restoring: {names}"
+        )
+
     moved = []  # (original, parked) pairs, for rollback and cleanup
 
     try:
@@ -132,12 +148,15 @@ def restore_sqlite3(db_config: dict, dump_path: Path) -> None:
         # deleting them up front, so a failure mid-swap can put them back instead
         # of leaving the database missing or its journal state lost.
         if live_path.exists():
+            # Preserve the live database's permissions on the replacement so the
+            # restored file stays writable by whatever account owns it.
+            shutil.copymode(str(live_path), str(temp_path))
             os.replace(str(live_path), str(old_path))
             moved.append((live_path, old_path))
         for suffix in ("-wal", "-shm", "-journal"):
             sidecar = live_path.with_name(live_path.name + suffix)
             if sidecar.exists():
-                parked = sidecar.with_name(sidecar.name + ".restore-old")
+                parked = sidecar.with_name(f"{sidecar.name}.restore-old-{token}")
                 os.replace(str(sidecar), str(parked))
                 moved.append((sidecar, parked))
         os.replace(str(temp_path), str(live_path))
@@ -218,6 +237,9 @@ def replace_media_tree(staging: Path, media_root: Path) -> None:
     parent.mkdir(parents=True, exist_ok=True)
     old = Path(tempfile.mkdtemp(prefix=".tbxr-media-old-", dir=str(parent)))
     os.rmdir(old)
+    old_mode = None
+    if media_root.is_dir() and not media_root.is_symlink():
+        old_mode = media_root.stat().st_mode
     if media_root.exists():
         os.rename(media_root, old)
     try:
@@ -227,6 +249,11 @@ def replace_media_tree(staging: Path, media_root: Path) -> None:
             os.rename(old, media_root)
         raise
     else:
+        # mkdtemp creates the staging tree 0700; preserve the previous
+        # MEDIA_ROOT permissions so the restored tree stays accessible to
+        # whatever account the web server runs as.
+        if old_mode is not None:
+            os.chmod(media_root, old_mode)
         if old.is_dir() and not old.is_symlink():
             shutil.rmtree(old)
         else:

@@ -35,6 +35,7 @@ import sqlite3
 import subprocess
 import sys
 import tempfile
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -53,6 +54,7 @@ if not settings.configured:
 DEFAULT_BACKUP_DIR = BASE_DIR / "backups"
 DEFAULT_RETENTION_COUNT = 14
 CHUNK_SIZE = 1024 * 64
+STALE_STAGING_MAX_AGE_SECONDS = 24 * 60 * 60
 
 
 def get_backup_dir() -> Path:
@@ -98,7 +100,15 @@ def dump_postgresql(db_config: dict, destination: Path) -> None:
     if not name:
         raise RuntimeError("PostgreSQL backup requires DB_NAME to be set.")
 
-    command = ["pg_dump", "--clean", "--if-exists", "--no-owner", "--no-privileges", "--format=plain"]
+    command = [
+        "pg_dump",
+        "--clean",
+        "--if-exists",
+        "--no-owner",
+        "--no-privileges",
+        "--no-password",
+        "--format=plain",
+    ]
     host = db_config.get("HOST") or ""
     if host:
         command += ["--host", host]
@@ -194,12 +204,43 @@ def _reject_overlapping_backup_media(backup_root: Path, media_root: Path) -> Non
         )
 
 
+def cleanup_stale_staging(backup_root: Path) -> list[Path]:
+    """Remove hidden staging directories abandoned by a crashed backup run.
+
+    ``create_backup`` builds each backup in a hidden ``.<timestamp>.tmp-*``
+    directory before renaming it into place. A process killed mid-run can leave
+    such a directory behind; it is hidden, so ``list_backup_dirs`` never picks
+    it up, and it would otherwise linger forever. Only directories older than
+    ``STALE_STAGING_MAX_AGE_SECONDS`` are removed so a run still in progress is
+    never raced.
+    """
+    if not backup_root.exists():
+        return []
+    cutoff = time.time() - STALE_STAGING_MAX_AGE_SECONDS
+    removed = []
+    for path in backup_root.iterdir():
+        if not (path.name.startswith(".") and ".tmp-" in path.name and path.is_dir()):
+            continue
+        try:
+            mtime = path.stat().st_mtime
+        except OSError:
+            continue
+        if mtime < cutoff:
+            try:
+                shutil.rmtree(path)
+            except OSError:
+                continue
+            removed.append(path)
+    return removed
+
+
 def create_backup(timestamp: str | None = None) -> dict:
     timestamp = timestamp or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H%M%SZ")
     backup_root = get_backup_dir()
     _reject_overlapping_backup_media(backup_root, Path(settings.MEDIA_ROOT))
     backup_root.mkdir(parents=True, exist_ok=True)
     backup_root.chmod(0o700)
+    cleanup_stale_staging(backup_root)
 
     # Build the whole backup in a hidden temp directory, then rename it into
     # place atomically. A failed run therefore never leaves a half-written
@@ -407,8 +448,13 @@ def main() -> int:
 
     try:
         keep = get_retention_count()
+    except ValueError as exc:
+        print(f"[FAIL] Invalid BACKUP_RETENTION_COUNT: {exc}")
+        return 1
+
+    try:
         removed = prune_backups(backup_root, keep)
-    except (ValueError, OSError) as exc:
+    except OSError as exc:
         print(f"[WARN] Retention pruning skipped: {exc}")
         return 0
 

@@ -108,7 +108,10 @@ objective and available storage.
    python manage.py migrate
    ```
 
-The restore script refuses to run if the manifest checksums do not match.
+The restore script refuses to run if the manifest checksums do not match. For
+`--database-only` or `--media-only` runs, only the archive for the component
+being restored is checksum-verified, so a corrupt media archive does not block
+a database-only restore (and vice versa).
 
 The PostgreSQL restore runs inside a single transaction (`--single-transaction`),
 so a failed restore rolls back rather than leaving a half-restored database.
