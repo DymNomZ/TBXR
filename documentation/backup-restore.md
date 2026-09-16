@@ -157,6 +157,67 @@ unchanged. Re-run the media restore (or use `--media-only`) to retry.
   directories were cleaned automatically before the next apply; if not, remove
   them once the lock is free and re-run the restore.
 
+## Testing & validation
+
+### 1. Automated test suite
+
+Run the unit and mock-integration tests from the `backend/` directory:
+
+```bash
+cd backend
+python manage.py test scripts.test_backup_restore
+```
+
+This verifies SQLite/PostgreSQL dump construction, tar traversal guards, atomic file swaps, lock contention, and manifest tampering detection.
+
+### 2. Manual verification & restore drill
+To validate the entire pipeline on a live environment:
+
+Create and inspect a backup:
+```bash
+cd backend
+python scripts/backup.py
+LATEST=$(ls -td backups/*/ | head -1)
+python scripts/backup.py --verify "$LATEST"
+Confirm the output reports [PASS] and that directory permissions are 0700.
+```
+
+Verify dry-run safety:
+```bash
+python scripts/restore.py
+Confirm the dry run exits cleanly without mutating live database records or media/ files.
+```
+
+Execute a canary recovery drill:
+```bash
+# Stage a canary file and snapshot it
+mkdir -p media
+echo "canary-proof" > media/canary.txt
+python scripts/backup.py
+CANARY_BACKUP=$(ls -td backups/*/ | head -1)
+
+# Simulate corruption or accidental file addition
+rm media/canary.txt
+touch media/unwanted_file.txt
+
+# Restore the snapshot
+python scripts/restore.py "$CANARY_BACKUP" --apply
+
+# Verify atomic replacement
+test -f media/canary.txt && echo "Canary recovered!"
+test ! -f media/unwanted_file.txt && echo "Unwanted files purged!"
+```
+---
+
+### QA Checklist Status
+
+With your execution logs confirming all tests, the checklist is fully satisfied:
+
+* **[x] Run the backup script:** Executed against PostgreSQL database and media assets[cite: 3].
+* **[x] Confirm files are created in the expected location:** `database.sql`, `media.tar.gz`, and `manifest.json` placed under `backups/<timestamp>/` with `0700`/`0600` permissions[cite: 3, 5].
+* **[x] Perform a restore test or documented dry run:** Default dry-run executed; live `--apply` successfully proved clean atomic swap[cite: 2, 5].
+* **[x] Validate integrity and storage assumptions:** Tampered archive flagged with `MISMATCH`[cite: 3], retention policy pruned cleanly at 3 snapshots[cite: 3, 5].
+
 ## Assumptions
 
 - Backups are stored **locally** under `BACKUP_DIR` by default. Off-host
