@@ -14,16 +14,18 @@ import shutil
 import sqlite3
 import subprocess
 import sys
+import time
 import tarfile
 import tempfile
 import warnings
+import unittest
 from contextlib import contextmanager
 from pathlib import Path
 from unittest import mock
 
 from django.test import SimpleTestCase, override_settings
 
-from scripts import backup, restore
+from . import backup, backup_lock, restore
 
 
 def _make_sqlite_db(path, rows=("hello",)):
@@ -299,6 +301,73 @@ class BackupScriptTests(SimpleTestCase):
         self.assertEqual(rc, 1)
         self.assertFalse(overlapping_backup_root.exists())
 
+    def test_main_rejects_invalid_retention_before_backup_creation(self):
+        with self._settings():
+            with mock.patch.dict(os.environ, {"BACKUP_RETENTION_COUNT": "-1"}, clear=False):
+                with mock.patch.object(backup, "create_backup") as create_backup:
+                    with mock.patch.object(backup_lock, "backup_operation_lock") as backup_lock_mock:
+                        old_argv = sys.argv
+                        sys.argv = ["backup.py"]
+                        try:
+                            rc = backup.main()
+                        finally:
+                            sys.argv = old_argv
+
+        self.assertEqual(rc, 1)
+        create_backup.assert_not_called()
+        backup_lock_mock.assert_not_called()
+
+    def test_backup_and_restore_use_shared_lock(self):
+        recorded_roots = []
+
+        @contextmanager
+        def fake_lock(backup_root):
+            recorded_roots.append(backup_root)
+            yield backup_root
+
+        with self._settings():
+            with mock.patch.object(backup, "get_backup_dir", return_value=self.backup_root):
+                with mock.patch.object(restore, "get_backup_dir", return_value=self.backup_root):
+                    with mock.patch.object(backup_lock, "backup_operation_lock", side_effect=fake_lock):
+                        with mock.patch.dict(os.environ, {"BACKUP_RETENTION_COUNT": "0"}, clear=False):
+                            old_argv = sys.argv
+                            sys.argv = ["backup.py"]
+                            try:
+                                backup_rc = backup.main()
+                            finally:
+                                sys.argv = old_argv
+
+                        backup_dirs = backup.list_backup_dirs(self.backup_root)
+                        self.assertTrue(backup_dirs)
+                        backup_dir = backup_dirs[-1]
+
+                        with mock.patch.object(restore, "restore_sqlite3") as restore_sqlite3:
+                            old_argv = sys.argv
+                            sys.argv = ["restore.py", str(backup_dir), "--apply", "--database-only"]
+                            try:
+                                restore_rc = restore.main()
+                            finally:
+                                sys.argv = old_argv
+
+        self.assertEqual(backup_rc, 0)
+        self.assertEqual(restore_rc, 0)
+        self.assertEqual(recorded_roots, [self.backup_root, self.backup_root])
+        restore_sqlite3.assert_called_once()
+
+    def test_cleanup_stale_restore_staging_removes_old_dirs(self):
+        stale = self.media_root.parent / ".tbxr-restore-stale"
+        fresh = self.media_root.parent / ".tbxr-restore-fresh"
+        stale.mkdir()
+        fresh.mkdir()
+        old_time = max(0, int(time.time()) - restore.RESTORE_STAGING_MAX_AGE_SECONDS - 10)
+        os.utime(stale, (old_time, old_time))
+
+        removed = restore.cleanup_stale_restore_staging(self.media_root.parent)
+
+        self.assertEqual([p.name for p in removed], [".tbxr-restore-stale"])
+        self.assertFalse(stale.exists())
+        self.assertTrue(fresh.exists())
+
     def test_prune_backups_ignores_directory_already_removed(self):
         for name in ("2026-01-01T000000Z", "2026-01-02T000000Z"):
             d = self.backup_root / name
@@ -438,6 +507,34 @@ class RestoreScriptTests(SimpleTestCase):
         self.assertEqual(set(p.name for p in self.media_root.iterdir()), {"new.txt"})
         self.assertFalse(staging.exists())
 
+    def test_replace_media_tree_preserves_existing_ownership_and_mode(self):
+        os.chmod(self.media_root, 0o750)
+        (self.media_root / "old.txt").write_text("old")
+        staging = self.tmp / "staging"
+        staging.mkdir()
+        (staging / "nested").mkdir()
+        (staging / "nested" / "new.txt").write_text("new")
+
+        with mock.patch.object(restore.os, "chown", side_effect=lambda *args, **kwargs: None) as chown_mock:
+            restore.replace_media_tree(staging, self.media_root)
+
+        self.assertTrue(chown_mock.called)
+        self.assertEqual(self.media_root.stat().st_mode & 0o777, 0o750)
+        self.assertEqual(set(p.name for p in self.media_root.iterdir()), {"nested"})
+
+    def test_replace_media_tree_assigns_usable_mode_when_root_missing(self):
+        missing_root = self.tmp / "media-missing"
+        staging = self.tmp / "staging"
+        staging.mkdir()
+        (staging / "new.txt").write_text("new")
+
+        with mock.patch.object(restore.os, "chown", side_effect=lambda *args, **kwargs: None):
+            restore.replace_media_tree(staging, missing_root)
+
+        self.assertTrue(missing_root.exists())
+        self.assertEqual(missing_root.stat().st_mode & 0o777, 0o755)
+        self.assertEqual(set(p.name for p in missing_root.iterdir()), {"new.txt"})
+
     def test_replace_media_tree_rolls_back_on_failure(self):
         (self.media_root / "old.txt").write_text("old")
         staging = self.tmp / "staging"
@@ -468,6 +565,21 @@ class RestoreScriptTests(SimpleTestCase):
         with self._settings():
             restore.restore_sqlite3(settings_db_config(), dump_path)
 
+        self.assertEqual(_read_rows(self.db_path), ["restored"])
+
+    def test_restore_sqlite3_preserves_target_ownership(self):
+        dump_path = self.tmp / "dump.sqlite3"
+        _make_sqlite_db(dump_path, rows=("restored",))
+
+        with mock.patch.object(restore.os, "chown", side_effect=lambda *args, **kwargs: None) as chown_mock:
+            with self._settings():
+                restore.restore_sqlite3(settings_db_config(), dump_path)
+
+        self.assertTrue(chown_mock.called)
+        chown_path, chown_uid, chown_gid = chown_mock.call_args[0]
+        self.assertIn(".restore-tmp-", chown_path)
+        self.assertEqual(chown_uid, self.db_path.stat().st_uid)
+        self.assertEqual(chown_gid, self.db_path.stat().st_gid)
         self.assertEqual(_read_rows(self.db_path), ["restored"])
 
     def test_restore_main_database_only_applies(self):
@@ -776,6 +888,46 @@ class RestoreScriptTests(SimpleTestCase):
             with self.assertRaises(SystemExit):
                 restore.restore_postgresql({"NAME": ""}, self.tmp / "database.sql")
         run.assert_not_called()
+
+try:
+    import fcntl
+except ImportError:
+    fcntl = None
+
+
+class BackupLockTests(SimpleTestCase):
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.backup_root = Path(self._tmp.name)
+
+    @unittest.skipIf(fcntl is None, "fcntl requires a POSIX environment")
+    def test_lock_creates_file_and_locks(self):
+        lock_file = self.backup_root / backup_lock.LOCK_FILENAME
+        self.assertFalse(lock_file.exists())
+
+        with backup_lock.backup_operation_lock(self.backup_root):
+            self.assertTrue(lock_file.exists())
+
+    @unittest.skipIf(fcntl is None, "fcntl requires a POSIX environment")
+    def test_lock_is_exclusive(self):
+        lock_file = self.backup_root / backup_lock.LOCK_FILENAME
+
+        with backup_lock.backup_operation_lock(self.backup_root):
+            with open(lock_file, "a+") as second_handle:
+                with self.assertRaises((BlockingIOError, OSError)):
+                    fcntl.flock(second_handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+
+    @unittest.skipIf(fcntl is None, "fcntl requires a POSIX environment")
+    def test_lock_releases_after_exit(self):
+        lock_file = self.backup_root / backup_lock.LOCK_FILENAME
+
+        with backup_lock.backup_operation_lock(self.backup_root):
+            pass
+
+        with open(lock_file, "a+") as handle:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
 
 
 def settings_db_config():

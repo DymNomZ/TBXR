@@ -38,6 +38,11 @@ directory with mode `0700`, and the database dump, media archive, and manifest
 with mode `0600`. Keep `BACKUP_DIR` on storage you control and ensure it is
 not world-readable.
 
+Backup, pruning, and restore apply all take the same exclusive lock at
+`BACKUP_DIR/.tbxr-backup.lock`, so a backup will wait for an in-progress
+restore and a restore will wait for an in-progress backup. That keeps the
+database snapshot, retention pruning, and media swap from interleaving.
+
 `BACKUP_DIR` and `MEDIA_ROOT` must be disjoint: neither path may contain the
 other. If `BACKUP_DIR` were nested under `MEDIA_ROOT`, the media archive would
 include its own output, and a media restore that replaces `MEDIA_ROOT` would
@@ -70,6 +75,10 @@ daily backup at 02:00:
 
 A `systemd` timer is equally valid. Point `BACKUP_DIR` at a location that is
 itself backed up or replicated off-host (see Assumptions).
+
+Do not add any extra scheduler-side locking unless your deployment needs it for
+coordination across multiple hosts; the script already serializes its own
+mutating work.
 
 ## Retention
 
@@ -113,11 +122,22 @@ The restore script refuses to run if the manifest checksums do not match. For
 being restored is checksum-verified, so a corrupt media archive does not block
 a database-only restore (and vice versa).
 
+Before a restore apply begins, the script removes abandoned `.tbxr-restore-*`
+staging directories under the media parent if they are older than the stale
+cleanup threshold. That keeps interrupted runs from accumulating on disk while
+still avoiding active staging trees.
+
 The PostgreSQL restore runs inside a single transaction (`--single-transaction`),
 so a failed restore rolls back rather than leaving a half-restored database.
+SQLite restores preserve the existing database file ownership when the target
+already exists; when the target does not exist, the restored file inherits the
+parent directory ownership so the application account can still write to it.
+
 Media is staged to a temporary directory and validated before the database is
 touched, then written into the active `MEDIA_ROOT` (the path recorded in the
-manifest is informational only).
+manifest is informational only). The restored media tree keeps the previous
+ownership when an existing tree is replaced, and a missing `MEDIA_ROOT` falls
+back to a usable directory mode (`0755`) instead of the staging tree's `0700`.
 
 A full restore is not atomic across the database and media: the database is
 restored first, then media is swapped into place. If the media swap fails after
@@ -133,6 +153,9 @@ unchanged. Re-run the media restore (or use `--media-only`) to retry.
 - Periodically (e.g. monthly) run a restore drill into a scratch database to
   prove the backups are restorable, not just present.
 - Confirm `BACKUP_DIR` is on storage that is replicated or copied off-host.
+- If a restore was interrupted, check whether stale `.tbxr-restore-*` staging
+  directories were cleaned automatically before the next apply; if not, remove
+  them once the lock is free and re-run the restore.
 
 ## Assumptions
 

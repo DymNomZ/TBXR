@@ -51,6 +51,8 @@ from django.conf import settings
 if not settings.configured:
     django.setup()
 
+from . import backup_lock
+
 DEFAULT_BACKUP_DIR = BASE_DIR / "backups"
 DEFAULT_RETENTION_COUNT = 14
 CHUNK_SIZE = 1024 * 64
@@ -433,39 +435,44 @@ def main() -> int:
             print(f"- {name}: {status}")
         return 1
 
-    backup_root = get_backup_dir()
-
-    try:
-        result = create_backup()
-    except Exception as exc:
-        print(f"[FAIL] Backup failed: {exc}")
-        return 1
-    backup_dir = result["backup_dir"]
-    print(f"Created backup: {backup_dir}")
-    print(f"- Database ({settings.DATABASES['default']['ENGINE']})")
-    for path in result["files"]:
-        print(f"  - {path}")
-
     try:
         keep = get_retention_count()
     except ValueError as exc:
         print(f"[FAIL] Invalid BACKUP_RETENTION_COUNT: {exc}")
         return 1
 
+    backup_root = get_backup_dir()
     try:
-        removed = prune_backups(backup_root, keep)
-    except OSError as exc:
-        print(f"[WARN] Retention pruning skipped: {exc}")
-        return 0
+        _reject_overlapping_backup_media(backup_root, Path(settings.MEDIA_ROOT))
+    except RuntimeError as exc:
+        print(f"[FAIL] Backup failed: {exc}")
+        return 1
+    with backup_lock.backup_operation_lock(backup_root):
+        try:
+            result = create_backup()
+        except Exception as exc:
+            print(f"[FAIL] Backup failed: {exc}")
+            return 1
+        backup_dir = result["backup_dir"]
+        print(f"Created backup: {backup_dir}")
+        print(f"- Database ({settings.DATABASES['default']['ENGINE']})")
+        for path in result["files"]:
+            print(f"  - {path}")
 
-    if keep == 0:
-        print("Retention check: BACKUP_RETENTION_COUNT=0, keeping all backups.")
-    elif removed:
-        print(f"Pruned {len(removed)} old backup(s) (retention={keep}):")
-        for stale in removed:
-            print(f"- {stale.name}")
-    else:
-        print(f"Retention check: keeping up to {keep} backups; nothing to prune.")
+        try:
+            removed = prune_backups(backup_root, keep)
+        except OSError as exc:
+            print(f"[WARN] Retention pruning skipped: {exc}")
+            return 0
+
+        if keep == 0:
+            print("Retention check: BACKUP_RETENTION_COUNT=0, keeping all backups.")
+        elif removed:
+            print(f"Pruned {len(removed)} old backup(s) (retention={keep}):")
+            for stale in removed:
+                print(f"- {stale.name}")
+        else:
+            print(f"Retention check: keeping up to {keep} backups; nothing to prune.")
 
     return 0
 

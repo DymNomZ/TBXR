@@ -33,6 +33,7 @@ import subprocess
 import sys
 import tarfile
 import tempfile
+import time
 from pathlib import Path, PurePosixPath
 
 BASE_DIR = Path(__file__).resolve().parents[1]
@@ -47,13 +48,17 @@ from django.conf import settings
 if not settings.configured:
     django.setup()
 
-from scripts.backup import (
+from . import backup_lock
+
+from .backup import (
     database_backend,
     get_backup_dir,
     list_backup_dirs,
     resolve_backup_file,
     verify_backup,
 )
+
+RESTORE_STAGING_MAX_AGE_SECONDS = 24 * 60 * 60
 
 
 def resolve_backup_dir(explicit: str | None) -> Path:
@@ -141,6 +146,10 @@ def restore_sqlite3(db_config: dict, dump_path: Path) -> None:
         )
 
     moved = []  # (original, parked) pairs, for rollback and cleanup
+    if live_path.exists():
+        owner_stat = live_path.stat()
+    else:
+        owner_stat = live_path.parent.stat()
 
     try:
         shutil.copy2(str(dump_path), str(temp_path))
@@ -151,14 +160,15 @@ def restore_sqlite3(db_config: dict, dump_path: Path) -> None:
             # Preserve the live database's permissions on the replacement so the
             # restored file stays writable by whatever account owns it.
             shutil.copymode(str(live_path), str(temp_path))
-            os.replace(str(live_path), str(old_path))
             moved.append((live_path, old_path))
+            os.replace(str(live_path), str(old_path))
         for suffix in ("-wal", "-shm", "-journal"):
             sidecar = live_path.with_name(live_path.name + suffix)
             if sidecar.exists():
                 parked = sidecar.with_name(f"{sidecar.name}.restore-old-{token}")
                 os.replace(str(sidecar), str(parked))
                 moved.append((sidecar, parked))
+        os.chown(str(temp_path), owner_stat.st_uid, owner_stat.st_gid)
         os.replace(str(temp_path), str(live_path))
     except Exception:
         temp_path.unlink(missing_ok=True)
@@ -224,6 +234,29 @@ def stage_media(archive_path: Path, staging_parent: Path) -> Path:
     return staging
 
 
+def cleanup_stale_restore_staging(staging_parent: Path) -> list[Path]:
+    if not staging_parent.exists():
+        return []
+
+    cutoff = time.time() - RESTORE_STAGING_MAX_AGE_SECONDS
+    removed = []
+    for path in staging_parent.iterdir():
+        if not (path.name.startswith(".tbxr-restore-") and path.is_dir()):
+            continue
+        try:
+            mtime = path.stat().st_mtime
+        except OSError:
+            continue
+        if mtime >= cutoff:
+            continue
+        try:
+            shutil.rmtree(path)
+        except OSError:
+            continue
+        removed.append(path)
+    return removed
+
+
 def replace_media_tree(staging: Path, media_root: Path) -> None:
     """Swap the staged media into place, replacing the live tree atomically.
 
@@ -238,8 +271,10 @@ def replace_media_tree(staging: Path, media_root: Path) -> None:
     old = Path(tempfile.mkdtemp(prefix=".tbxr-media-old-", dir=str(parent)))
     os.rmdir(old)
     old_mode = None
+    owner_stat = None
     if media_root.is_dir() and not media_root.is_symlink():
-        old_mode = media_root.stat().st_mode
+        owner_stat = media_root.stat()
+        old_mode = owner_stat.st_mode
     if media_root.exists():
         os.rename(media_root, old)
     try:
@@ -252,6 +287,17 @@ def replace_media_tree(staging: Path, media_root: Path) -> None:
         # mkdtemp creates the staging tree 0700; preserve the previous
         # MEDIA_ROOT permissions so the restored tree stays accessible to
         # whatever account the web server runs as.
+        if owner_stat is not None:
+            for root, dirs, files in os.walk(media_root):
+                os.chown(root, owner_stat.st_uid, owner_stat.st_gid)
+                for name in dirs:
+                    os.chown(os.path.join(root, name), owner_stat.st_uid, owner_stat.st_gid)
+                for name in files:
+                    os.chown(os.path.join(root, name), owner_stat.st_uid, owner_stat.st_gid)
+        else:
+            parent_stat = parent.stat()
+            os.chown(media_root, parent_stat.st_uid, parent_stat.st_gid)
+            os.chmod(media_root, 0o755)
         if old_mode is not None:
             os.chmod(media_root, old_mode)
         if old.is_dir() and not old.is_symlink():
@@ -363,32 +409,36 @@ def main() -> int:
         )
         return 1
 
+    backup_root = get_backup_dir()
     staging = None
-    try:
+    with backup_lock.backup_operation_lock(backup_root):
         if restore_assets:
-            # Validate and stage media before touching the database so a bad
-            # archive cannot leave the live database restored over a failed
-            # media restore.
-            staging = stage_media(media_path, media_root.parent)
+            cleanup_stale_restore_staging(media_root.parent)
+        try:
+            if restore_assets:
+                # Validate and stage media before touching the database so a bad
+                # archive cannot leave the live database restored over a failed
+                # media restore.
+                staging = stage_media(media_path, media_root.parent)
 
-        if restore_db:
-            db_config = settings.DATABASES["default"]
-            if backend == "postgresql":
-                restore_postgresql(db_config, dump_path)
-            elif backend == "sqlite3":
-                restore_sqlite3(db_config, dump_path)
-            else:
-                raise RuntimeError(f"Unsupported database backend in manifest: {backend}")
+            if restore_db:
+                db_config = settings.DATABASES["default"]
+                if backend == "postgresql":
+                    restore_postgresql(db_config, dump_path)
+                elif backend == "sqlite3":
+                    restore_sqlite3(db_config, dump_path)
+                else:
+                    raise RuntimeError(f"Unsupported database backend in manifest: {backend}")
 
-        if restore_assets:
-            replace_media_tree(staging, media_root)
-            staging = None
-    except Exception as exc:
-        print(f"[FAIL] Restore failed: {exc}")
-        return 1
-    finally:
-        if staging is not None:
-            shutil.rmtree(staging, ignore_errors=True)
+            if restore_assets:
+                replace_media_tree(staging, media_root)
+                staging = None
+        except Exception as exc:
+            print(f"[FAIL] Restore failed: {exc}")
+            return 1
+        finally:
+            if staging is not None:
+                shutil.rmtree(staging, ignore_errors=True)
 
     print("Restore complete.")
     return 0

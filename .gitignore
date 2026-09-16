@@ -178,6 +178,7 @@ staticfiles/
 
 # Backups (database + media archives)
 backups/
+.tbxr-backup.lock
 
 # Temporary files
 *.tmp
