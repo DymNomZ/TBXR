@@ -51,7 +51,7 @@ from django.conf import settings
 if not settings.configured:
     django.setup()
 
-from . import backup_lock
+from scripts import backup_lock
 
 DEFAULT_BACKUP_DIR = BASE_DIR / "backups"
 DEFAULT_RETENTION_COUNT = 14
