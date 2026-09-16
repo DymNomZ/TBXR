@@ -27,7 +27,6 @@ Configuration (environment variables):
 
 import argparse
 import errno
-import fcntl
 import hashlib
 import json
 import os
@@ -56,28 +55,10 @@ DEFAULT_BACKUP_DIR = BASE_DIR / "backups"
 DEFAULT_RETENTION_COUNT = 14
 CHUNK_SIZE = 1024 * 64
 STALE_STAGING_MAX_AGE_SECONDS = 24 * 60 * 60
-LOCK_FILE_NAME = ".backup-restore.lock"
 
 
 def get_backup_dir() -> Path:
     return Path(os.environ.get("BACKUP_DIR", str(DEFAULT_BACKUP_DIR)))
-
-
-def acquire_lock(backup_root: Path):
-    """
-    Acquire an exclusive lock to serialize backup, prune, and restore operations.
-    Returns a file handle that must be kept open until the operation completes.
-    """
-    lock_path = backup_root / LOCK_FILE_NAME
-    backup_root.mkdir(parents=True, exist_ok=True)
-    lock_file = open(lock_path, "w")
-    try:
-        fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-    except BlockingIOError:
-        lock_file.close()
-        print("[ERROR] Another backup or restore operation is in progress.", file=sys.stderr)
-        sys.exit(1)
-    return lock_file
 
 
 def get_retention_count() -> int:
@@ -254,26 +235,12 @@ def cleanup_stale_staging(backup_root: Path) -> list[Path]:
 
 
 def create_backup(timestamp: str | None = None) -> dict:
-    # Validate retention early to avoid creating backups if config is broken
-    try:
-        retention = get_retention_count()
-        if retention < 0:
-            raise ValueError(f"BACKUP_RETENTION_COUNT must be >= 0, got {retention}")
-    except (ValueError, TypeError) as e:
-        print(f"[ERROR] Invalid BACKUP_RETENTION_COUNT: {e}", file=sys.stderr)
-        sys.exit(1)
-
     timestamp = timestamp or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H%M%SZ")
     backup_root = get_backup_dir()
     _reject_overlapping_backup_media(backup_root, Path(settings.MEDIA_ROOT))
-
-    # Acquire lock to serialize backup/restore operations
-    lock_file = acquire_lock(backup_root)
-
-    try:
-        backup_root.mkdir(parents=True, exist_ok=True)
-        backup_root.chmod(0o700)
-        cleanup_stale_staging(backup_root)
+    backup_root.mkdir(parents=True, exist_ok=True)
+    backup_root.chmod(0o700)
+    cleanup_stale_staging(backup_root)
 
     # Build the whole backup in a hidden temp directory, then rename it into
     # place atomically. A failed run therefore never leaves a half-written
@@ -326,8 +293,6 @@ def create_backup(timestamp: str | None = None) -> dict:
         if staging is not None:
             shutil.rmtree(staging, ignore_errors=True)
         raise
-    finally:
-        lock_file.close()
 
     return {
         "backup_dir": final_dir,
