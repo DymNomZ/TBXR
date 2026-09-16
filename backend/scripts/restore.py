@@ -25,6 +25,7 @@ Options:
 """
 
 import argparse
+import fcntl
 import json
 import os
 import secrets
@@ -33,6 +34,7 @@ import subprocess
 import sys
 import tarfile
 import tempfile
+import time
 from pathlib import Path, PurePosixPath
 
 BASE_DIR = Path(__file__).resolve().parents[1]
@@ -48,12 +50,37 @@ if not settings.configured:
     django.setup()
 
 from scripts.backup import (
+    acquire_lock,
     database_backend,
     get_backup_dir,
     list_backup_dirs,
     resolve_backup_file,
     verify_backup,
 )
+
+STALE_STAGING_MAX_AGE_SECONDS = 24 * 60 * 60
+
+
+def cleanup_stale_restore_staging(backup_root: Path) -> list[Path]:
+    """Remove stale .tbxr-restore-* directories left by terminated restores."""
+    if not backup_root.exists():
+        return []
+    cutoff = time.time() - STALE_STAGING_MAX_AGE_SECONDS
+    removed = []
+    for path in backup_root.iterdir():
+        if not (path.name.startswith(".tbxr-restore-") and path.is_dir()):
+            continue
+        try:
+            mtime = path.stat().st_mtime
+        except OSError:
+            continue
+        if mtime < cutoff:
+            try:
+                shutil.rmtree(path)
+            except OSError:
+                continue
+            removed.append(path)
+    return removed
 
 
 def resolve_backup_dir(explicit: str | None) -> Path:
@@ -148,9 +175,11 @@ def restore_sqlite3(db_config: dict, dump_path: Path) -> None:
         # deleting them up front, so a failure mid-swap can put them back instead
         # of leaving the database missing or its journal state lost.
         if live_path.exists():
-            # Preserve the live database's permissions on the replacement so the
-            # restored file stays writable by whatever account owns it.
+            # Preserve the live database's permissions and ownership on the replacement
+            # so the restored file stays writable by whatever account owns it.
+            live_stat = live_path.stat()
             shutil.copymode(str(live_path), str(temp_path))
+            os.chown(str(temp_path), live_stat.st_uid, live_stat.st_gid)
             os.replace(str(live_path), str(old_path))
             moved.append((live_path, old_path))
         for suffix in ("-wal", "-shm", "-journal"):
@@ -238,8 +267,13 @@ def replace_media_tree(staging: Path, media_root: Path) -> None:
     old = Path(tempfile.mkdtemp(prefix=".tbxr-media-old-", dir=str(parent)))
     os.rmdir(old)
     old_mode = None
+    old_uid = None
+    old_gid = None
     if media_root.is_dir() and not media_root.is_symlink():
-        old_mode = media_root.stat().st_mode
+        old_stat = media_root.stat()
+        old_mode = old_stat.st_mode
+        old_uid = old_stat.st_uid
+        old_gid = old_stat.st_gid
     if media_root.exists():
         os.rename(media_root, old)
     try:
@@ -250,10 +284,12 @@ def replace_media_tree(staging: Path, media_root: Path) -> None:
         raise
     else:
         # mkdtemp creates the staging tree 0700; preserve the previous
-        # MEDIA_ROOT permissions so the restored tree stays accessible to
-        # whatever account the web server runs as.
+        # MEDIA_ROOT permissions and ownership so the restored tree stays
+        # accessible to whatever account the web server runs as.
         if old_mode is not None:
             os.chmod(media_root, old_mode)
+        if old_uid is not None and old_gid is not None:
+            os.chown(media_root, old_uid, old_gid)
         if old.is_dir() and not old.is_symlink():
             shutil.rmtree(old)
         else:
@@ -354,8 +390,14 @@ def main() -> int:
         print("Dry-run complete. Re-run with --apply to perform the restore.")
         return 0
 
+    backup_root = get_backup_dir()
+    lock_file = acquire_lock(backup_root)
+
+    cleanup_stale_restore_staging(backup_root)
+
     media_root = Path(settings.MEDIA_ROOT)
     if restore_assets and _paths_overlap(backup_dir, media_root):
+        lock_file.close()
         print(
             f"[FAIL] The backup directory {backup_dir} and MEDIA_ROOT {media_root} "
             "must be disjoint, otherwise a media restore would delete the very "
@@ -389,6 +431,7 @@ def main() -> int:
     finally:
         if staging is not None:
             shutil.rmtree(staging, ignore_errors=True)
+        lock_file.close()
 
     print("Restore complete.")
     return 0
