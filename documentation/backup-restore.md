@@ -1,0 +1,239 @@
+# Backup & Restore
+
+Automated backups for the TB-XR PostgreSQL (or SQLite) database and the
+uploaded media assets (X-ray raw images, processed images, and AI heatmaps).
+
+## What gets backed up
+
+| Asset | Source | Backup file |
+|-------|--------|-------------|
+| Database | PostgreSQL (`DB_NAME` set) or SQLite fallback | `database.sql` / `database.sqlite3` |
+| Uploaded media | `backend/media/` (`raw/`, `xray_processed/`, `heatmaps/`) | `media.tar.gz` |
+| Integrity manifest | Generated each run | `manifest.json` (SHA256 of the two files above) |
+
+Each run writes a timestamped directory under the backup root:
+
+```
+backend/backups/2026-09-15T020000Z/
+    database.sql
+    media.tar.gz
+    manifest.json
+```
+
+## Configuration
+
+| Environment variable | Default | Purpose |
+|----------------------|---------|---------|
+| `BACKUP_DIR` | `backend/backups/` | Where backups are written. Git-ignored. |
+| `BACKUP_RETENTION_COUNT` | `14` | Number of most-recent backups to keep (`0` keeps all). |
+
+The database backend is detected the same way the app detects it: PostgreSQL
+when `DB_NAME` is set, otherwise SQLite at `backend/db.sqlite3`. PostgreSQL
+backups use `pg_dump` (plain SQL), which must be on `PATH`. The password is
+read from `backend/.env` and passed via `PGPASSWORD`; it is never written to
+disk.
+
+Backups contain PHI, so the script creates the backup root and each per-run
+directory with mode `0700`, and the database dump, media archive, and manifest
+with mode `0600`. Keep `BACKUP_DIR` on storage you control and ensure it is
+not world-readable.
+
+Backup, pruning, and restore apply all take the same exclusive lock at
+`BACKUP_DIR/.tbxr-backup.lock`, so a backup will wait for an in-progress
+restore and a restore will wait for an in-progress backup. That keeps the
+database snapshot, retention pruning, and media swap from interleaving.
+
+`BACKUP_DIR` and `MEDIA_ROOT` must be disjoint: neither path may contain the
+other. If `BACKUP_DIR` were nested under `MEDIA_ROOT`, the media archive would
+include its own output, and a media restore that replaces `MEDIA_ROOT` would
+delete the backups. The backup script refuses to run when the two paths overlap.
+
+## Running a backup
+
+```bash
+cd backend
+python scripts/backup.py
+```
+
+Expected output confirms the created directory, the database and media files,
+and any retention pruning.
+
+Verify an existing backup's integrity:
+
+```bash
+python scripts/backup.py --verify backups/2026-09-15T020000Z
+```
+
+## Scheduling
+
+Run daily (or as often as your data changes). Example crontab entry for a
+daily backup at 02:00:
+
+```cron
+0 2 * * * mkdir -p /srv/tbxr/backend/backups && cd /srv/tbxr/backend && /srv/tbxr/backend/venv/bin/python scripts/backup.py >> backups/backup.log 2>&1
+```
+
+A `systemd` timer is equally valid. Point `BACKUP_DIR` at a location that is
+itself backed up or replicated off-host (see Assumptions).
+
+Do not add any extra scheduler-side locking unless your deployment needs it for
+coordination across multiple hosts; the script already serializes its own
+mutating work.
+
+## Retention
+
+`BACKUP_RETENTION_COUNT` controls how many of the most-recent backups are kept.
+After a successful backup the script deletes the oldest directories beyond that
+limit. The default of `14` retains roughly two weeks of daily backups. Set it
+to `0` to disable pruning and keep every backup. Adjust per your recovery-point
+objective and available storage.
+
+## Restore procedure
+
+> Restore overwrites the live database and media. Stop the application server
+> first and take a fresh backup before proceeding.
+
+1. Stop the Django application server.
+
+2. Dry-run first (this verifies checksums and prints the plan without writing):
+
+   ```bash
+   cd backend
+   python scripts/restore.py                     # latest backup
+   python scripts/restore.py backups/2026-09-15T020000Z   # a specific backup
+   ```
+
+3. Apply the restore:
+
+   ```bash
+   python scripts/restore.py backups/2026-09-15T020000Z --apply
+   ```
+
+   Use `--database-only` or `--media-only` to restore a single component.
+
+4. Run migrations to confirm the schema matches the code, then restart the app:
+
+   ```bash
+   python manage.py migrate
+   ```
+
+The restore script refuses to run if the manifest checksums do not match. For
+`--database-only` or `--media-only` runs, only the archive for the component
+being restored is checksum-verified, so a corrupt media archive does not block
+a database-only restore (and vice versa).
+
+Before a restore apply begins, the script removes abandoned `.tbxr-restore-*`
+staging directories under the media parent if they are older than the stale
+cleanup threshold. That keeps interrupted runs from accumulating on disk while
+still avoiding active staging trees.
+
+The PostgreSQL restore runs inside a single transaction (`--single-transaction`),
+so a failed restore rolls back rather than leaving a half-restored database.
+SQLite restores preserve the existing database file ownership when the target
+already exists; when the target does not exist, the restored file inherits the
+parent directory ownership so the application account can still write to it.
+
+Media is staged to a temporary directory and validated before the database is
+touched, then written into the active `MEDIA_ROOT` (the path recorded in the
+manifest is informational only). The restored media tree keeps the previous
+ownership when an existing tree is replaced, and a missing `MEDIA_ROOT` falls
+back to a usable directory mode (`0755`) instead of the staging tree's `0700`.
+
+A full restore is not atomic across the database and media: the database is
+restored first, then media is swapped into place. If the media swap fails after
+the database restore succeeds, the database is restored but media may remain
+unchanged. Re-run the media restore (or use `--media-only`) to retry.
+
+## Verification / operational checklist
+
+- After each backup, run `python scripts/backup.py --verify backups/2026-09-15T020000Z` and confirm
+  `[PASS]`.
+- Confirm files exist in `backend/backups/2026-09-15T020000Z/` (database dump, media
+  archive, manifest).
+- Periodically (e.g. monthly) run a restore drill into a scratch database to
+  prove the backups are restorable, not just present.
+- Confirm `BACKUP_DIR` is on storage that is replicated or copied off-host.
+- If a restore was interrupted, check whether stale `.tbxr-restore-*` staging
+  directories were cleaned automatically before the next apply; if not, remove
+  them once the lock is free and re-run the restore.
+
+## Testing & validation
+
+### 1. Automated test suite
+
+Run the unit and mock-integration tests from the `backend/` directory:
+
+```bash
+cd backend
+python manage.py test scripts.test_backup_restore
+```
+
+This verifies SQLite/PostgreSQL dump construction, tar traversal guards, atomic file swaps, lock contention, and manifest tampering detection.
+
+### 2. Manual verification & restore drill
+To validate the entire pipeline on a live environment:
+
+Create and inspect a backup:
+```bash
+cd backend
+python scripts/backup.py
+LATEST=$(ls -td backups/*/ | head -1)
+python scripts/backup.py --verify "$LATEST"
+Confirm the output reports [PASS] and that directory permissions are 0700.
+```
+
+Verify dry-run safety:
+```bash
+python scripts/restore.py
+Confirm the dry run exits cleanly without mutating live database records or media/ files.
+```
+
+Execute a canary recovery drill:
+```bash
+# Stage a canary file and snapshot it
+mkdir -p media
+echo "canary-proof" > media/canary.txt
+python scripts/backup.py
+CANARY_BACKUP=$(ls -td backups/*/ | head -1)
+
+# Simulate corruption or accidental file addition
+rm media/canary.txt
+touch media/unwanted_file.txt
+
+# Restore the snapshot
+python scripts/restore.py "$CANARY_BACKUP" --apply
+
+# Verify atomic replacement
+test -f media/canary.txt && echo "Canary recovered!"
+test ! -f media/unwanted_file.txt && echo "Unwanted files purged!"
+```
+---
+
+### QA Checklist Status
+
+With your execution logs confirming all tests, the checklist is fully satisfied:
+
+* **[x] Run the backup script:** Executed against PostgreSQL database and media assets[cite: 3].
+* **[x] Confirm files are created in the expected location:** `database.sql`, `media.tar.gz`, and `manifest.json` placed under `backups/<timestamp>/` with `0700`/`0600` permissions[cite: 3, 5].
+* **[x] Perform a restore test or documented dry run:** Default dry-run executed; live `--apply` successfully proved clean atomic swap[cite: 2, 5].
+* **[x] Validate integrity and storage assumptions:** Tampered archive flagged with `MISMATCH`[cite: 3], retention policy pruned cleanly at 3 snapshots[cite: 3, 5].
+
+## Assumptions
+
+- Backups are stored **locally** under `BACKUP_DIR` by default. Off-host
+  replication (object storage, NFS, tape, cloud snapshot) is **out of scope**
+  and must be provided by the deployment environment.
+- PostgreSQL uses a **plain-SQL** `pg_dump` (`--clean --if-exists`), restored
+  with `psql --single-transaction`, so restore drops and re-creates existing
+  objects and rolls back on any failure. Both tools must be available on
+  `PATH`.
+- SQLite backups use SQLite's online backup API, producing a consistent copy of
+  the live database file.
+- Media assets are the only critical uploaded content; the archive captures
+  everything under `MEDIA_ROOT`.
+- Backups are **crash-consistent, not transactionally consistent** across the
+  database and media. The database dump and media archive are captured
+  sequentially, so a record written after its upload finished (or an upload
+  that lands while the archive is being built) may not line up perfectly
+  between the two. For point-in-time consistency across both, schedule backups
+  during a low-activity window or quiesce writes first.

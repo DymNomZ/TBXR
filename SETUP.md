@@ -1,7 +1,7 @@
 ## Setup
 
 ### Prerequisites
-- Python 3.11+
+- Python 3.11.4+
 - Node.js 20+ and npm
 - PostgreSQL 15+
 - Git
@@ -262,6 +262,19 @@ npm run dev
 ```
 
 **Note**: If you want to check the database structure with GUI you can download DBeaver and connect the PostgreSQL there. Use the .env variables you have set.
+
+### Backup and Restore
+
+Automated database + media backups and the restore procedure are documented in
+[`documentation/backup-restore.md`](documentation/backup-restore.md).
+
+```bash
+cd backend
+python scripts/backup.py                         # create a backup
+python scripts/backup.py --verify backups/2026-09-15T020000Z   # verify integrity
+python scripts/restore.py                        # dry-run latest backup
+python scripts/restore.py backups/2026-09-15T020000Z --apply   # apply a restore
+```
 
 ## Environment Security Rules
 

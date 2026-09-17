@@ -23,7 +23,7 @@ jobs:
       - name: Run tests with coverage
         run: |
           coverage erase
-          coverage run --rcfile=.coveragerc manage.py test apps.accounts.test_smoke apps.imaging.test_smoke apps.imaging.test_report -v 2
+          coverage run --rcfile=.coveragerc manage.py test apps.accounts.test_smoke apps.imaging.test_smoke apps.imaging.test_report scripts.test_backup_restore -v 2
           coverage report --rcfile=.coveragerc
   frontend-test:
     runs-on: ubuntu-latest
