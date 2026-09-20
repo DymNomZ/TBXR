@@ -417,6 +417,7 @@
 | **Acceptance Criteria** | <ul><li>Decision made: implement or remove</li><li>If implement: minimal placeholder pages created</li><li>If remove: links removed from sidebar</li><li>Navigation tested for no dead links</li><li>Decision documented in PR</li></ul> |
 | **Output** | Clean, intentional UX scope |
 | **Gap Covered** | Sidebar scope drift |
+| **Status** | Done — removed placeholder navigation links from the sidebar; kept only real routes (Dashboard, Analytics where permitted, Patients) and documented the decision in the PR. |
 
 ## W6-T7: Final integration and release candidate
 | Field | Value |
