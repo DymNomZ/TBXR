@@ -1,4 +1,4 @@
-import { Bell, MessageSquare, Search, ChevronDown, LogOut, User, Settings, CheckCheck } from 'lucide-react';
+import { Bell, Search, ChevronDown, LogOut, CircleUserRound, CheckCheck } from 'lucide-react';
 import { useRef, useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
@@ -103,17 +103,6 @@ export default function Header() {
   // ── Add / remove items here freely ─────────────────────────────────────────
   const menuItems = [
     {
-      icon: User,
-      label: 'My Profile',
-      onClick: () => { /* TODO */ },
-    },
-    {
-      icon: Settings,
-      label: 'Settings',
-      onClick: () => { /* TODO */ },
-    },
-    { divider: true },
-    {
       icon: LogOut,
       label: 'Log out',
       onClick: async () => { await logout(); navigate('/login'); },
@@ -212,11 +201,6 @@ export default function Header() {
           )}
         </div>
 
-        <button className="relative w-9 h-9 flex items-center justify-center rounded-xl hover:bg-[var(--surface-soft)] transition-colors">
-          <MessageSquare size={18} className="text-[var(--text-muted)]" />
-          <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-[var(--danger)]" />
-        </button>
-
         <div className="w-px h-6 bg-[var(--border)]" />
 
         <div className="relative" ref={userMenuRef}>
@@ -224,11 +208,9 @@ export default function Header() {
             onClick={() => setUserMenuOpen((o) => !o)}
             className="flex items-center gap-2 rounded-xl px-2 py-1 hover:bg-[var(--surface-soft)] transition-colors"
           >
-            <img
-              src={user?.avatar ?? `https://i.pravatar.cc/150?img=47`}
-              alt={user?.name ?? 'User'}
-              className="w-8 h-8 rounded-full object-cover"
-            />
+            <span className="w-8 h-8 rounded-full bg-[var(--surface-soft)] border border-[var(--border)] flex items-center justify-center" aria-hidden="true">
+              <CircleUserRound size={18} className="text-[var(--text-muted)]" />
+            </span>
             <ChevronDown
               size={14}
               className={`text-[var(--text-muted)] transition-transform duration-200 ${userMenuOpen ? 'rotate-180' : ''}`}

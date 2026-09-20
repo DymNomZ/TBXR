@@ -33,7 +33,7 @@ function TrendTooltip({ point }) {
   const meta = PROGRESSION_META[point.status] ?? PROGRESSION_META.no_prior
 
   return (
-    <div className="rounded-xl border border-[var(--border)] bg-white px-3 py-2 shadow-lg text-left min-w-[160px]">
+    <div className="rounded-xl border border-[var(--border)] bg-white px-3 py-2 shadow-lg text-left w-[240px] min-h-[126px]">
       <div className="flex items-center justify-between gap-3">
         <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--text-muted)]">AI trend</span>
         <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ${meta.soft}`}>
@@ -44,14 +44,12 @@ function TrendTooltip({ point }) {
         {typeof point.score === 'number' ? `${(point.score * 100).toFixed(0)}% risk` : 'No score'}
       </div>
       <div className="mt-1 text-[11px] text-[var(--text-muted)]">{formatDisplayDate(point.timestamp)}</div>
-      {point.clinical_note && (
-        <div className="mt-2 text-[11px] text-[var(--text-muted)]">{point.clinical_note}</div>
-      )}
-      {point.delta !== null && point.delta !== undefined && (
-        <div className="mt-2 text-[11px] text-[var(--text-muted)]">
-          Δ {Number(point.delta).toFixed(3)} vs prior
-        </div>
-      )}
+      <div className="mt-2 h-[16px] text-[11px] text-[var(--text-muted)] overflow-hidden text-ellipsis whitespace-nowrap">
+        {point.clinical_note || '\u00A0'}
+      </div>
+      <div className="mt-1 h-[16px] text-[11px] text-[var(--text-muted)]">
+        {point.delta !== null && point.delta !== undefined ? `Δ ${Number(point.delta).toFixed(3)} vs prior` : '\u00A0'}
+      </div>
     </div>
   )
 }
@@ -123,7 +121,9 @@ function OverrideStatusModal({
 
 function ProgressionTrendChart({ points }) {
   const [hoveredPoint, setHoveredPoint] = useState(null)
+  const [pinnedPointKey, setPinnedPointKey] = useState(null)
   const validPoints = Array.isArray(points) ? points.filter((point) => Number.isFinite(Number(point.score))) : []
+  const getPointKey = (point) => `${point.transaction_id}-${point.timestamp}`
   const pointsWithCoords = validPoints.map((point, index) => {
     const width = 640
     const height = 210
@@ -136,11 +136,22 @@ function ProgressionTrendChart({ points }) {
     return { ...point, x, y }
   })
 
+  const pinnedPoint = pointsWithCoords.find((point) => getPointKey(point) === pinnedPointKey) ?? null
+
   useEffect(() => {
+    if (pinnedPoint) return
     if (!hoveredPoint && pointsWithCoords.length > 0) {
       setHoveredPoint(pointsWithCoords[pointsWithCoords.length - 1])
     }
-  }, [hoveredPoint, pointsWithCoords])
+  }, [hoveredPoint, pinnedPoint, pointsWithCoords])
+
+  useEffect(() => {
+    if (!pinnedPointKey) return
+    const stillExists = pointsWithCoords.some((point) => getPointKey(point) === pinnedPointKey)
+    if (!stillExists) {
+      setPinnedPointKey(null)
+    }
+  }, [pinnedPointKey, pointsWithCoords])
 
   if (!points || points.length === 0) {
     return (
@@ -166,7 +177,7 @@ function ProgressionTrendChart({ points }) {
     .join(' ')
 
   const areaPath = `${path} L ${pointsWithCoords[pointsWithCoords.length - 1].x} ${height - padding.bottom} L ${pointsWithCoords[0].x} ${height - padding.bottom} Z`
-  const activePoint = hoveredPoint ?? pointsWithCoords[pointsWithCoords.length - 1]
+  const activePoint = pinnedPoint ?? hoveredPoint ?? pointsWithCoords[pointsWithCoords.length - 1]
 
   return (
     <div className="rounded-2xl border border-[var(--border)] bg-white p-4 shadow-sm">
@@ -183,6 +194,17 @@ function ProgressionTrendChart({ points }) {
             </div>
           </div>
         )}
+      </div>
+
+      <div className="mb-2 flex justify-end">
+        <button
+          type="button"
+          onClick={() => setPinnedPointKey(null)}
+          disabled={!pinnedPoint}
+          className="text-[11px] font-medium text-[var(--accent)] disabled:cursor-not-allowed disabled:text-[var(--text-muted)]"
+        >
+          {pinnedPoint ? 'Unpin selection' : 'Hover to preview points'}
+        </button>
       </div>
 
       <div className="overflow-x-auto">
@@ -210,8 +232,9 @@ function ProgressionTrendChart({ points }) {
 
             {pointsWithCoords.map((point) => {
               const meta = PROGRESSION_META[point.status] ?? PROGRESSION_META.no_prior
+              const pointKey = getPointKey(point)
               return (
-                <g key={`${point.transaction_id}-${point.timestamp}`}>
+                <g key={pointKey}>
                   <circle
                     cx={point.x}
                     cy={point.y}
@@ -219,9 +242,16 @@ function ProgressionTrendChart({ points }) {
                     fill={meta.color}
                     stroke="white"
                     strokeWidth="2"
-                    onMouseEnter={() => setHoveredPoint(point)}
-                    onFocus={() => setHoveredPoint(point)}
-                    onMouseLeave={() => setHoveredPoint(pointsWithCoords[pointsWithCoords.length - 1])}
+                    onMouseEnter={() => {
+                      if (!pinnedPoint) setHoveredPoint(point)
+                    }}
+                    onFocus={() => {
+                      if (!pinnedPoint) setHoveredPoint(point)
+                    }}
+                    onClick={() => {
+                      setPinnedPointKey((current) => (current === pointKey ? null : pointKey))
+                      setHoveredPoint(point)
+                    }}
                     tabIndex={0}
                     className="cursor-pointer outline-none"
                   />
@@ -236,13 +266,21 @@ function ProgressionTrendChart({ points }) {
         {points.map((point) => {
           const meta = PROGRESSION_META[point.status] ?? PROGRESSION_META.no_prior
           const isActive = activePoint?.transaction_id === point.transaction_id
+          const pointKey = getPointKey(point)
           return (
             <button
-              key={`${point.transaction_id}-${point.timestamp}`}
+              key={pointKey}
               type="button"
-              onMouseEnter={() => setHoveredPoint(point)}
-              onFocus={() => setHoveredPoint(point)}
-              onMouseLeave={() => setHoveredPoint(pointsWithCoords[pointsWithCoords.length - 1])}
+              onMouseEnter={() => {
+                if (!pinnedPoint) setHoveredPoint(point)
+              }}
+              onFocus={() => {
+                if (!pinnedPoint) setHoveredPoint(point)
+              }}
+              onClick={() => {
+                setPinnedPointKey((current) => (current === pointKey ? null : pointKey))
+                setHoveredPoint(point)
+              }}
               className={`rounded-xl border px-2.5 py-2 text-left transition ${isActive ? 'border-[var(--accent)] bg-[var(--accent-soft)]' : 'border-[var(--border)] bg-[var(--surface-soft)]'}`}
             >
               <div className="flex items-center justify-between gap-2">
