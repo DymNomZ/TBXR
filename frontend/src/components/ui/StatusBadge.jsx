@@ -19,11 +19,20 @@ const STATUS_STYLES = {
 
 const DEFAULT_STYLE = 'bg-gray-100 text-gray-500';
 
+const STATUS_LABELS = {
+  PENDING: 'Pending',
+  IN_REVIEW: 'In Review',
+  AI_REVIEWED: 'AI Reviewed',
+  MANUAL_REVIEW: 'Manual Review Required',
+  COMPLETED: 'Completed',
+}
+
 export default function StatusBadge({ status }) {
   const style = STATUS_STYLES[status] ?? DEFAULT_STYLE;
+  const label = STATUS_LABELS[status] ?? status;
   return (
     <span className={`inline-block px-3 py-1 rounded-full text-xs font-semibold ${style}`}>
-      {status}
+      {label}
     </span>
   );
 }

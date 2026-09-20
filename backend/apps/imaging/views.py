@@ -13,6 +13,7 @@ import json
 import cv2
 import numpy as np
 import importlib.util
+import sys
 import pydicom
 from io import BytesIO
 from pathlib import Path
@@ -121,6 +122,9 @@ def _get_inference_module():
         raise ImportError("Unable to load inference module.")
 
     module = importlib.util.module_from_spec(spec)
+    inference_dir = str(inference_path.parent)
+    if inference_dir not in sys.path:
+        sys.path.insert(0, inference_dir)
     spec.loader.exec_module(module)
     _INFERENCE_MODULE = module
     return module
@@ -613,7 +617,7 @@ def annotate_xray(request, transaction_id):
     )
 
 @api_view(["GET"])
-@role_required(UserRole.RADIOLOGIC_TECH, UserRole.RADIOLOGIST)
+@role_required(UserRole.RADIOLOGIC_TECH, UserRole.RADIOLOGIST, UserRole.PHYSICIAN)
 def patient_xrays(request, patient_id):
     patient = get_object_or_404(Patient, patient_id=patient_id)
     records = XrayRecord.objects.filter(
@@ -754,7 +758,7 @@ def physician_dashboard(request):
     )
 
 @api_view(["GET"])
-@role_required(UserRole.RADIOLOGIC_TECH, UserRole.RADIOLOGIST)
+@role_required(UserRole.RADIOLOGIC_TECH, UserRole.RADIOLOGIST, UserRole.PHYSICIAN)
 def xray_detail(request, transaction_id):
     xray_record = get_object_or_404(XrayRecord, transaction_id=transaction_id)
 
@@ -773,11 +777,16 @@ def xray_detail(request, transaction_id):
 
         xray_record.acquire_lock(request.user)
 
+        # Enter active review state when a radiologist opens a case for work.
+        if xray_record.status in {"PENDING", "AI_REVIEWED", "MANUAL_REVIEW"}:
+            xray_record.status = "IN_REVIEW"
+            xray_record.save(update_fields=["status"])
+
     serializer = XrayRecordDetailSerializer(xray_record, context={'request': request})
     return Response(serializer.data)
 
 @api_view(["GET"])
-@role_required(UserRole.RADIOLOGIC_TECH, UserRole.RADIOLOGIST)
+@role_required(UserRole.RADIOLOGIC_TECH, UserRole.RADIOLOGIST, UserRole.PHYSICIAN)
 def patient_history(request, patient_id):
     patient = get_object_or_404(Patient, patient_id=patient_id)
     records = (
@@ -802,6 +811,13 @@ def _resolve_case_record(case_id):
             return None
 
 
+def _refresh_patient_progression_snapshots(patient):
+    """Recompute persisted progression snapshots for all of a patient's records."""
+    records = XrayRecord.objects.filter(patient=patient).order_by("upload_timestamp", "pk")
+    for record in records:
+        ProgressionService.persist_for_record(record)
+
+
 @api_view(["GET"])
 @login_required
 def case_progression_history(request, case_id):
@@ -809,20 +825,14 @@ def case_progression_history(request, case_id):
     if case_record is None:
         return Response({"detail": "Case not found."}, status=status.HTTP_404_NOT_FOUND)
 
+    _refresh_patient_progression_snapshots(case_record.patient)
+
     queryset = ProgressionStatus.objects.filter(
         patient=case_record.patient
     ).select_related(
         "xray_record",
         "previous_record",
     ).order_by("xray_record__upload_timestamp", "xray_record__pk")
-
-    if not queryset.exists():
-        for record in XrayRecord.objects.filter(patient=case_record.patient).order_by("upload_timestamp", "pk"):
-            ProgressionService.persist_for_record(record)
-        queryset = ProgressionStatus.objects.filter(patient=case_record.patient).select_related(
-            "xray_record",
-            "previous_record",
-        ).order_by("xray_record__upload_timestamp", "xray_record__pk")
 
     paginator = ProgressionHistoryPagination()
     page = paginator.paginate_queryset(queryset, request)
@@ -900,18 +910,12 @@ def case_progression_override(request, case_id):
 @login_required
 def patient_progression_history(request, patient_id):
     patient = get_object_or_404(Patient, patient_id=patient_id)
+    _refresh_patient_progression_snapshots(patient)
+
     queryset = ProgressionStatus.objects.filter(patient=patient).select_related(
         "xray_record",
         "previous_record",
     ).order_by("xray_record__upload_timestamp", "xray_record__pk")
-
-    if not queryset.exists():
-        for record in XrayRecord.objects.filter(patient=patient).order_by("upload_timestamp", "pk"):
-            ProgressionService.persist_for_record(record)
-        queryset = ProgressionStatus.objects.filter(patient=patient).select_related(
-            "xray_record",
-            "previous_record",
-        ).order_by("xray_record__upload_timestamp", "xray_record__pk")
 
     paginator = ProgressionHistoryPagination()
     page = paginator.paginate_queryset(queryset, request)
