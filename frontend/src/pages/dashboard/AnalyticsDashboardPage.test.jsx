@@ -61,10 +61,8 @@ describe('AnalyticsDashboardPage', () => {
       return jsonResponse({}, 404)
     }))
 
-    vi.stubGlobal('URL', {
-      createObjectURL: vi.fn(() => 'blob:test-url'),
-      revokeObjectURL: vi.fn(),
-    })
+    vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:test-url')
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {})
   })
 
   it('renders analytics summary, applies filters, and posts CSV/PDF exports', async () => {
