@@ -45,7 +45,7 @@ def register_patient(request):
 
 @extend_schema(responses={200: PatientSerializer})
 @api_view(["GET"])
-@role_required(UserRole.RADIOLOGIC_TECH, UserRole.RADIOLOGIST)
+@role_required(UserRole.RADIOLOGIC_TECH, UserRole.RADIOLOGIST, UserRole.PHYSICIAN)
 def patient_detail(request, patient_id):
     patient = get_object_or_404(Patient, patient_id=patient_id)
     serializer = PatientSerializer(patient)
@@ -63,7 +63,7 @@ def patient_detail(request, patient_id):
     responses={200: PatientSerializer(many=True)}
 )
 @api_view(["GET"])
-@role_required(UserRole.RADIOLOGIC_TECH, UserRole.RADIOLOGIST)
+@role_required(UserRole.RADIOLOGIC_TECH, UserRole.RADIOLOGIST, UserRole.PHYSICIAN)
 def search_patients(request):
     # Get the 'name' search term from the URL
     query = request.query_params.get('name', '').strip()
@@ -80,7 +80,7 @@ def search_patients(request):
     return Response(serializer.data)
 
 @api_view(['GET'])
-@role_required(UserRole.RADIOLOGIC_TECH, UserRole.RADIOLOGIST)
+@role_required(UserRole.RADIOLOGIC_TECH, UserRole.RADIOLOGIST, UserRole.PHYSICIAN)
 def patient_list(request):
     patients = Patient.objects.all().order_by('last_name', 'first_name')
     serializer = PatientSerializer(patients, many=True)

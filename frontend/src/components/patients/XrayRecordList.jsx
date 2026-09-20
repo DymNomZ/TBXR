@@ -201,7 +201,7 @@ export default function XrayRecordList({ patientId, refreshKey = 0, autoOpenTran
             <Button
               variant="secondary"
               fullWidth
-              onClick={() => window.open(`/api/imaging/xray/${selectedRecord.transaction_id}/report/`, '_blank')}
+              onClick={() => window.open(`/api/imaging/xray/${selectedRecord.transaction_id}/report/generate/`, '_blank')}
             >
               <FileDown size={15} />
               Generate Report
