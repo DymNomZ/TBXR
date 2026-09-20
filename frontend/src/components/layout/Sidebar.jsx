@@ -2,11 +2,7 @@ import { useAuth } from '../../context/AuthContext'
 import {
   LayoutDashboard,
   BarChart3,
-  CalendarDays,
-  UserRound,
   Users,
-  MessageSquare,
-  Settings,
 } from 'lucide-react';
 import SidebarItem from './SidebarItem';
 
@@ -18,11 +14,7 @@ export default function Sidebar() {
   const NAV_ITEMS = [
     { label: 'Dashboard', icon: LayoutDashboard, to: ROLE_DASHBOARD[user?.role] ?? '/dashboard' },
     ...(canViewAnalytics ? [{ label: 'Analytics', icon: BarChart3, to: '/dashboard/analytics' }] : []),
-    { label: 'Appointments', icon: CalendarDays,    to: '/appointments' },
-    { label: 'Doctor',       icon: UserRound,       to: '/doctors' },
     { label: 'Patients',     icon: Users,           to: '/patients' },
-    { label: 'Messages',     icon: MessageSquare,   to: '/messages' },
-    { label: 'Settings',     icon: Settings,        to: '/settings' },
   ];
 
   return (
