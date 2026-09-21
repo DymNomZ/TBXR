@@ -297,6 +297,22 @@ class ImagingAccessTests(TestCase):
             response = self.client.get(detail_url)
             self.assertEqual(response.status_code, 200)
 
+    def test_xray_detail_sets_in_review_when_radiologist_opens_case(self):
+        self.tech_one_record.status = "PENDING"
+        self.tech_one_record.save(update_fields=["status"])
+
+        self.client.force_login(self.rad)
+        detail_url = reverse(
+            "imaging:xray-detail",
+            kwargs={"transaction_id": str(self.tech_one_record.transaction_id)},
+        )
+
+        response = self.client.get(detail_url)
+        self.assertEqual(response.status_code, 200)
+
+        self.tech_one_record.refresh_from_db()
+        self.assertEqual(self.tech_one_record.status, "IN_REVIEW")
+
     def test_radiologist_annotation_submission_creates_annotation_and_completes_record(self):
         self.client.force_login(self.rad)
 

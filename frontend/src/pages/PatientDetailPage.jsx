@@ -106,10 +106,12 @@ export default function PatientDetailPage() {
             </div>
           </div>
  
-          <Button onClick={() => setIsUploadOpen(true)}>
-            <Upload size={15} />
-            Upload X-ray
-          </Button>
+          {user?.role === 'RADIOLOGIC_TECH' && (
+            <Button onClick={() => setIsUploadOpen(true)}>
+              <Upload size={15} />
+              Upload X-ray
+            </Button>
+          )}
         </div>
  
         {/* Two-column layout */}

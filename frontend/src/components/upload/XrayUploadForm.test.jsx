@@ -144,6 +144,27 @@ describe('XrayUploadForm low-quality flow', () => {
     expect(fetchMock.mock.calls[0][0]).toBe(UPLOAD_URL)
   })
 
+  it('maps MANUAL_REVIEW upload response to returned record payload', async () => {
+    const onSuccess = vi.fn()
+    const manualReviewRecord = {
+      transaction_id: TX_ID,
+      status: 'MANUAL_REVIEW',
+      upload_timestamp: '2026-09-04T08:00:00Z',
+    }
+    vi.stubGlobal('fetch', vi.fn(() => jsonResponse({
+      status: 'MANUAL_REVIEW',
+      message: 'AI processing failed; case flagged for manual review.',
+      record: manualReviewRecord,
+    }, 202)))
+
+    render(<XrayUploadForm patientId={PATIENT_ID} patientName={PATIENT_NAME} onSuccess={onSuccess} />)
+    uploadFile()
+
+    await userEvent.click(screen.getByRole('button', { name: /Upload X-ray/i }))
+
+    await waitFor(() => expect(onSuccess).toHaveBeenCalledWith(manualReviewRecord))
+  })
+
   it('does not dismiss the low-quality modal when backdrop is clicked', async () => {
     vi.stubGlobal('fetch', vi.fn(() => jsonResponse({
       status: 'quality_check_failed',

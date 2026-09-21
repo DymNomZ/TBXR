@@ -4,6 +4,14 @@ import StatusBadge from '../ui/StatusBadge'
 import Button from '../ui/Button'
 import AIRiskBadge from '../ui/AIRiskBadge'
 
+const STATUS_GUIDE = [
+  { key: 'PENDING', description: 'Uploaded and waiting for a radiologist to open the case.' },
+  { key: 'IN_REVIEW', description: 'Currently locked and actively being reviewed by a radiologist.' },
+  { key: 'AI_REVIEWED', description: 'AI score and heatmap were generated; awaiting radiologist finalization.' },
+  { key: 'MANUAL_REVIEW', description: 'AI processing was unavailable or failed; proceed with radiologist-only review.' },
+  { key: 'COMPLETED', description: 'Radiologist has submitted findings for the case.' },
+]
+
 // ✏️ Tag filterable: true to auto-add a filter dropdown for that column
 export const QUEUE_COLUMNS = [
   {
@@ -117,6 +125,17 @@ export default function RadiologistDashboardTable({ data = [] }) {
         data={data}
         // onRowClick={(row) => navigate(`/radiologist/review/${row.transaction_id}`)}
       />
+
+      <div className="border-t border-[var(--border)] bg-[var(--surface-soft)] px-5 py-4">
+        <p className="text-xs font-semibold uppercase tracking-wide text-[var(--text-muted)]">Status guide</p>
+        <ul className="mt-2 space-y-1 text-xs text-[var(--text-muted)]">
+          {STATUS_GUIDE.map((item) => (
+            <li key={item.key}>
+              <span className="font-semibold text-[var(--text)]">{item.key}</span>: {item.description}
+            </li>
+          ))}
+        </ul>
+      </div>
     </div>
   )
 }

@@ -8,6 +8,13 @@ const SUMMARY_ENDPOINT = '/api/analytics/summary/'
 const EXPORT_ENDPOINT = '/api/analytics/export/'
 const SEVERITY_OPTIONS = ['', 'NORMAL', 'MILD', 'MODERATE', 'SEVERE', 'CRITICAL']
 
+function getCsrfToken() {
+  return document.cookie
+    .split('; ')
+    .find((row) => row.startsWith('csrftoken='))
+    ?.split('=')[1]
+}
+
 const STATUS_COLORS = {
   PENDING: '#f59e0b',
   COMPLETED: '#22c55e',
@@ -221,7 +228,10 @@ export default function AnalyticsDashboardPage() {
       const response = await fetch(EXPORT_ENDPOINT, {
         method: 'POST',
         credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(getCsrfToken() ? { 'X-CSRFToken': getCsrfToken() } : {}),
+        },
         body: JSON.stringify({
           format,
           filters: {

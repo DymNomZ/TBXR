@@ -202,7 +202,7 @@ export default function AnnotationPanel({
           <Button
             variant="secondary"
             fullWidth
-            onClick={() => window.open(`/api/imaging/xray/${transactionId}/report/`, '_blank')}
+            onClick={() => window.open(`/api/imaging/xray/${transactionId}/report/generate/`, '_blank')}
           >
             <FileDown size={15} />
             Generate Report

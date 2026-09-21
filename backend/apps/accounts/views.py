@@ -16,6 +16,7 @@ from .decorators import role_required
 ROLE_FRONTEND_URLS = {
     UserRole.RADIOLOGIC_TECH: '/dashboard/technologist',
     UserRole.RADIOLOGIST:     '/dashboard/radiologist',
+	UserRole.PHYSICIAN:       '/dashboard/physician',
 }
 
 

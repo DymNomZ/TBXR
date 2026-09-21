@@ -4,6 +4,12 @@ import DetailField from '../ui/DetailField'
 export default function PatientProfileCard({ patient }) {
   if (!patient) return null;
 
+  const rawMrn = typeof patient.mrn === 'string' ? patient.mrn.trim() : patient.mrn
+  const hasConfirmedMrn = Boolean(
+    rawMrn
+    && !['N/A', 'NA', 'UNKNOWN', 'TBD', 'PENDING'].includes(String(rawMrn).toUpperCase())
+  )
+
   const sexMap = {
     M: 'Male',
     F: 'Female',
@@ -23,7 +29,7 @@ export default function PatientProfileCard({ patient }) {
       {/* Fields */}
       <DetailField label="Full Name"       value={`${patient.first_name} ${patient.last_name}`} />
       <DetailField label="Patient ID"      value={patient.patient_id} />
-      <DetailField label="MRN"             value={patient.mrn} />
+      {hasConfirmedMrn && <DetailField label="MRN" value={rawMrn} />}
       <DetailField label="Date of Birth"   value={patient.date_of_birth} />
       <DetailField label="Sex"             value={sexMap[patient.sex] || 'Unknown'} />
       <DetailField label="Contact Number"  value={patient.contact_number} />

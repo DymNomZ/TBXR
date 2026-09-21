@@ -3,6 +3,7 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.urls import reverse
 from apps.accounts.enums import UserRole
+from apps.patients.models import Patient
 
 class PatientViewsTests(TestCase):
     def setUp(self):
@@ -89,3 +90,22 @@ class PatientViewsTests(TestCase):
             content_type='application/json',
         )
         self.assertEqual(response_rad.status_code, 403)
+
+    def test_physician_can_view_patient_detail_for_read_only_follow_up(self):
+        """Physicians should be able to open patient records from finalized-case follow-up."""
+        physician = self.user_model.objects.create_user(
+            username='physician_test', password='password123', role=UserRole.PHYSICIAN
+        )
+        patient = Patient.objects.create(
+            first_name='Jane',
+            last_name='Smith',
+            date_of_birth='1985-02-15',
+            sex='F',
+            contact_number='09181234567',
+        )
+
+        self.client.force_login(physician)
+        response = self.client.get(reverse('patients:detail', kwargs={'patient_id': patient.patient_id}))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['patient_id'], patient.patient_id)

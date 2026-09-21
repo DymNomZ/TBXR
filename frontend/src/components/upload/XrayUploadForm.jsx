@@ -39,6 +39,10 @@ function isLowQualityResponse(data) {
   )
 }
 
+function isManualReviewResponse(data) {
+  return data?.status === 'MANUAL_REVIEW' && Boolean(data?.record)
+}
+
 export default function XrayUploadForm({ patientId, patientName, onSuccess }) {
   const [file, setFile]                 = useState(null)
   const [preview, setPreview]           = useState(null)
@@ -107,6 +111,15 @@ export default function XrayUploadForm({ patientId, patientName, onSuccess }) {
           })
           return
         }
+
+        if (isManualReviewResponse(data)) {
+          // Upload succeeded, but AI inference failed; the backend has already flagged
+          // the case for radiologist-only workflow.
+          setError(data.message ?? 'AI processing failed. Case flagged for manual review.')
+          onSuccess?.(data.record)
+          return
+        }
+
         onSuccess?.(data)
         return
       }
