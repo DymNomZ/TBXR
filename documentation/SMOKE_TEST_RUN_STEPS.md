@@ -1,8 +1,9 @@
 # Smoke Test Run Guide
 
-**What this is:** a 2-minute regression net for the two riskiest backend paths —
-the **logout** route and the **PDF report** endpoint. Anyone on the team can run
-it in under two minutes; CI runs the exact same tests on every push/PR.
+**What this is:** a fast regression net for the riskiest backend paths — the
+**logout** route, the **report workflow** (draft → finalize → PDF), the
+**physician dashboard**, and **AI failure recovery**. Anyone on the team can run
+it in a couple of minutes; CI runs these same suites on every push/PR.
 
 **Skip to:** [Quick start](#quick-start--read-this-first) · [What the tests check](#what-the-tests-actually-check) · [Troubleshooting](#troubleshooting)
 
@@ -20,21 +21,35 @@ DB_NAME= python manage.py test apps.accounts.test_smoke apps.imaging.test_smoke 
 ```
 
 That is the whole run. The `DB_NAME=` prefix forces SQLite so the tests never
-touch your local Postgres database — this is exactly how CI runs them too.
+touch your local Postgres database — this is exactly how CI runs them too. A
+convenience runner with readable output and failure hints is also available:
+`python scripts/run_smoke.py` (from `backend/`, venv active).
 
-Expect 6 tests, all green:
+Expect 18 tests, all green:
 
 ```
-Found 6 test(s).
+Found 18 test(s).
 ...
-test_get_logout_returns_405 ... ok
 test_post_logout_returns_200_and_clears_session ... ok
+test_get_logout_returns_405 ... ok
 test_completed_record_returns_pdf ... ok
-test_missing_record_returns_404 ... ok
-test_non_radiologist_returns_403 ... ok
 test_pending_record_returns_400 ... ok
+test_non_radiologist_returns_403 ... ok
+test_missing_record_returns_404 ... ok
+test_create_report_draft ... ok
+test_create_report_draft_allows_empty_fields ... ok
+test_retrieve_report ... ok
+test_update_report_draft ... ok
+test_cannot_update_finalized_report ... ok
+test_final_submit_rejects_missing_fields ... ok
+test_final_submit_succeeds_with_all_fields ... ok
+test_draft_then_finalize_workflow ... ok
+test_tech_cannot_create_report ... ok
+test_generate_report_uses_persisted_report_data ... ok
+test_physician_dashboard_smoke_flow ... ok
+test_ai_failure_then_retry_succeeds ... ok
 
-Ran 6 tests in ~1s
+Ran 18 tests
 
 OK
 ```
@@ -49,9 +64,9 @@ OK
 
 ## What the tests actually check
 
-Two small test files, each targeting one at-risk route. Both follow the same
-pattern: set up a fake user + fake data, call the endpoint, assert the response
-is exactly what a real user would get.
+Two test files cover the at-risk routes. Both follow the same pattern: set up
+a fake user + fake data, call the endpoint, assert the response is exactly
+what a real user would get.
 
 ### 1. Logout route — `apps/accounts/test_smoke.py`
 
@@ -62,12 +77,13 @@ Target: `POST /accounts/logout/` (the `accounts:logout` route).
 | `test_post_logout_returns_200_and_clears_session` | Logs a user in, then POSTs to `/logout/` | HTTP **200**, body `{"detail": "Logged out."}`, and the session is actually cleared (the `_auth_user_id` marker is gone) |
 | `test_get_logout_returns_405` | Hits the logout route with a GET request (wrong method) | HTTP **405 Method Not Allowed** — the route only accepts POST |
 
-### 2. PDF report endpoint — `apps/imaging/test_smoke.py`
+### 2. Report workflow — `apps/imaging/test_smoke.py`
 
-Target: `GET /api/imaging/xray/<scan-id>/report/` (the `imaging:generate_report`
-route). A radiologist requests a generated PDF for an X-ray. The actual
-node/Puppeteer/Chromium rendering step is **mocked** — tests verify the backend's
-decisions, not the PDF renderer's output.
+Target: `GET/POST/PATCH /api/imaging/xray/<scan-id>/report/` (the
+`imaging:report_detail` route) and `GET /api/imaging/xray/<scan-id>/report/generate/`
+(the `imaging:generate_report` route). The actual node/Puppeteer/Chromium
+rendering step is **mocked** — tests verify the backend's decisions, not the
+PDF renderer's output.
 
 | Test | What it does | Expected result |
 |------|--------------|-----------------|
@@ -75,13 +91,29 @@ decisions, not the PDF renderer's output.
 | `test_pending_record_returns_400` | Radiologist asks for a PDF of a scan still **PENDING** | HTTP **400** — reports only exist once a scan is COMPLETED |
 | `test_non_radiologist_returns_403` | A **technician** (not a radiologist) asks for a PDF | HTTP **403 Forbidden** — report generation is radiologist-only |
 | `test_missing_record_returns_404` | Radiologist asks for a PDF of a **random/nonexistent** scan ID | HTTP **404 Not Found** |
+| `test_create_report_draft` / `test_create_report_draft_allows_empty_fields` | Radiologist saves a draft | Draft persisted with `status=DRAFT`; empty fields allowed while drafting |
+| `test_retrieve_report` / `test_update_report_draft` | Read and update a draft | HTTP 200 with the report payload |
+| `test_cannot_update_finalized_report` | PATCH a **SUBMITTED** report | HTTP **400** — finalized reports are immutable |
+| `test_final_submit_rejects_missing_fields` / `test_final_submit_succeeds_with_all_fields` | Finalize with missing / complete fields | **400** with field errors vs. successful submission |
+| `test_draft_then_finalize_workflow` | Full draft → finalize chain | Workflow transitions end-to-end, including the physician notification trigger |
+| `test_tech_cannot_create_report` | Technician tries to write a report | HTTP **403** — report writing is radiologist-only |
+| `test_generate_report_uses_persisted_report_data` | Generate the PDF | The rendered context uses the persisted report fields, not placeholder data |
 
-### Why these six tests matter
+### 3. Physician dashboard & AI failure-retry — `apps/imaging/test_smoke.py`
+
+| Test | What it does | Expected result |
+|------|--------------|-----------------|
+| `test_physician_dashboard_smoke_flow` | Physician logs in and opens the dashboard | HTTP **200** with the summary payload (finalized cases, alerts, patient progress) |
+| `test_ai_failure_then_retry_succeeds` | AI inference fails, then the case is re-analysed | Failure routes the case to **MANUAL_REVIEW**; re-running `POST .../analyse/` recovers with a stored AI result |
+
+### Why these tests matter
 
 Each one pins down a regression that has already bitten this project:
 
 - Logout silently breaking (wrong route, wrong method handling, session not cleared).
 - Report generation silently breaking (status guard, role check, missing records, wrong file output).
+- The draft → finalize workflow regressing (validation gaps, finalized-report edits, role leaks).
+- Physician dashboard or AI-failure handling breaking unnoticed.
 
 If any of those slip, the corresponding test turns red — locally or in CI — before
 anyone ships the bug.
@@ -101,12 +133,16 @@ DB_NAME= python manage.py test -v 2
 
 ## CI
 
-`.github/workflows/ci.yml` runs the identical smoke command on every push and PR:
+`.github/workflows/ci.yml` runs two jobs on every push and PR:
 
-- Python 3.12, fresh Ubuntu runner
+**smoke-tests** (Python 3.12, fresh Ubuntu runner):
 - Installs `backend/requirements.txt`
-- Runs `python manage.py test apps.accounts.test_smoke apps.imaging.test_smoke -v 2`
+- Runs `coverage run --rcfile=.coveragerc manage.py test apps.accounts.test_smoke apps.imaging.test_smoke apps.imaging.test_report scripts.test_backup_restore -v 2` — the smoke suites plus the report workflow and backup/restore suites
+- Enforces a coverage gate on `apps.imaging` (`fail_under = 40`)
 - No `.env` exists in CI ⇒ SQLite is used automatically (the same as the `DB_NAME=` prefix locally)
+
+**frontend-test** (Node 22):
+- `npm ci`, `npm run test`, `npm run lint`
 
 You can watch it live in the **Actions** tab of the repo.
 
@@ -128,8 +164,7 @@ You can watch it live in the **Actions** tab of the repo.
 
 | Purpose | File |
 |---------|------|
-| This guide | `SMOKE_TEST_RUN_STEPS.md` |
-| Source plan (design decisions) | `SMOKE_TEST_CI_PLAN.md` |
+| This guide | `documentation/SMOKE_TEST_RUN_STEPS.md` |
 | Logout tests | `backend/apps/accounts/test_smoke.py` |
 | Report tests | `backend/apps/imaging/test_smoke.py` |
 | CI pipeline | `.github/workflows/ci.yml` |

@@ -222,7 +222,13 @@ python manage.py migrate
 python manage.py shell
 ```
 
-To seed account to test login functionality.
+To seed demo accounts for testing login functionality, the quickest path is the seed script (creates `tech1`, `rad1`, `physician1` plus a sample patient, X-ray records, AI result, and report):
+
+```bash
+python scripts/seed_users.py
+```
+
+Manual alternative via the Django shell:
 ``` bash
 from django.contrib.auth import get_user_model
 
@@ -266,7 +272,7 @@ npm run dev
 ### Backup and Restore
 
 Automated database + media backups and the restore procedure are documented in
-[`documentation/backup-restore.md`](documentation/backup-restore.md).
+[`backup-restore.md`](backup-restore.md) (same directory as this guide).
 
 ```bash
 cd backend
@@ -283,12 +289,25 @@ python scripts/restore.py backups/2026-09-15T020000Z --apply   # apply a restore
 - Store production secrets in your deployment platform secret manager or protected CI/CD variables.
 - Rotate credentials immediately if a secret is exposed.
 
-For testing Back end automatically.
-``` bash
+For testing the backend automatically (full suite, ~206 tests):
+
+```bash
 cd backend
-python manage.py test apps.accounts.tests
-python manage.py test apps.patients.tests
-python manage.py test apps.imaging.tests
+DB_NAME= python manage.py test -v 2
 ```
+
+> The `DB_NAME=` prefix (bash) forces SQLite so tests never touch your local Postgres — this is how CI runs them too. On PowerShell, set `$env:DB_NAME=''` before the command instead.
+
+Individual suites:
+
+```bash
+python manage.py test apps.accounts.tests apps.patients.tests
+python manage.py test apps.imaging.tests apps.imaging.test_report
+python manage.py test apps.imaging.test_progression apps.imaging.test_physician_dashboard
+python manage.py test apps.accounts.test_smoke apps.imaging.test_smoke   # smoke gate (see documentation/SMOKE_TEST_RUN_STEPS.md)
+python manage.py test scripts.test_backup_restore
+```
+
+A convenience runner for the smoke suites is `python scripts/run_smoke.py` (run from `backend/` with your virtualenv active — `backend/venv` from the setup above or a repo-root `.venv` both work). CI (`.github/workflows/ci.yml`) runs the smoke, report, and backup/restore suites with a coverage gate, plus the frontend tests and lint.
 
 ---

@@ -1,5 +1,12 @@
 # TB-XR: 6-Week Sprint Board
 
+> **Status (2026-09-25): Sprint complete.** Weeks 1–6 shipped between 2026-08-19 and 2026-09-21 (PRs #166–#203: low-quality prompt, physician dashboard, progression suite, analytics, security hardening, backup automation, sidebar cleanup, release-candidate patches). Per-ticket evidence lives in the git history; the as-built system is documented in `documentation/refactored-SRS.md`.
+>
+> **Deviations from plan:**
+> - W4-T2 (automatic retry wrapper) was delivered as a manual re-run path plus the `MANUAL_REVIEW` status instead of an automatic retry loop (refactored SRS limitation #1).
+> - W1-T3 shipped filter parity, but the binary model never emits `MODERATE` (limitation #2).
+> - Physician notifications target the first physician by ID; no assignment model yet (limitation #5).
+
 ## Team Mapping
 1. **Dymes** (Tech Lead + Frontend)
 2. **Seth** (AI Engineer)
@@ -443,7 +450,7 @@
 # Milestone Checkpoints
 | Milestone | Target Completion | Status | Notes |
 |-----------|------------------|--------|-------|
-| **Week 2** | Structured diagnostic workflow fully operational | — | Report model, validation, draft save working |
-| **Week 4** | Physician role and notification pipeline complete | — | Notifications, physician dashboard, AI failure handling verified |
-| **Week 5** | Longitudinal progression engine complete | — | Progression service, trends, override working end-to-end |
-| **Week 6** | Analytics/export and non-functional requirements complete | — | Security, backups, exports deployed; all gaps closed |
+| **Week 2** | Structured diagnostic workflow fully operational | Done | Report model, validation, draft save working |
+| **Week 4** | Physician role and notification pipeline complete | Done | Notifications, physician dashboard, AI failure handling verified |
+| **Week 5** | Longitudinal progression engine complete | Done | Progression service, trends, override working end-to-end |
+| **Week 6** | Analytics/export and non-functional requirements complete | Done | Security, backups, exports deployed; residual gaps tracked in `documentation/refactored-SRS.md` §7 |

@@ -211,12 +211,12 @@ test ! -f media/unwanted_file.txt && echo "Unwanted files purged!"
 
 ### QA Checklist Status
 
-With your execution logs confirming all tests, the checklist is fully satisfied:
+Checklist status, per the verification runs above:
 
-* **[x] Run the backup script:** Executed against PostgreSQL database and media assets[cite: 3].
-* **[x] Confirm files are created in the expected location:** `database.sql`, `media.tar.gz`, and `manifest.json` placed under `backups/<timestamp>/` with `0700`/`0600` permissions[cite: 3, 5].
-* **[x] Perform a restore test or documented dry run:** Default dry-run executed; live `--apply` successfully proved clean atomic swap[cite: 2, 5].
-* **[x] Validate integrity and storage assumptions:** Tampered archive flagged with `MISMATCH`[cite: 3], retention policy pruned cleanly at 3 snapshots[cite: 3, 5].
+* **[x] Run the backup script:** Executed against PostgreSQL database and media assets.
+* **[x] Confirm files are created in the expected location:** `database.sql`, `media.tar.gz`, and `manifest.json` placed under `backups/<timestamp>/` with `0700`/`0600` permissions.
+* **[x] Perform a restore test or documented dry run:** Default dry-run executed; live `--apply` successfully proved clean atomic swap.
+* **[x] Validate integrity and storage assumptions:** Tampered archive flagged with `MISMATCH`; retention policy pruned cleanly at 3 snapshots.
 
 ## Assumptions
 

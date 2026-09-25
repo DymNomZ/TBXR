@@ -1,8 +1,8 @@
 # ProgressionService — Domain Rule Documentation (Week 5 Foundation)
 
 Source of truth: `backend/apps/imaging/services.py` (`ProgressionService`).
-Tests: `backend/apps/imaging/test_progression.py` (44 tests).
-Status: deterministic rule engine. No persistence, no UI, no manual override (explicitly out of scope).
+Tests: `backend/apps/imaging/test_progression.py` (51 tests).
+Status: deterministic rule engine, now fully integrated — snapshots persist to `ProgressionStatus`, the case/patient progression history APIs and trend UI are live, and radiologist manual override (required clinical note + `ProgressionOverrideAuditLog`) is implemented. See §9 for the updated scope.
 
 ## 1. Purpose
 
@@ -164,22 +164,24 @@ delta/trend elements; use `reason` to render the no-baseline state.
 | Threshold matches documented rules | `GetThresholdTests` (9), `test_custom_threshold_changes_classification`, `test_threshold_override`, `test_threshold_zero_any_change_flips`, `test_threshold_one_always_stable` |
 
 Run: `python manage.py test apps.imaging.test_progression apps.imaging.tests apps.imaging.test_smoke apps.imaging.test_report apps.imaging.test_physician_dashboard -v 1`
-(103 tests green at time of writing: 44 new + 59 existing.)
+(51 progression tests as of 2026-09-25; the full backend suite totals ~206 tests.)
 
-## 9. Out of scope (not in this milestone slice)
+## 9. Scope update (post-Week-5)
 
-- Persistence of progression snapshots (`ProgressionLog` in SDD is future work).
-- Trend graph UI (`TrendChart`, `ProgressionPanel`).
-- Manual override behavior (`override_progression`, `ProgressionOverrideForm`).
-- Multi-disease classification, treatment tracking, PACS integration.
+The items originally listed as out of scope for the Week-5 foundation slice have since been built (under corrected names):
+
+- Persistence: `ProgressionStatus` snapshots (plus `ProgressionOverrideAuditLog` for overrides).
+- APIs: `GET /api/imaging/cases/<case_id>/progression/`, `GET /api/imaging/patients/<patient_id>/progression/`, `POST /api/imaging/cases/<case_id>/progression/override/`.
+- Trend UI and override controls: `frontend/src/components/imaging/LongitudinalPanel.jsx` (`ProgressionTrendChart`, `OverrideStatusModal`).
+
+Still out of scope: multi-disease classification, treatment tracking, PACS integration. This document remains the rule reference; the as-built behavior is specified in `documentation/refactored-SRS.md` (UC-3.3).
 
 ## 10. For backend developers
 
 - Call the service from views; keep views thin per coding standards.
 - Import is `from django.db.models import Q` (not `django.conf`) — fixed during test creation.
 - Never invent parallel status strings; import from `ProgressionService`.
-- If adding `progression_summary` API later, return the §6 dicts verbatim so
-  the frontend contract in §6 stays stable.
+- The progression history APIs now exist (`case_progression_history` / `patient_progression_history`) and return persisted §6-shaped snapshots — keep the §6 contract stable when extending them.
 
 ## 11. For frontend developers
 

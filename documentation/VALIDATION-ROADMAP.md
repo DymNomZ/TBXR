@@ -2,6 +2,8 @@
 
 This document outlines the non-technical roadmap for validating the TB-XR system in a real clinical environment. Its purpose is to give the team a shared understanding of **why** the hospital visit matters, **what** data we are collecting, and **when** each phase must happen relative to our semester timeline.
 
+> **Status (2026-09-25):** Phase 1 is complete — the 6-week hardening sprint finished 2026-09-21 and the gap checklist is closed (residual known limitations are tracked in `documentation/refactored-SRS.md` §7). Phase 2 (Partnership & Ethics Prep) is now the active phase.
+
 ---
 
 ## Why This Matters
@@ -38,7 +40,7 @@ These metrics collectively answer the thesis committee's core questions:
 
 | Phase | When | What | Key Deliverable |
 |-------|------|------|-----------------|
-| **Phase 1: MVP Hardening** | Now — End of Week 6 | Close all gap checklist items, security audit, feature freeze | Deployment-ready system |
+| **Phase 1: MVP Hardening** | Complete (2026-09-21) | Close all gap checklist items, security audit, feature freeze | Deployment-ready system ✅ |
 | **Phase 2: Partnership & Ethics Prep** | Weeks 7–10 | IRB approval, MOU with hospital, test protocol design, data governance plan | Formal hospital agreement + ethics clearance |
 | **Phase 3: Limited Pilot Deployment** | Weeks 11–14 | Deploy to 2–4 radiologists, 50–100 de-identified cases, structured observation | Raw data + preliminary analysis |
 | **Phase 4: Thesis Analysis & Defense** | Semester 2 | Analyze pilot data, document findings, iterate, defend | Defended thesis with empirical evidence |
@@ -77,5 +79,5 @@ These metrics collectively answer the thesis committee's core questions:
 ## Notes
 
 - The **heatmap feature** has been identified by our physician contact as a non-standard but high-value tool, particularly for junior radiologists who spend significant time on annotation. This should be a **featured element** in the pilot study protocol and a highlighted result in the thesis.
-- The appropriate time to approach the hospital for scheduling is **end of Week 6**, once Phase 1 is complete. Approaching earlier risks presenting an incomplete system and losing credibility with the clinical partner.
-- IRB submission should be initiated **no later than Week 7** due to typical 4–6 week review cycles.
+- The appropriate time to approach the hospital for scheduling is **end of Week 6**, once Phase 1 is complete. Approaching earlier risks presenting an incomplete system and losing credibility with the clinical partner. *(Week 6 completed 2026-09-21 — hospital scheduling can begin.)*
+- IRB submission should be initiated **no later than Week 7** due to typical 4–6 week review cycles. *(The Week 7 window is now open.)*

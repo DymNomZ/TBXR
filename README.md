@@ -6,6 +6,45 @@ Members: Borgonia, J.D. · Emia, S.N. · Enario, L.J.L. · Epan, R.S. · Tolenti
 
 ---
 
+## Team Roles
+
+### Tech Lead
+**Assigned to:** Dymes
+
+Owns the overall technical direction of the project. Works across all layers of the stack — backend, frontend, database, and integration — without being locked to any one area. Reviews and approves all PRs before they merge into `develop`. Makes architectural decisions (folder structure, naming conventions, how modules connect). Writes and maintains shared config: project setup, environment variables, root URL routing, database schema design.
+
+*Without this role, five people make five different structural decisions that don't fit together. The Tech Lead is the single source of truth for how the codebase is organized and how all the pieces connect.*
+
+### AI Engineer
+**Assigned to:** Seth
+
+Owns everything inside `ai/`. Responsible for dataset management, model architecture, training pipeline, evaluation metrics, and the final inference script that the rest of the backend calls. Produces the trained model weights and preprocessing spec that the backend consumes.
+
+*The CNN risk score is the core research contribution of the thesis. This role carries the academic weight behind the system's intelligence.*
+
+### Frontend Developer
+**Assigned to:** Dymes
+
+Owns everything inside `frontend/`. Responsible for all pages, components, and user-facing flows. Writes the Axios service calls that connect the UI to the backend API. Ensures the interface is intuitive for non-technical medical staff across all three user roles.
+
+*The System Usability Scale (SUS) is one of the project's defined validation metrics. The frontend is what gets evaluated in that test.*
+
+### Backend Developer
+**Assigned to:** Lance, Raimar
+
+Owns the Django app-level code inside `backend/`. Responsible for views, API endpoints, form validation, file I/O, and the image preprocessing pipeline. Works from the database schema defined by the Tech Lead and exposes the endpoints consumed by the frontend.
+
+*All data flowing through the system — uploads, patient records, annotations, AI results — passes through this role's code. This role is the connective tissue between the database, the AI layer, and the UI.*
+
+### DevOps Engineer
+**Assigned to:** Brent
+
+Owns the development environment, Git workflow, and quality assurance. Maintains `.gitignore`, `requirements.txt`, `.env.example`, and seed scripts. Writes and runs tests. Performs a "fresh machine" walkthrough before every demo to catch integration failures. In later semesters, owns the deployment configuration and the SUS evaluation setup.
+
+*This role exists to ensure the project is reproducible, testable, and presentable on any machine at any time — not just the one it was last developed on.*
+
+---
+
 ## Tech Stack
 
 | Layer | Technology |
@@ -78,8 +117,48 @@ feat(frontend): build static upload confirmation page #17
  
 > **Note:** The `#issue-number` at the end automatically links the commit to its GitHub issue. The commit will appear in the issue's timeline, making it easy to trace exactly which commits closed which issue.
 
-## Contract Freeze Notes
+## Getting Started
 
-- Week 1 API contract freeze: `documentation/W1-CONTRACT-FREEZE-2026-08-22.md`
-- Team coding standards: `documentation/CODING-STANDARDS.md`
-- Backup & restore runbook: `documentation/backup-restore.md`
+Setup instructions for the backend, frontend, AI environment, SUS testing database,
+and backup/restore live in [`documentation/SETUP.md`](documentation/SETUP.md).
+
+Quick summary:
+
+```bash
+# Backend (Django + DRF)
+cd backend
+python -m venv venv && venv\Scripts\activate   # or source venv/bin/activate
+pip install -r requirements.txt
+cp .env.example .env
+python manage.py migrate
+python manage.py runserver                    # http://localhost:8000
+
+# Frontend (React + Vite)
+cd frontend
+npm install
+npm run dev                                   # http://localhost:5173
+```
+
+---
+
+## Documentation
+
+All project documents live in the [`documentation/`](documentation) directory:
+
+| Document | File |
+|----------|------|
+| Software Proposal | [`documentation/Software Proposal.md`](documentation/Software%20Proposal.md) |
+| Software Requirements Specification | [`documentation/SRS.md`](documentation/SRS.md) · [`documentation/refactored-SRS.md`](documentation/refactored-SRS.md) |
+| Software Design Description | [`documentation/SDD.md`](documentation/SDD.md) |
+| Setup guide | [`documentation/SETUP.md`](documentation/SETUP.md) |
+| Team coding standards | [`documentation/CODING-STANDARDS.md`](documentation/CODING-STANDARDS.md) |
+| Week 1 API contract freeze | [`documentation/W1-CONTRACT-FREEZE-2026-08-22.md`](documentation/W1-CONTRACT-FREEZE-2026-08-22.md) |
+| Security & environment profile | [`documentation/SECURITY-ENV-PROFILE.md`](documentation/SECURITY-ENV-PROFILE.md) |
+| Backup & restore runbook | [`documentation/backup-restore.md`](documentation/backup-restore.md) |
+| Smoke test run guide | [`documentation/SMOKE_TEST_RUN_STEPS.md`](documentation/SMOKE_TEST_RUN_STEPS.md) |
+| 6-week sprint board | [`documentation/SIX-WEEK-SPRINT.md`](documentation/SIX-WEEK-SPRINT.md) |
+| Gap checklist (SRS/SDD vs code) | [`documentation/GAP-CHECKLIST-SRS-SDD-vs-code.md`](documentation/GAP-CHECKLIST-SRS-SDD-vs-code.md) |
+| Clinical validation & hospital partnership roadmap | [`documentation/VALIDATION-ROADMAP.md`](documentation/VALIDATION-ROADMAP.md) |
+| Progression service spec | [`documentation/progression-service.md`](documentation/progression-service.md) |
+
+Backend API endpoint reference: [`backend/ENDPOINTS.md`](backend/ENDPOINTS.md)

@@ -56,7 +56,7 @@ Required headers for session-authenticated POST requests:
 ## Patients
 ### GET /api/patients/
 - Purpose: List all patients.
-- Roles: RADIOLOGIC_TECH, RADIOLOGIST
+- Roles: RADIOLOGIC_TECH, RADIOLOGIST, PHYSICIAN
 - Response: 200 JSON list
 
 ### POST /api/patients/register/
@@ -88,7 +88,7 @@ Content-Type: application/json
 
 ### GET /api/patients/search/
 - Purpose: Search patients by name.
-- Roles: RADIOLOGIC_TECH, RADIOLOGIST
+- Roles: RADIOLOGIC_TECH, RADIOLOGIST, PHYSICIAN
 - Query params:
   - name (optional, searches first or last name)
 - Response: 200 JSON list
@@ -100,7 +100,7 @@ GET /api/patients/search/?name=smith
 
 ### GET /api/patients/<patient_id>/
 - Purpose: Retrieve patient detail.
-- Roles: RADIOLOGIC_TECH, RADIOLOGIST
+- Roles: RADIOLOGIC_TECH, RADIOLOGIST, PHYSICIAN
 - Response: 200 JSON
 
 ## Imaging
@@ -143,12 +143,12 @@ raw_image=@/path/to/file.png
 
 ### GET /api/imaging/patients/<patient_id>/xray/
 - Purpose: Get all uploaded xrays (transactions) of the patient.
-- Roles: RADIOLOGIC_TECH, RADIOLOGIST
+- Roles: RADIOLOGIC_TECH, RADIOLOGIST, PHYSICIAN
 - Response: JSON
 
 ### GET /api/imaging/patients/<patient_id>/history/
 - Purpose: Patient X-ray history ordered by upload timestamp (ascending), including AI result and annotations.
-- Roles: RADIOLOGIC_TECH, RADIOLOGIST
+- Roles: RADIOLOGIC_TECH, RADIOLOGIST, PHYSICIAN
 - Response: 200 JSON list
 
 ### GET /api/imaging/patients/<patient_id>/xray/upload/confirm/<transaction_id>/
@@ -196,8 +196,10 @@ Example response:
 - Purpose: Paginated list of X-rays uploaded by the current technologist.
 - Roles: RADIOLOGIC_TECH
 - Query params (optional):
+  - page
   - search (patient first/last name or transaction ID)
-  - status (PENDING|IN_REVIEW|AI_REVIEWED|COMPLETED)
+  - status (PENDING|IN_REVIEW|AI_REVIEWED|MANUAL_REVIEW|COMPLETED)
+  - risk_label (LOW|MODERATE|HIGH)
 - Response: 200 JSON (paginated)
 ```
 {
@@ -224,8 +226,10 @@ Example response:
 - Purpose: Radiologist queue of uploaded X-rays.
 - Roles: RADIOLOGIST
 - Query params (optional):
+  - page
   - search (patient first/last name or transaction ID)
-  - status (PENDING|IN_REVIEW|AI_REVIEWED|COMPLETED)
+  - status (PENDING|IN_REVIEW|AI_REVIEWED|MANUAL_REVIEW|COMPLETED)
+  - risk_label (LOW|MODERATE|HIGH)
 - Response: 200 JSON (paginated)
 
 ### GET /api/physician/dashboard
@@ -317,7 +321,8 @@ Example response:
 
 ### GET /api/imaging/xray/<transaction_id>/
 - Purpose: Returns the xray details with annotations
-- Roles: RADIOLOGIC_TECH, RADIOLOGIST
+- Roles: RADIOLOGIC_TECH, RADIOLOGIST, PHYSICIAN
+- Notes: If another radiologist holds the review lock, returns 409 with the active reviewer and lock timestamp — clients should render read-only mode.
 - Response: 200 JSON
 ```
 {
@@ -349,6 +354,101 @@ Example response:
   ]
 }
 ```
+
+## Notifications
+### GET /api/imaging/notifications/
+- Purpose: List the authenticated user's notifications, newest first.
+- Auth: Session (any role; returns only the caller's notifications)
+- Response: 200 JSON list
+```json
+{
+  "id": 91,
+  "recipient": 4,
+  "message": "Report ready for Juan Dela Cruz (case uuid).",
+  "read_status": false,
+  "created_at": "2026-09-06T07:22:00Z",
+  "updated_at": "2026-09-06T07:22:00Z"
+}
+```
+
+### POST /api/imaging/notifications/<notification_id>/mark-read/
+- Purpose: Mark a notification as read.
+- Auth: Session
+- Headers: Cookie + X-CSRFToken (session auth)
+- Response: 200 JSON (updated notification)
+
+## Reports
+### GET/POST/PATCH /api/imaging/xray/<transaction_id>/report/
+- Purpose: Structured diagnostic report — read, save draft, or finalize.
+- Roles: RADIOLOGIST
+- Headers (POST/PATCH): Content-Type: application/json, Cookie + X-CSRFToken (session auth)
+- Body (JSON):
+  - findings (string)
+  - impression (string)
+  - recommendation (string)
+  - severity (NORMAL|MILD|MODERATE|SEVERE|CRITICAL)
+  - status (DRAFT|SUBMITTED)
+- Notes:
+  - POST always creates the report with status=DRAFT (empty fields allowed while drafting).
+  - PATCH with status=SUBMITTED finalizes; all four fields are then required (400 with field errors otherwise).
+  - Finalized (SUBMITTED) reports are immutable.
+  - Final submission triggers a notification to the assigned physician.
+- Response: 200/201 JSON (report record)
+
+### GET /api/imaging/xray/<transaction_id>/report/generate/
+- Purpose: Generate the PDF report for a COMPLETED X-ray.
+- Roles: RADIOLOGIST
+- Response: 200 PDF (attachment; filename tbxr_report_<transaction_id>.pdf)
+- Side effects: Creates a minimal DRAFT report if none exists yet (see `documentation/refactored-SRS.md` limitation #16).
+- Errors: 400 if the X-ray is not COMPLETED; 403 for non-radiologists; 404 if the record is missing.
+
+## Progression
+### GET /api/imaging/cases/<case_id>/progression/
+- Purpose: Progression history for the case's patient (snapshots are refreshed first; paginated).
+- Auth: Session (any role)
+- Response: 200 JSON (paginated ProgressionStatus snapshots)
+
+### GET /api/imaging/patients/<patient_id>/progression/
+- Purpose: Progression history for a patient (snapshots are refreshed first; paginated).
+- Auth: Session (any role)
+- Response: 200 JSON (paginated)
+
+### POST /api/imaging/cases/<case_id>/progression/override/
+- Purpose: Radiologist manual override of the latest progression status.
+- Roles: RADIOLOGIST
+- Headers: Content-Type: application/json, Cookie + X-CSRFToken (session auth)
+- Body (JSON):
+  - status (no_prior|stable|decreased_risk|increased_risk)
+  - clinical_note (required, non-empty)
+- Side effects: Writes a ProgressionOverrideAuditLog entry.
+- Response: 201 JSON (updated snapshot + audit_log_id)
+- Errors: 400 if the clinical note is empty or the status is invalid; 404 if the case is missing.
+
+## Analytics
+### GET /api/analytics/summary/
+- Purpose: Aggregate metrics — case totals by status and AI risk label, report totals by severity and status.
+- Roles: RADIOLOGIST, PHYSICIAN
+- Query params (optional):
+  - date_from (YYYY-MM-DD, filters cases by upload date)
+  - date_to (YYYY-MM-DD)
+  - severity (NORMAL|MILD|MODERATE|SEVERE|CRITICAL, filters reports)
+- Response: 200 JSON
+- Errors: 400 for invalid dates/severity or date_from > date_to.
+
+### GET /api/imaging/analytics/summary/
+- Imaging-scoped alias of the analytics summary endpoint (same roles/params).
+
+### POST /api/analytics/export/
+- Purpose: Export the analytics summary as CSV or PDF.
+- Roles: RADIOLOGIST, PHYSICIAN
+- Headers: Content-Type: application/json, Cookie + X-CSRFToken (session auth)
+- Body (JSON):
+  - format (csv|pdf)
+  - filters (optional: date_from, date_to, severity)
+- Response: 200 file download (text/csv or application/pdf)
+
+### POST /api/imaging/analytics/export/
+- Imaging-scoped alias of the analytics export endpoint (same roles/body).
 
 ## API Docs
 ### GET /api/schema/
