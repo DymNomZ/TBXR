@@ -79,14 +79,17 @@ if not SECRET_KEY:
 
 REVIEW_LOCK_TIMEOUT_MINUTES = int(os.environ.get("REVIEW_LOCK_TIMEOUT_MINUTES", "60"))
 
-ALLOWED_HOSTS = _env_list(
-    "ALLOWED_HOSTS",
-    default=["localhost", "127.0.0.1", "testserver"],
-)
-CSRF_TRUSTED_ORIGINS = _env_list(
-    "CSRF_TRUSTED_ORIGINS",
-    default=["http://localhost:5173"],
-)
+ALLOWED_HOSTS = [
+    "tbxr.dymierborgonia.com",
+    "tbxrdev.dymierborgonia.com",
+    "127.0.0.1",
+    "localhost",
+]
+
+CSRF_TRUSTED_ORIGINS = [
+    "https://tbxr.dymierborgonia.com",
+    "https://tbxrdev.dymierborgonia.com",
+]
 
 if IS_PRODUCTION:
     if not ALLOWED_HOSTS:
@@ -112,7 +115,7 @@ CSRF_COOKIE_SECURE = _env_bool("CSRF_COOKIE_SECURE", default=not DEBUG)
 SESSION_COOKIE_SAMESITE = os.environ.get("SESSION_COOKIE_SAMESITE", "Lax")
 CSRF_COOKIE_SAMESITE = os.environ.get("CSRF_COOKIE_SAMESITE", "Lax")
 SECURE_SSL_REDIRECT = _env_bool("SECURE_SSL_REDIRECT", default=not DEBUG)
-SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https") if _env_bool("USE_X_FORWARDED_PROTO", default=False) else None
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 SECURE_CONTENT_TYPE_NOSNIFF = True
 SECURE_REFERRER_POLICY = os.environ.get("SECURE_REFERRER_POLICY", "strict-origin-when-cross-origin")
 X_FRAME_OPTIONS = os.environ.get("X_FRAME_OPTIONS", "DENY")
