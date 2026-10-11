@@ -79,17 +79,25 @@ if not SECRET_KEY:
 
 REVIEW_LOCK_TIMEOUT_MINUTES = int(os.environ.get("REVIEW_LOCK_TIMEOUT_MINUTES", "60"))
 
-ALLOWED_HOSTS = [
-    "tbxr.dymierborgonia.com",
-    "tbxrdev.dymierborgonia.com",
-    "127.0.0.1",
-    "localhost",
-]
+DEFAULT_ALLOWED_HOSTS = (
+    ["127.0.0.1", "localhost", "testserver"]
+    if not IS_PRODUCTION
+    else ["tbxr.dymierborgonia.com", "tbxrdev.dymierborgonia.com"]
+)
+DEFAULT_CSRF_TRUSTED_ORIGINS = (
+    ["http://127.0.0.1:5173", "http://localhost:5173"]
+    if not IS_PRODUCTION
+    else [
+        "https://tbxr.dymierborgonia.com",
+        "https://tbxrdev.dymierborgonia.com",
+    ]
+)
 
-CSRF_TRUSTED_ORIGINS = [
-    "https://tbxr.dymierborgonia.com",
-    "https://tbxrdev.dymierborgonia.com",
-]
+ALLOWED_HOSTS = _env_list("ALLOWED_HOSTS", default=DEFAULT_ALLOWED_HOSTS)
+CSRF_TRUSTED_ORIGINS = _env_list(
+    "CSRF_TRUSTED_ORIGINS",
+    default=DEFAULT_CSRF_TRUSTED_ORIGINS,
+)
 
 if IS_PRODUCTION:
     if not ALLOWED_HOSTS:
