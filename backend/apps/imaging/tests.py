@@ -53,6 +53,11 @@ class ImagingAccessTests(TestCase):
             password="password123",
             role=UserRole.RADIOLOGIST,
         )
+        cls.rad_two = user_model.objects.create_user(
+            username="rad-two",
+            password="password123",
+            role=UserRole.RADIOLOGIST,
+        )
 
         cls.patient_one = Patient.objects.create(
             first_name="Juan",
@@ -353,6 +358,47 @@ class ImagingAccessTests(TestCase):
             )
             self.assertEqual(response.status_code, 403)
 
+        self.assertEqual(
+            Annotation.objects.filter(xray_record=self.tech_one_record).count(),
+            0,
+        )
+
+    def test_annotation_submission_rejects_empty_boxes(self):
+        self.client.force_login(self.rad)
+
+        response = self.client.post(
+            reverse(
+                "imaging:annotate_xray",
+                kwargs={"transaction_id": str(self.tech_one_record.transaction_id)},
+            ),
+            data=json.dumps({"bounding_boxes": [], "notes": "No findings"}),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("bounding_boxes", response.json().get("errors", {}))
+        self.assertEqual(
+            Annotation.objects.filter(xray_record=self.tech_one_record).count(),
+            0,
+        )
+
+    def test_annotation_submission_respects_active_review_lock_owner(self):
+        self.tech_one_record.active_reviewer = self.rad
+        self.tech_one_record.lock_timestamp = timezone.now()
+        self.tech_one_record.save(update_fields=["active_reviewer", "lock_timestamp"])
+
+        self.client.force_login(self.rad_two)
+        response = self.client.post(
+            reverse(
+                "imaging:annotate_xray",
+                kwargs={"transaction_id": str(self.tech_one_record.transaction_id)},
+            ),
+            data=json.dumps(self._annotation_payload()),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 409)
+        self.assertIn("detail", response.json())
         self.assertEqual(
             Annotation.objects.filter(xray_record=self.tech_one_record).count(),
             0,
