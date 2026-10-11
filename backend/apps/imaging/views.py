@@ -1,6 +1,7 @@
 import base64
 import tempfile
 import subprocess
+import math
 from django.conf import settings
 from datetime import date
 from django.contrib.auth.decorators import login_required
@@ -548,6 +549,35 @@ def analyse_xray(request, transaction_id):
 def annotate_xray(request, transaction_id):
     xray_record = get_object_or_404(XrayRecord, transaction_id=transaction_id)
 
+    if (
+        xray_record.active_reviewer_id
+        and xray_record.active_reviewer_id != request.user.id
+        and not xray_record.lock_has_expired()
+    ):
+        return Response(
+            {
+                "detail": "This case is currently locked by another radiologist.",
+                "active_reviewer": xray_record.active_reviewer.username,
+                "lock_timestamp": xray_record.lock_timestamp.isoformat() if xray_record.lock_timestamp else None,
+            },
+            status=status.HTTP_409_CONFLICT,
+        )
+
+    if xray_record.active_reviewer_id != request.user.id:
+        if not xray_record.acquire_lock(request.user):
+            return Response(
+                {"detail": "Unable to acquire review lock for this case."},
+                status=status.HTTP_409_CONFLICT,
+            )
+    elif xray_record.lock_has_expired():
+        xray_record.acquire_lock(request.user)
+
+    if xray_record.active_reviewer_id != request.user.id:
+        return Response(
+            {"detail": "Only the active reviewer can submit annotations for this case."},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
     bounding_boxes = request.data.get("bounding_boxes")
     notes = request.data.get("notes", "")
 
@@ -572,12 +602,107 @@ def annotate_xray(request, transaction_id):
             status=status.HTTP_400_BAD_REQUEST,
         )
 
+    if not bounding_boxes:
+        return Response(
+            {"errors": {"bounding_boxes": "At least one annotation is required."}},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
     if notes is None:
         notes = ""
 
     if not isinstance(notes, str):
         return Response(
             {"errors": {"notes": "Must be a string."}},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    allowed_keys = {"x", "y", "width", "height", "label", "shape", "points"}
+    normalized_boxes = []
+    box_errors = {}
+
+    def _is_valid_number(value):
+        return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
+
+    for index, box in enumerate(bounding_boxes):
+        path = f"bounding_boxes[{index}]"
+        current_errors = []
+
+        if not isinstance(box, dict):
+            box_errors[path] = ["Each annotation must be an object."]
+            continue
+
+        unexpected_keys = sorted(set(box.keys()) - allowed_keys)
+        if unexpected_keys:
+            current_errors.append(f"Unexpected keys: {', '.join(unexpected_keys)}")
+
+        shape = box.get("shape", "rectangle")
+        if shape not in {"rectangle", "circle", "freehand"}:
+            current_errors.append("shape must be one of: rectangle, circle, freehand.")
+
+        for field in ("x", "y", "width", "height"):
+            value = box.get(field)
+            if not _is_valid_number(value):
+                current_errors.append(f"{field} must be a finite number.")
+
+        if _is_valid_number(box.get("width")) and box["width"] <= 0:
+            current_errors.append("width must be greater than 0.")
+        if _is_valid_number(box.get("height")) and box["height"] <= 0:
+            current_errors.append("height must be greater than 0.")
+
+        label = box.get("label", "")
+        if label is None:
+            label = ""
+        if not isinstance(label, str):
+            current_errors.append("label must be a string.")
+
+        points = box.get("points")
+        normalized_points = None
+
+        if shape == "freehand":
+            if not isinstance(points, list) or len(points) < 2:
+                current_errors.append("freehand annotations require at least two points.")
+            else:
+                normalized_points = []
+                for point_index, point in enumerate(points):
+                    if not isinstance(point, dict):
+                        current_errors.append(f"points[{point_index}] must be an object with x and y.")
+                        continue
+                    point_keys = sorted(set(point.keys()) - {"x", "y"})
+                    if point_keys:
+                        current_errors.append(
+                            f"points[{point_index}] has unexpected keys: {', '.join(point_keys)}"
+                        )
+                    px = point.get("x")
+                    py = point.get("y")
+                    if not _is_valid_number(px) or not _is_valid_number(py):
+                        current_errors.append(f"points[{point_index}] requires finite numeric x and y.")
+                        continue
+                    normalized_points.append({"x": float(px), "y": float(py)})
+        elif points is not None:
+            current_errors.append("points is only allowed when shape is freehand.")
+
+        if current_errors:
+            box_errors[path] = current_errors
+            continue
+
+        normalized_box = {
+            "x": float(box["x"]),
+            "y": float(box["y"]),
+            "width": float(box["width"]),
+            "height": float(box["height"]),
+            "label": label,
+            "shape": shape,
+        }
+
+        if shape == "freehand":
+            normalized_box["points"] = normalized_points
+
+        normalized_boxes.append(normalized_box)
+
+    if box_errors:
+        return Response(
+            {"errors": {"bounding_boxes": box_errors}},
             status=status.HTTP_400_BAD_REQUEST,
         )
 
@@ -591,7 +716,7 @@ def annotate_xray(request, transaction_id):
     )
 
     if annotation:
-        annotation.bounding_boxes = bounding_boxes
+        annotation.bounding_boxes = normalized_boxes
         annotation.notes = notes
         annotation.save(update_fields=["bounding_boxes", "notes"])
         created = False
@@ -599,7 +724,7 @@ def annotate_xray(request, transaction_id):
         annotation = Annotation.objects.create(
             xray_record=xray_record,
             radiologist=request.user,
-            bounding_boxes=bounding_boxes,
+            bounding_boxes=normalized_boxes,
             notes=notes,
         )
         created = True

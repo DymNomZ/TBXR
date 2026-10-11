@@ -15,7 +15,7 @@ function getCsrfToken() {
 
 // ─── Box list item ────────────────────────────────────────────────────────────
 
-function BoxItem({ box, index, onDelete }) {
+function BoxItem({ box, onDelete, canDelete = true }) {
   return (
     <div className="flex items-start gap-3 p-3 rounded-xl bg-[var(--surface-soft)] border border-[var(--border)]">
       <div className="w-6 h-6 rounded-lg bg-[var(--accent-soft)] flex items-center justify-center shrink-0 mt-0.5">
@@ -32,7 +32,8 @@ function BoxItem({ box, index, onDelete }) {
       </div>
 
       <button
-        onClick={() => onDelete(index)}
+        onClick={() => onDelete(box.id)}
+        disabled={!canDelete}
         className="w-7 h-7 flex items-center justify-center rounded-lg text-[var(--text-muted)] hover:text-[var(--danger)] hover:bg-red-50 transition-colors shrink-0"
       >
         <Trash2 size={13} />
@@ -70,6 +71,16 @@ export default function AnnotationPanel({
     setLoading(true)
     setError(null)
 
+    const sanitizedBoxes = boxes.map((box) => ({
+      x: box.x,
+      y: box.y,
+      width: box.width,
+      height: box.height,
+      label: box.label ?? '',
+      ...(box.shape ? { shape: box.shape } : {}),
+      ...(Array.isArray(box.points) ? { points: box.points } : {}),
+    }))
+
     try {
       const res = await fetch(`/api/imaging/xray/${transactionId}/annotate/`, {
         method: 'POST',
@@ -79,7 +90,7 @@ export default function AnnotationPanel({
           'X-CSRFToken': getCsrfToken(),
         },
         body: JSON.stringify({
-          bounding_boxes: boxes,
+          bounding_boxes: sanitizedBoxes,
           notes: notes.trim(),
         }),
       })
@@ -100,7 +111,7 @@ export default function AnnotationPanel({
     }
   }
 
-  const displayBoxes = isCompleted
+  const displayBoxes = (isCompleted || readOnly)
     ? (existingAnnotation?.bounding_boxes ?? [])
     : boxes
 
@@ -124,10 +135,10 @@ export default function AnnotationPanel({
           {displayBoxes.length > 0 ? (
             displayBoxes.map((box, i) => (
               <BoxItem
-                key={i}
+                key={box.id ?? i}
                 box={box}
-                index={i}
-                onDelete={isCompleted ? () => {} : onDeleteBox}  // no-op when completed
+                canDelete={!(isCompleted || readOnly)}
+                onDelete={isCompleted || readOnly ? () => {} : onDeleteBox}
               />
             ))
           ) : (

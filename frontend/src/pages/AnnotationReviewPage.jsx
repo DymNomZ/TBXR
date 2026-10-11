@@ -52,8 +52,8 @@ export default function AnnotationReviewPage() {
   const patientName = xray ? `${xray.patient.first_name} ${xray.patient.last_name}` : null
   const readOnly = Boolean(lockInfo)
 
-  const handleDeleteBox = (index) => {
-    setBoxes((prev) => prev.filter((_, i) => i !== index))
+  const handleDeleteBox = (id) => {
+    setBoxes((prev) => prev.filter((box) => box.id !== id))
   }
 
   return (
@@ -135,6 +135,7 @@ export default function AnnotationReviewPage() {
                   : <AnnotationCanvas
                       scale={transform.scale}
                       translate={transform.translate}
+                      boxes={boxes}
                       onBoxesChange={setBoxes}
                       disabled={readOnly}
                     />
