@@ -87,15 +87,16 @@ Content-Type: application/json
 ```
 
 ### GET /api/patients/search/
-- Purpose: Search patients by name.
+- Purpose: Search patients by name or patient ID.
 - Roles: RADIOLOGIC_TECH, RADIOLOGIST, PHYSICIAN
 - Query params:
-  - name (optional, searches first or last name)
+  - name (optional, searches first or last name; a purely numeric value also matches the patient ID)
 - Response: 200 JSON list
 
-Example:
+Examples:
 ```
 GET /api/patients/search/?name=smith
+GET /api/patients/search/?name=10
 ```
 
 ### GET /api/patients/<patient_id>/
