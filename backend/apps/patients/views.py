@@ -55,7 +55,7 @@ def patient_detail(request, patient_id):
     parameters=[
         OpenApiParameter(
             name="name",
-            description="Search by first name or last name",
+            description="Search by first name, last name, or patient ID",
             required=False,
             type=str
         )
@@ -73,7 +73,7 @@ def search_patients(request):
         # A purely numeric query also matches the patient ID, e.g. "10". The length
         # guard keeps oversized values from overflowing the integer column.
         filters = Q(first_name__icontains=query) | Q(last_name__icontains=query)
-        if query.isdigit() and len(query) <= 9:
+        if query.isascii() and query.isdigit() and len(query) <= 9:
             filters |= Q(patient_id=int(query))
         patients = Patient.objects.filter(filters)
     else:
