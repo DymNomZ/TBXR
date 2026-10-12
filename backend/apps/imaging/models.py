@@ -31,6 +31,9 @@ class XrayRecord(models.Model):
         related_name='active_review_locks',
     )
     lock_timestamp = models.DateTimeField(null=True, blank=True)
+    # Workflow status captured when a radiologist opens the case, so the lock can
+    # be released (or expire) without leaving the record stuck on IN_REVIEW.
+    status_before_review = models.CharField(max_length=20, null=True, blank=True)
 
     @property
     def review_lock_timeout_minutes(self):
@@ -61,11 +64,68 @@ class XrayRecord(models.Model):
         return False
 
     def release_lock(self):
-        if self.active_reviewer is None and self.lock_timestamp is None:
-            return
-        self.active_reviewer = None
-        self.lock_timestamp = None
-        self.save(update_fields=['active_reviewer', 'lock_timestamp'])
+        """Clear the review lock and restore the pre-review workflow status.
+
+        Idempotent: safe to call when no lock is held. Only the lock holder (or
+        callers acting on their behalf, e.g. expiry cleanup) should invoke this.
+        """
+        update_fields = []
+
+        if self.active_reviewer_id is not None:
+            self.active_reviewer = None
+            update_fields.append('active_reviewer')
+        if self.lock_timestamp is not None:
+            self.lock_timestamp = None
+            update_fields.append('lock_timestamp')
+        if self.status == 'IN_REVIEW':
+            self.status = self.status_before_review or 'PENDING'
+            update_fields.append('status')
+        if self.status_before_review is not None:
+            self.status_before_review = None
+            update_fields.append('status_before_review')
+
+        if update_fields:
+            self.save(update_fields=update_fields)
+
+    def start_review(self, reviewer, now=None):
+        """Acquire the lock and move the record into IN_REVIEW.
+
+        Remembers the prior workflow status so release/expiry can restore it.
+        Returns True when the caller holds the lock after this call.
+        """
+        if not self.acquire_lock(reviewer, now):
+            return False
+
+        if self.status in {'PENDING', 'AI_REVIEWED', 'MANUAL_REVIEW'}:
+            self.status_before_review = self.status
+            self.status = 'IN_REVIEW'
+            self.save(update_fields=['status', 'status_before_review'])
+
+        return True
+
+    def clear_if_expired(self, now=None):
+        """Release a stale lock in place. Returns True when a lock was cleared."""
+        if self.active_reviewer_id and self.lock_has_expired(now):
+            self.release_lock()
+            return True
+        return False
+
+    @classmethod
+    def clear_expired_locks(cls, now=None):
+        """Release every stale review lock and restore their workflow status.
+
+        Called on queue reads so abandoned cases do not sit on IN_REVIEW until
+        someone happens to open them.
+        """
+        now = now or timezone.now()
+        timeout = now - timedelta(
+            minutes=getattr(settings, 'REVIEW_LOCK_TIMEOUT_MINUTES', 60)
+        )
+        stale = cls.objects.filter(active_reviewer__isnull=False).filter(
+            models.Q(lock_timestamp__isnull=True) | models.Q(lock_timestamp__lte=timeout)
+        )
+        for record in stale:
+            record.clear_if_expired(now)
 
     def __str__(self):
         return f"X-ray {self.transaction_id} for {self.patient}"

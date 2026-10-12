@@ -9,6 +9,13 @@ import HeatmapViewer from '../components/imaging/HeatmapViewer'
 import AIRiskBadge from '../components/ui/AIRiskBadge'
 import StaticAnnotationOverlay from '../components/imaging/StaticAnnotationOverlay'
 
+function getCsrfToken() {
+  return document.cookie
+    .split('; ')
+    .find((row) => row.startsWith('csrftoken='))
+    ?.split('=')[1] ?? ''
+}
+
 export default function AnnotationReviewPage() {
   const { transactionId } = useParams()
   const navigate = useNavigate()
@@ -18,6 +25,7 @@ export default function AnnotationReviewPage() {
   const [xray, setXray] = useState(null)
   const [loading, setLoading] = useState(true)
   const [lockInfo, setLockInfo] = useState(null)
+  const [lockAcquired, setLockAcquired] = useState(false)
 
   useEffect(() => {
     if (!transactionId) return
@@ -25,6 +33,7 @@ export default function AnnotationReviewPage() {
     const loadXray = async () => {
       setLoading(true)
       setLockInfo(null)
+      setLockAcquired(false)
 
       try {
         const response = await fetch(`/api/imaging/xray/${transactionId}/`, { credentials: 'include' })
@@ -36,6 +45,8 @@ export default function AnnotationReviewPage() {
             lock_timestamp: data.lock_timestamp,
             detail: data.detail,
           })
+        } else if (response.ok) {
+          setLockAcquired(true)
         }
 
         setXray(data)
@@ -48,6 +59,38 @@ export default function AnnotationReviewPage() {
 
     loadXray()
   }, [transactionId])
+
+  // While this radiologist holds the lock: renew it on a heartbeat and release it
+  // on the way out (in-app navigation, tab close/reload) so cases are not left blocked.
+  useEffect(() => {
+    if (!transactionId || !lockAcquired) return
+
+    const release = (keepalive = false) =>
+      fetch(`/api/imaging/xray/${transactionId}/release/`, {
+        method: 'POST',
+        credentials: 'include',
+        keepalive,
+        headers: { 'X-CSRFToken': getCsrfToken() },
+      }).catch(() => {})
+
+    const onPageHide = () => release(true)
+    window.addEventListener('pagehide', onPageHide)
+
+    const interval = setInterval(() => {
+      if (document.visibilityState !== 'visible') return
+      fetch(`/api/imaging/xray/${transactionId}/lock/`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'X-CSRFToken': getCsrfToken() },
+      }).catch(() => {})
+    }, 120000)
+
+    return () => {
+      window.removeEventListener('pagehide', onPageHide)
+      clearInterval(interval)
+      release()
+    }
+  }, [transactionId, lockAcquired])
 
   const patientName = xray ? `${xray.patient.first_name} ${xray.patient.last_name}` : null
   const readOnly = Boolean(lockInfo)
