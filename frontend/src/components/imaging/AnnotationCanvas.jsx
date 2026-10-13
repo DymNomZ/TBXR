@@ -50,13 +50,13 @@ function LabelPopup({ position, value, onChange, onConfirm, onCancel, inputRef }
 export default function AnnotationCanvas({
   scale = 1,
   translate = { x: 0, y: 0 },
+  boxes = [],
   onBoxesChange,
   disabled = false,
 }) {
   const selfRef = useRef(null)
   const labelRef = useRef(null)
 
-  const [boxes, setBoxes] = useState([])
   const [drawing, setDrawing] = useState(null)
   const [pendingBox, setPending] = useState(null)
   const [draft, setDraft] = useState('')
@@ -68,40 +68,87 @@ export default function AnnotationCanvas({
     setUndoStack((prev) => [...prev.slice(-19), snapshot])
   }, [])
 
-  const emitBoxes = useCallback((nextBoxes) => {
-    const normalized = nextBoxes.map(({ id, ...box }) => {
-      const normalizedBox = {
-        x: box.x / (selfRef.current?.offsetWidth || 1),
-        y: box.y / (selfRef.current?.offsetHeight || 1),
-        width: box.width / (selfRef.current?.offsetWidth || 1),
-        height: box.height / (selfRef.current?.offsetHeight || 1),
-        label: box.label,
-      }
+  const cloneBoxes = useCallback((source) => (
+    source.map((box) => ({
+      ...box,
+      points: Array.isArray(box.points) ? box.points.map((pt) => ({ ...pt })) : undefined,
+    }))
+  ), [])
 
-      if (box.shape === 'circle') normalizedBox.shape = 'circle'
-      if (box.shape === 'freehand' && box.points) {
-        normalizedBox.shape = 'freehand'
-        normalizedBox.points = box.points.map((pt) => ({
-          x: pt.x / (selfRef.current?.offsetWidth || 1),
-          y: pt.y / (selfRef.current?.offsetHeight || 1),
-        }))
-      }
+  const getCanvasSize = useCallback(() => ({
+    w: selfRef.current?.offsetWidth || 1,
+    h: selfRef.current?.offsetHeight || 1,
+  }), [])
 
-      return normalizedBox
-    })
+  const isNormalizedCoord = useCallback((value) => (
+    Number.isFinite(value) && value >= 0 && value <= 1
+  ), [])
 
-    onBoxesChange?.(normalized)
-  }, [onBoxesChange])
+  const normalizeBox = useCallback((box, size) => {
+    const safeWidth = size.w || 1
+    const safeHeight = size.h || 1
+    const normalized = {
+      id: box.id,
+      x: box.x / safeWidth,
+      y: box.y / safeHeight,
+      width: box.width / safeWidth,
+      height: box.height / safeHeight,
+      label: box.label ?? '',
+    }
+
+    if (box.shape === 'circle') normalized.shape = 'circle'
+    if (box.shape === 'freehand' && Array.isArray(box.points)) {
+      normalized.shape = 'freehand'
+      normalized.points = box.points.map((pt) => ({
+        x: pt.x / safeWidth,
+        y: pt.y / safeHeight,
+      }))
+    }
+
+    return normalized
+  }, [])
+
+  const denormalizeBox = useCallback((box, size, index) => {
+    const safeWidth = size.w || 1
+    const safeHeight = size.h || 1
+    const useNormalizedRect = (
+      isNormalizedCoord(box.x) &&
+      isNormalizedCoord(box.y) &&
+      isNormalizedCoord(box.width) &&
+      isNormalizedCoord(box.height)
+    )
+
+    const shape = box.shape === 'circle' || box.shape === 'freehand' ? box.shape : 'rectangle'
+    const points = Array.isArray(box.points)
+      ? box.points.map((pt) => {
+          const useNormalizedPoint = isNormalizedCoord(pt.x) && isNormalizedCoord(pt.y)
+          return {
+            x: useNormalizedPoint ? pt.x * safeWidth : pt.x,
+            y: useNormalizedPoint ? pt.y * safeHeight : pt.y,
+          }
+        })
+      : undefined
+
+    return {
+      id: box.id ?? `box-${index}`,
+      x: useNormalizedRect ? box.x * safeWidth : box.x,
+      y: useNormalizedRect ? box.y * safeHeight : box.y,
+      width: useNormalizedRect ? box.width * safeWidth : box.width,
+      height: useNormalizedRect ? box.height * safeHeight : box.height,
+      shape,
+      label: box.label ?? '',
+      points,
+    }
+  }, [isNormalizedCoord])
 
   const commitBoxes = useCallback((updater) => {
-    setBoxes((prev) => {
-      const snapshot = prev.map((box) => ({ ...box, points: box.points ? box.points.map((pt) => ({ ...pt })) : undefined }))
-      const next = typeof updater === 'function' ? updater(prev) : updater
-      pushHistory(snapshot)
-      emitBoxes(next)
-      return next
-    })
-  }, [emitBoxes, pushHistory])
+    if (!onBoxesChange) return
+
+    const snapshot = cloneBoxes(boxes)
+    const next = typeof updater === 'function' ? updater(boxes) : updater
+    pushHistory(snapshot)
+    onBoxesChange(next)
+  }, [boxes, cloneBoxes, onBoxesChange, pushHistory])
 
   const toElementSpace = useCallback((clientX, clientY) => {
     const el = selfRef.current
@@ -225,12 +272,20 @@ export default function AnnotationCanvas({
   const confirmLabel = useCallback(() => {
     if (!pendingBox) return
 
-    const confirmed = { ...pendingBox, label: draft.trim() }
+    const canvasSize = getCanvasSize()
+    const confirmed = normalizeBox(
+      {
+        ...pendingBox,
+        id: pendingBox.id ?? crypto.randomUUID(),
+        label: draft.trim(),
+      },
+      canvasSize,
+    )
     commitBoxes((prev) => [...prev, confirmed])
     setPending(null)
     setDraft('')
     setSelectedId(confirmed.id)
-  }, [commitBoxes, draft, pendingBox])
+  }, [commitBoxes, draft, getCanvasSize, normalizeBox, pendingBox])
 
   const deleteBox = useCallback((id) => {
     commitBoxes((prev) => prev.filter((box) => box.id !== id))
@@ -243,13 +298,12 @@ export default function AnnotationCanvas({
   }, [deleteBox, selectedId])
 
   const undoLastAction = useCallback(() => {
-    if (!undoStack.length) return
+    if (!undoStack.length || !onBoxesChange) return
     const previous = undoStack[undoStack.length - 1]
     setUndoStack((prev) => prev.slice(0, -1))
-    setBoxes(previous)
-    emitBoxes(previous)
+    onBoxesChange(previous)
     setSelectedId(null)
-  }, [emitBoxes, undoStack])
+  }, [onBoxesChange, undoStack])
 
   const cancelPending = useCallback(() => {
     setPending(null)
@@ -276,6 +330,9 @@ export default function AnnotationCanvas({
 
   const sw = 2 / scale
   const dash = `${6 / scale} ${3 / scale}`
+  const drawableBoxes = boxes
+    .map((box, index) => denormalizeBox(box, getCanvasSize(), index))
+    .filter((box) => Number.isFinite(box.x) && Number.isFinite(box.y) && Number.isFinite(box.width) && Number.isFinite(box.height))
 
   const transformStyle = {
     transform: `translate(${translate.x}px, ${translate.y}px) scale(${scale})`,
@@ -435,13 +492,13 @@ export default function AnnotationCanvas({
       </div>
 
       <svg className="absolute inset-0 w-full h-full overflow-visible" style={transformStyle}>
-        {boxes.map((box) => renderShape(box))}
+        {drawableBoxes.map((box) => renderShape(box))}
 
         {pendingBox && renderPendingShape(pendingBox)}
         {drawing && renderDrawingPreview()}
       </svg>
 
-      {boxes.map((box) => {
+      {drawableBoxes.map((box) => {
         const pos = toScreenSpace(box.x + (box.width || 0) / 2, box.y)
         return (
           <button

@@ -91,6 +91,50 @@ class PatientViewsTests(TestCase):
         )
         self.assertEqual(response_rad.status_code, 403)
 
+    def test_search_patients_by_name(self):
+        """Search matches first or last name, case-insensitively."""
+        self.client.force_login(self.tech)
+        Patient.objects.create(
+            first_name='Alice', last_name='Smith',
+            date_of_birth='1990-01-01', sex='F', contact_number='1',
+        )
+        Patient.objects.create(
+            first_name='Bob', last_name='Jones',
+            date_of_birth='1990-01-01', sex='M', contact_number='2',
+        )
+
+        response = self.client.get(reverse('patients:search'), {'name': 'smi'})
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(len(data), 1)
+        self.assertEqual(data[0]['last_name'], 'Smith')
+
+    def test_search_patients_by_patient_id(self):
+        """A numeric query also matches the patient ID."""
+        self.client.force_login(self.tech)
+        patient = Patient.objects.create(
+            first_name='Ida', last_name='Number',
+            date_of_birth='1990-01-01', sex='F', contact_number='3',
+        )
+
+        response = self.client.get(
+            reverse('patients:search'), {'name': str(patient.patient_id)}
+        )
+
+        self.assertEqual(response.status_code, 200)
+        ids = [row['patient_id'] for row in response.json()]
+        self.assertIn(patient.patient_id, ids)
+
+    def test_search_patients_no_match_returns_empty_list(self):
+        """A non-existent name returns HTTP 200 with an empty array."""
+        self.client.force_login(self.tech)
+
+        response = self.client.get(reverse('patients:search'), {'name': 'NoSuchNameXYZ'})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), [])
+
     def test_physician_can_view_patient_detail_for_read_only_follow_up(self):
         """Physicians should be able to open patient records from finalized-case follow-up."""
         physician = self.user_model.objects.create_user(
