@@ -48,6 +48,24 @@ const OVERRIDE_RESPONSE = {
   audit_log_id: 11,
 }
 
+const OVERRIDE_HISTORY_PAYLOAD = [
+  {
+    id: 11,
+    transaction_id: 'tx-002',
+    xray_timestamp: '2024-02-01T00:00:00Z',
+    previous_status: 'increased_risk',
+    new_status: 'decreased_risk',
+    clinical_note: 'Clinical override based on review findings.',
+    created_at: '2024-02-02T00:00:00Z',
+    radiologist: {
+      id: 7,
+      username: 'rad1',
+      first_name: 'Rad',
+      last_name: 'One',
+    },
+  },
+]
+
 describe('LongitudinalPanel override UI', () => {
   beforeEach(() => {
     vi.restoreAllMocks()
@@ -55,9 +73,15 @@ describe('LongitudinalPanel override UI', () => {
   })
 
   it('opens an override modal, validates note, and submits the selected status', async () => {
+    let overrideHistoryCalls = 0
     const fetchMock = vi.fn((url) => {
       if (url.includes('/history/')) {
         return Promise.resolve({ ok: true, json: () => Promise.resolve(HISTORY_PAYLOAD) })
+      }
+      if (url.includes('/progression/overrides/')) {
+        overrideHistoryCalls += 1
+        const payload = overrideHistoryCalls > 1 ? OVERRIDE_HISTORY_PAYLOAD : []
+        return Promise.resolve({ ok: true, json: () => Promise.resolve(payload) })
       }
       if (url.includes('/progression/')) {
         if (url.includes('/override/')) {
@@ -101,5 +125,6 @@ describe('LongitudinalPanel override UI', () => {
 
     expect(await screen.findByText('Clinical override based on review findings.')).toBeInTheDocument()
     expect(screen.getByText('Manual override')).toBeInTheDocument()
+    expect(screen.getByText(/Case: tx-002/i)).toBeInTheDocument()
   })
 })

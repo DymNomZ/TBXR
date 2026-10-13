@@ -402,21 +402,45 @@ class ProgressionService:
         previous_result = cls.get_previous_result(current_record)
         previous_record = previous_result.xray_record if previous_result else None
 
-        snapshot, _ = ProgressionStatus.objects.update_or_create(
-            xray_record=current_record,
-            defaults={
-                "patient": current_record.patient,
-                "previous_record": previous_record,
+        existing_snapshot = ProgressionStatus.objects.filter(
+            xray_record=current_record
+        ).first()
+
+        defaults = {
+            "patient": current_record.patient,
+            "previous_record": previous_record,
+            "score": result.get("current_score"),
+            "previous_score": result.get("previous_score"),
+            "delta": result.get("delta"),
+            "abs_delta": result.get("abs_delta"),
+            "threshold": result.get("threshold", cls.get_threshold()),
+            "comparison_available": bool(result.get("comparison_available", False)),
+        }
+
+        if existing_snapshot and existing_snapshot.is_overridden:
+            defaults.update({
+                "status": existing_snapshot.status,
+                "reason": existing_snapshot.reason or "Manual override",
+                "source": "manual_override",
+                "clinical_note": existing_snapshot.clinical_note,
+                "is_overridden": True,
+                "overridden_by": existing_snapshot.overridden_by,
+                "override_timestamp": existing_snapshot.override_timestamp,
+            })
+        else:
+            defaults.update({
                 "status": result["status"],
-                "score": result.get("current_score"),
-                "previous_score": result.get("previous_score"),
-                "delta": result.get("delta"),
-                "abs_delta": result.get("abs_delta"),
-                "threshold": result.get("threshold", cls.get_threshold()),
-                "comparison_available": bool(result.get("comparison_available", False)),
                 "reason": result.get("reason", ""),
                 "source": "ai",
-            },
+                "clinical_note": "",
+                "is_overridden": False,
+                "overridden_by": None,
+                "override_timestamp": None,
+            })
+
+        snapshot, _ = ProgressionStatus.objects.update_or_create(
+            xray_record=current_record,
+            defaults=defaults,
         )
 
         return snapshot

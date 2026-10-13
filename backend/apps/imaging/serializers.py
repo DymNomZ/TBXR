@@ -6,7 +6,7 @@ from PIL import Image
 from django.core.files.base import ContentFile
 from rest_framework import serializers
 
-from .models import Annotation, XrayRecord, ProcessedImage, AIResult, ProgressionStatus, Report
+from .models import Annotation, XrayRecord, ProcessedImage, AIResult, ProgressionStatus, ProgressionOverrideAuditLog, Report
 from apps.patients.models import Patient
 from django.contrib.auth import get_user_model
 
@@ -141,6 +141,33 @@ class ProgressionStatusSerializer(serializers.ModelSerializer):
             "previous_timestamp",
             "recorded_at",
             "source",
+        ]
+
+
+class ProgressionOverrideAuditLogSerializer(serializers.ModelSerializer):
+    transaction_id = serializers.SerializerMethodField()
+    xray_timestamp = serializers.SerializerMethodField()
+    radiologist = RadiologistBriefSerializer(read_only=True)
+
+    def get_transaction_id(self, obj):
+        return str(obj.xray_record.transaction_id)
+
+    def get_xray_timestamp(self, obj):
+        if not obj.xray_record.upload_timestamp:
+            return None
+        return obj.xray_record.upload_timestamp.isoformat()
+
+    class Meta:
+        model = ProgressionOverrideAuditLog
+        fields = [
+            "id",
+            "transaction_id",
+            "xray_timestamp",
+            "previous_status",
+            "new_status",
+            "clinical_note",
+            "created_at",
+            "radiologist",
         ]
 
 
