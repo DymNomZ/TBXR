@@ -1,6 +1,6 @@
 const fs = require('fs')
 const path = require('path')
-const puppeteer = require('puppeteer')
+const puppeteer = require('puppeteer-core')
 
 async function main() {
 	const inputPath = process.argv[2]
@@ -22,8 +22,9 @@ async function main() {
 	let browser
 	try {
 		browser = await puppeteer.launch({
+			executablePath: '/home/dymes/.cache/puppeteer/chrome/linux-149.0.7827.22/chrome-linux64/chrome',
 			headless: 'new',
-			args: ['--no-sandbox', '--disable-setuid-sandbox'],
+			args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-gpu', '--disable-dev-shm-usage'],
 		})
 
 		const page = await browser.newPage()
