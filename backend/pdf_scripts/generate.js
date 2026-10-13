@@ -20,6 +20,7 @@ async function main() {
 	const fileUrl = new URL(`file://${resolvedPath}`)
 
 	let browser
+	let pdfWritten = false
 	try {
 		const launchOptions = {
 			headless: 'new',
@@ -43,12 +44,20 @@ async function main() {
 		})
 
 		process.stdout.write(pdfBuffer)
+		pdfWritten = true
 	} catch (err) {
 		console.error(err?.stack || String(err))
 		process.exit(1)
 	} finally {
 		if (browser) {
-			await browser.close()
+			try {
+				await browser.close()
+			} catch (closeErr) {
+				if (!pdfWritten) {
+					console.error(closeErr?.stack || String(closeErr))
+					process.exit(1)
+				}
+			}
 		}
 	}
 }

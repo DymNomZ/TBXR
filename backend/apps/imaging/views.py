@@ -180,6 +180,21 @@ def _preserve_failed_html(temp_html_path, prefix):
     return target
 
 
+def _extract_pdf_bytes_from_output(output):
+    if not output:
+        return None
+
+    if isinstance(output, str):
+        raw = output.encode("utf-8", errors="replace")
+    else:
+        raw = bytes(output)
+
+    if raw.startswith(b"%PDF-") and b"%%EOF" in raw[-2048:]:
+        return raw
+
+    return None
+
+
 class ProgressionHistoryPagination(PageNumberPagination):
     page_size = 25
     page_size_query_param = 'page_size'
@@ -1283,6 +1298,17 @@ def generate_report(request, transaction_id):
         return response
 
     except subprocess.CalledProcessError as e:
+        recovered_pdf = _extract_pdf_bytes_from_output(e.stdout)
+        if recovered_pdf:
+            logger.warning(
+                "Recovered PDF output for transaction %s despite node exit code %s",
+                transaction_id,
+                e.returncode,
+            )
+            response = FileResponse(BytesIO(recovered_pdf), content_type='application/pdf')
+            response['Content-Disposition'] = f'attachment; filename="tbxr_report_{transaction_id}.pdf"'
+            return response
+
         preserve_temp_html = True
         failed_html_path = _preserve_failed_html(temp_html_path, f"xray_report_{transaction_id}")
         logger.exception("PDF generation failed for transaction %s", transaction_id)
@@ -1594,6 +1620,16 @@ def analytics_export(request):
             return response
 
         except subprocess.CalledProcessError as e:
+            recovered_pdf = _extract_pdf_bytes_from_output(e.stdout)
+            if recovered_pdf:
+                logger.warning(
+                    "Recovered analytics PDF output despite node exit code %s",
+                    e.returncode,
+                )
+                response = FileResponse(BytesIO(recovered_pdf), content_type='application/pdf')
+                response['Content-Disposition'] = 'attachment; filename="analytics_export.pdf"'
+                return response
+
             preserve_temp_html = True
             failed_html_path = _preserve_failed_html(temp_html_path, "analytics_export")
             logger.exception("Analytics PDF generation failed")
