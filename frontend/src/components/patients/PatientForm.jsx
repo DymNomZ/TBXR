@@ -58,19 +58,37 @@ function PatientForm({ onSuccess }) {
         return
       }
 
-      const data = await response.json()
+      const data = await response.json().catch(() => ({}))
 
-      // assumes Django returns { "first_name": ["This field is required."], ... }. 
-      // It grabs the first message per field.
-      if (data && typeof data === 'object' && !data.detail && !data.error) {
-        const normalized = {}
-        for (const [key, val] of Object.entries(data)) {
+      // The register endpoint reports validation errors nested as
+      // { "errors": { "first_name": ["This field is required."] } }.
+      // Tolerate a top-level field map too, and surface non-field errors
+      // (or a plain detail/error message) in the banner.
+      const embedded = data && typeof data.errors === 'object' ? data.errors : null
+      const fieldSource =
+        embedded ?? (data?.detail || data?.error || typeof data?.errors === 'string' ? null : data)
+
+      const normalized = {}
+      if (fieldSource && typeof fieldSource === 'object') {
+        for (const [key, val] of Object.entries(fieldSource)) {
+          if (key === 'detail' || key === 'error' || key === 'non_field_errors') continue
           normalized[key] = Array.isArray(val) ? val[0] : val
         }
-        setFieldErrors(normalized)
-      } else {
-        setError(data.detail || data.error || 'Failed to create patient.')
       }
+
+      if (Object.keys(normalized).length > 0) {
+        setFieldErrors(normalized)
+        return
+      }
+
+      const nonField = embedded?.non_field_errors
+      setError(
+        data?.detail ||
+          data?.error ||
+          (typeof data?.errors === 'string' ? data.errors : null) ||
+          (Array.isArray(nonField) ? nonField[0] : nonField) ||
+          'Failed to create patient.'
+      )
     } catch {
       setError('Unable to reach the server. Please try again.')
     } finally {
