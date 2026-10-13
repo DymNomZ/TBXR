@@ -4,14 +4,25 @@ import phonenumbers
 DEFAULT_REGION = "PH"
 
 
+def normalize_region_code(value: str, default_region: str = DEFAULT_REGION) -> str:
+    code = (value or "").strip().upper()
+    if not code:
+        return default_region
+    if len(code) != 2 or code not in phonenumbers.SUPPORTED_REGIONS:
+        raise ValueError("Enter a valid 2-letter country code (e.g., PH, US).")
+    return code
+
+
 def normalize_contact_number(value: str, default_region: str = DEFAULT_REGION) -> str:
     """Parse flexible phone input and return canonical E.164 format."""
     raw = (value or "").strip()
     if not raw:
         raise ValueError("Contact number is required.")
 
+    region = normalize_region_code(default_region)
+
     try:
-        parsed = phonenumbers.parse(raw, default_region)
+        parsed = phonenumbers.parse(raw, region)
     except phonenumbers.NumberParseException as exc:
         raise ValueError("Enter a valid contact number.") from exc
 
@@ -27,8 +38,10 @@ def format_contact_number(value: str, default_region: str = DEFAULT_REGION) -> s
     if not raw:
         return ""
 
+    region = normalize_region_code(default_region)
+
     try:
-        parsed = phonenumbers.parse(raw, default_region)
+        parsed = phonenumbers.parse(raw, region)
     except phonenumbers.NumberParseException:
         return raw
 

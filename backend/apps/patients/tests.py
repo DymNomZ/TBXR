@@ -127,6 +127,41 @@ class PatientViewsTests(TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertIn("contact_number", response.json().get("errors", {}))
 
+    def test_register_patient_accepts_local_number_with_selected_country(self):
+        self.client.force_login(self.tech)
+
+        payload = self.valid_payload.copy()
+        payload["country_code"] = "US"
+        payload["contact_number"] = "2025550143"
+
+        response = self.client.post(
+            reverse('patients:register'),
+            data=json.dumps(payload),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 201)
+        self.assertTrue(response.json()["contact_number"].startswith("+1 "))
+
+        patient = Patient.objects.get(first_name="John", last_name="Doe")
+        self.assertEqual(patient.country_code, "US")
+        self.assertEqual(patient.contact_number, "+12025550143")
+
+    def test_register_patient_rejects_invalid_country_code(self):
+        self.client.force_login(self.tech)
+
+        payload = self.valid_payload.copy()
+        payload["country_code"] = "XYZ"
+
+        response = self.client.post(
+            reverse('patients:register'),
+            data=json.dumps(payload),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("country_code", response.json().get("errors", {}))
+
     def test_search_patients_by_name(self):
         """Search matches first or last name, case-insensitively."""
         self.client.force_login(self.tech)

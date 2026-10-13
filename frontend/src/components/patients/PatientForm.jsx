@@ -12,6 +12,17 @@ const SEX_OPTIONS = [
   { value: 'O', label: 'Other' },
 ]
 
+const COUNTRY_OPTIONS = [
+  { value: 'PH', label: 'Philippines (PH)' },
+  { value: 'US', label: 'United States (US)' },
+  { value: 'CA', label: 'Canada (CA)' },
+  { value: 'GB', label: 'United Kingdom (GB)' },
+  { value: 'AU', label: 'Australia (AU)' },
+  { value: 'SG', label: 'Singapore (SG)' },
+  { value: 'JP', label: 'Japan (JP)' },
+  { value: 'AE', label: 'United Arab Emirates (AE)' },
+]
+
 function getCsrfToken() {
   return document.cookie
     .split('; ')
@@ -25,6 +36,7 @@ function PatientForm({ onSuccess }) {
     last_name: '',
     date_of_birth: '',
     sex: '',
+    country_code: 'PH',
     contact_number: '',
   })
   const [fieldErrors, setFieldErrors] = useState({})
@@ -140,13 +152,22 @@ function PatientForm({ onSuccess }) {
         error={fieldErrors.sex}
       />
 
+      <SelectField
+        id="country_code"
+        label="Country"
+        value={fields.country_code}
+        onChange={handleChange('country_code')}
+        options={COUNTRY_OPTIONS}
+        error={fieldErrors.country_code}
+      />
+
       <InputField
         id="contact_number"
         label="Contact Number"
         type="tel"
         value={fields.contact_number}
         onChange={handleChange('contact_number')}
-        placeholder="+63 912 345 6789"
+        placeholder="Type local or international number"
         autoComplete="tel"
         error={fieldErrors.contact_number}
       />
