@@ -1,4 +1,5 @@
 import json
+import re
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.urls import reverse
@@ -91,6 +92,41 @@ class PatientViewsTests(TestCase):
         )
         self.assertEqual(response_rad.status_code, 403)
 
+    def test_register_patient_accepts_flexible_contact_input(self):
+        """Phone values are normalized and returned in international display format."""
+        self.client.force_login(self.tech)
+
+        payload = self.valid_payload.copy()
+        payload["contact_number"] = "0911 222 3333"
+
+        response = self.client.post(
+            reverse('patients:register'),
+            data=json.dumps(payload),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 201)
+        display_value = response.json()["contact_number"]
+        self.assertEqual(display_value, "+63 911 222 3333")
+
+        patient = Patient.objects.get(first_name="John", last_name="Doe")
+        self.assertEqual(patient.contact_number, "+639112223333")
+
+    def test_register_patient_rejects_invalid_contact_input(self):
+        self.client.force_login(self.tech)
+
+        payload = self.valid_payload.copy()
+        payload["contact_number"] = "123"
+
+        response = self.client.post(
+            reverse('patients:register'),
+            data=json.dumps(payload),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("contact_number", response.json().get("errors", {}))
+
     def test_search_patients_by_name(self):
         """Search matches first or last name, case-insensitively."""
         self.client.force_login(self.tech)
@@ -109,6 +145,8 @@ class PatientViewsTests(TestCase):
         data = response.json()
         self.assertEqual(len(data), 1)
         self.assertEqual(data[0]['last_name'], 'Smith')
+        # Legacy values are still rendered safely if they are not parseable.
+        self.assertTrue(re.match(r"^(\+|\d)", data[0]['contact_number']))
 
     def test_search_patients_by_patient_id(self):
         """A numeric query also matches the patient ID."""
@@ -153,3 +191,4 @@ class PatientViewsTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()['patient_id'], patient.patient_id)
+        self.assertEqual(response.json()['contact_number'], '+63 918 123 4567')
