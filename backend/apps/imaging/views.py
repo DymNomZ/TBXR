@@ -549,34 +549,13 @@ def analyse_xray(request, transaction_id):
 def annotate_xray(request, transaction_id):
     xray_record = get_object_or_404(XrayRecord, transaction_id=transaction_id)
 
-    if (
-        xray_record.active_reviewer_id
-        and xray_record.active_reviewer_id != request.user.id
-        and not xray_record.lock_has_expired()
-    ):
-        return Response(
-            {
-                "detail": "This case is currently locked by another radiologist.",
-                "active_reviewer": xray_record.active_reviewer.username,
-                "lock_timestamp": xray_record.lock_timestamp.isoformat() if xray_record.lock_timestamp else None,
-            },
-            status=status.HTTP_409_CONFLICT,
-        )
+    xray_record.clear_if_expired()
+    if _lock_blocks_user(xray_record, request.user):
+        return _lock_conflict_response(xray_record)
 
     if xray_record.active_reviewer_id != request.user.id:
         if not xray_record.acquire_lock(request.user):
-            return Response(
-                {"detail": "Unable to acquire review lock for this case."},
-                status=status.HTTP_409_CONFLICT,
-            )
-    elif xray_record.lock_has_expired():
-        xray_record.acquire_lock(request.user)
-
-    if xray_record.active_reviewer_id != request.user.id:
-        return Response(
-            {"detail": "Only the active reviewer can submit annotations for this case."},
-            status=status.HTTP_403_FORBIDDEN,
-        )
+            return _lock_conflict_response(xray_record)
 
     bounding_boxes = request.data.get("bounding_boxes")
     notes = request.data.get("notes", "")
@@ -732,6 +711,9 @@ def annotate_xray(request, transaction_id):
     xray_record.status = "COMPLETED"
     xray_record.save(update_fields=["status"])
 
+    # Case finalized — the review lock is no longer needed.
+    xray_record.release_lock()
+
     return Response(
         {
             "transaction_id": str(xray_record.transaction_id),
@@ -786,6 +768,9 @@ def technologist_dashboard(request):
 @api_view(["GET"])
 @role_required(UserRole.RADIOLOGIST)
 def radiologist_queue(request):
+    # Self-heal: release abandoned locks so the queue does not show stale IN_REVIEW rows.
+    XrayRecord.clear_expired_locks()
+
     records = XrayRecord.objects.all().order_by('upload_timestamp')
 
     search = request.query_params.get('search', '').strip()
@@ -888,6 +873,9 @@ def xray_detail(request, transaction_id):
     xray_record = get_object_or_404(XrayRecord, transaction_id=transaction_id)
 
     if request.user.role == UserRole.RADIOLOGIST:
+        # Drop a stale lock before deciding ownership so status/fields stay truthful.
+        xray_record.clear_if_expired()
+
         if xray_record.active_reviewer_id and xray_record.active_reviewer_id != request.user.id and not xray_record.lock_has_expired():
             serializer = XrayRecordDetailSerializer(xray_record, context={'request': request})
             return Response(
@@ -900,15 +888,62 @@ def xray_detail(request, transaction_id):
                 status=status.HTTP_409_CONFLICT,
             )
 
-        xray_record.acquire_lock(request.user)
-
-        # Enter active review state when a radiologist opens a case for work.
-        if xray_record.status in {"PENDING", "AI_REVIEWED", "MANUAL_REVIEW"}:
-            xray_record.status = "IN_REVIEW"
-            xray_record.save(update_fields=["status"])
+        # Acquire/renew the lock and enter the active review state.
+        xray_record.start_review(request.user)
 
     serializer = XrayRecordDetailSerializer(xray_record, context={'request': request})
     return Response(serializer.data)
+
+
+def _lock_blocks_user(xray_record, user):
+    """True when a *fresh* lock is held by someone other than ``user``."""
+    return bool(
+        xray_record.active_reviewer_id
+        and xray_record.active_reviewer_id != user.id
+        and not xray_record.lock_has_expired()
+    )
+
+
+def _lock_conflict_response(xray_record):
+    return Response(
+        {
+            "detail": "This case is currently locked by another radiologist.",
+            "active_reviewer": xray_record.active_reviewer.username,
+            "lock_timestamp": xray_record.lock_timestamp.isoformat() if xray_record.lock_timestamp else None,
+        },
+        status=status.HTTP_409_CONFLICT,
+    )
+
+
+@api_view(["POST"])
+@role_required(UserRole.RADIOLOGIST)
+def release_review_lock(request, transaction_id):
+    """Release the caller's own review lock. Idempotent; never touches others' locks."""
+    xray_record = get_object_or_404(XrayRecord, transaction_id=transaction_id)
+    if xray_record.active_reviewer_id == request.user.id:
+        xray_record.release_lock()
+    return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+@api_view(["POST"])
+@role_required(UserRole.RADIOLOGIST)
+def renew_review_lock(request, transaction_id):
+    """Heartbeat: renew the caller's lock, or acquire it if free/expired."""
+    xray_record = get_object_or_404(XrayRecord, transaction_id=transaction_id)
+    xray_record.clear_if_expired()
+
+    if _lock_blocks_user(xray_record, request.user):
+        return _lock_conflict_response(xray_record)
+
+    xray_record.start_review(request.user)
+    return Response(
+        {
+            "transaction_id": str(xray_record.transaction_id),
+            "active_reviewer": request.user.username,
+            "lock_timestamp": xray_record.lock_timestamp.isoformat() if xray_record.lock_timestamp else None,
+            "status": xray_record.status,
+        }
+    )
 
 @api_view(["GET"])
 @role_required(UserRole.RADIOLOGIC_TECH, UserRole.RADIOLOGIST, UserRole.PHYSICIAN)
@@ -1090,6 +1125,11 @@ def notification_mark_read(request, notification_id):
 def report_detail(request, transaction_id):
     xray_record = get_object_or_404(XrayRecord, transaction_id=transaction_id)
 
+    if request.method in {"POST", "PATCH"}:
+        xray_record.clear_if_expired()
+        if _lock_blocks_user(xray_record, request.user):
+            return _lock_conflict_response(xray_record)
+
     if request.method == "GET":
         try:
             report = xray_record.report
@@ -1148,6 +1188,8 @@ def report_detail(request, transaction_id):
             report = serializer.save()
             if previous_status != 'SUBMITTED' and report.status == 'SUBMITTED':
                 _trigger_report_submission_notification(report)
+                # Report finalized — release the review lock on the case.
+                xray_record.release_lock()
             return Response(
                 ReportSerializer(report, context={'request': request}).data
             )

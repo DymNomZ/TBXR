@@ -63,6 +63,16 @@ urlpatterns = [
     path("queue/", views.radiologist_queue, name="radiologist-queue"),
     path("xray/<str:transaction_id>/", views.xray_detail, name="xray-detail"),
     path(
+        "xray/<uuid:transaction_id>/lock/",
+        views.renew_review_lock,
+        name="renew_review_lock",
+    ),
+    path(
+        "xray/<uuid:transaction_id>/release/",
+        views.release_review_lock,
+        name="release_review_lock",
+    ),
+    path(
         "xray/<uuid:transaction_id>/report/",
         views.report_detail,
         name="report_detail",
