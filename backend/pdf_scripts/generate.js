@@ -1,6 +1,6 @@
 const fs = require('fs')
 const path = require('path')
-const puppeteer = require('puppeteer-core')
+const puppeteer = require('puppeteer')
 
 async function main() {
 	const inputPath = process.argv[2]
@@ -21,11 +21,17 @@ async function main() {
 
 	let browser
 	try {
-		browser = await puppeteer.launch({
-			executablePath: '/home/dymes/.cache/puppeteer/chrome/linux-149.0.7827.22/chrome-linux64/chrome',
+		const launchOptions = {
 			headless: 'new',
 			args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-gpu', '--disable-dev-shm-usage'],
-		})
+		}
+
+		// Optional override for environments where Chromium is managed externally.
+		if (process.env.CHROME_PATH) {
+			launchOptions.executablePath = process.env.CHROME_PATH
+		}
+
+		browser = await puppeteer.launch(launchOptions)
 
 		const page = await browser.newPage()
 		await page.goto(fileUrl.href, { waitUntil: 'networkidle0' })

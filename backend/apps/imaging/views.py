@@ -2,6 +2,7 @@ import base64
 import tempfile
 import subprocess
 import math
+import shutil
 from django.conf import settings
 from datetime import date
 from django.contrib.auth.decorators import login_required
@@ -135,6 +136,48 @@ import time
 import logging
 
 logger = logging.getLogger(__name__)
+
+
+def _decode_process_output(output):
+    if not output:
+        return ""
+    if isinstance(output, bytes):
+        return output.decode("utf-8", errors="replace")
+    return str(output)
+
+
+def _build_pdf_process_error_payload(error, failed_html_path=None):
+    stderr_text = _decode_process_output(error.stderr).strip()
+    stdout_text = _decode_process_output(error.stdout).strip()
+    fallback = f"Node process exited with code {error.returncode} and produced no stderr output."
+
+    payload = {
+        "error": "Failed to generate PDF via Node script.",
+        "details": stderr_text or fallback,
+        "returncode": error.returncode,
+        "stdout_tail": stdout_text[-1200:] if stdout_text else "",
+    }
+
+    if failed_html_path:
+        payload["failed_html_path"] = str(failed_html_path)
+
+    return payload
+
+
+def _preserve_failed_html(temp_html_path, prefix):
+    if not temp_html_path:
+        return None
+
+    source = Path(temp_html_path)
+    if not source.exists():
+        return None
+
+    debug_dir = settings.BASE_DIR / "media" / "debug_failed_reports"
+    debug_dir.mkdir(parents=True, exist_ok=True)
+    timestamp = timezone.now().strftime("%Y%m%dT%H%M%S")
+    target = debug_dir / f"{prefix}_{timestamp}_{source.name}"
+    shutil.copy2(source, target)
+    return target
 
 
 class ProgressionHistoryPagination(PageNumberPagination):
@@ -1220,6 +1263,7 @@ def generate_report(request, transaction_id):
     }
     html_content = render_to_string("reports/xray_report.html", context)
     temp_html_path = None
+    preserve_temp_html = False
 
     try:
         with tempfile.NamedTemporaryFile(suffix=".html", delete=False, mode="w", encoding="utf-8") as temp_html:
@@ -1239,17 +1283,26 @@ def generate_report(request, transaction_id):
         return response
 
     except subprocess.CalledProcessError as e:
+        preserve_temp_html = True
+        failed_html_path = _preserve_failed_html(temp_html_path, f"xray_report_{transaction_id}")
+        logger.exception("PDF generation failed for transaction %s", transaction_id)
         return Response(
-            {"error": "Failed to generate PDF via Node script.", "details": e.stderr.decode()},
+            _build_pdf_process_error_payload(e, failed_html_path),
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
     except Exception as e:
+        preserve_temp_html = True
+        failed_html_path = _preserve_failed_html(temp_html_path, f"xray_report_{transaction_id}")
+        logger.exception("Unexpected report generation error for transaction %s", transaction_id)
         return Response(
-            {"error": str(e)},
+            {
+                "error": str(e),
+                "failed_html_path": str(failed_html_path) if failed_html_path else "",
+            },
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
     finally:
-        if temp_html_path:
+        if temp_html_path and not preserve_temp_html:
             Path(temp_html_path).unlink(missing_ok=True)
 
 
@@ -1520,6 +1573,8 @@ def analytics_export(request):
             "generated_at": timezone.now().strftime("%Y-%m-%d %H:%M:%S")
         }
         html_content = render_to_string("reports/analytics_export.html", context)
+        temp_html_path = None
+        preserve_temp_html = False
         
         try:
             with tempfile.NamedTemporaryFile(suffix=".html", delete=False, mode="w", encoding="utf-8") as temp_html:
@@ -1539,12 +1594,24 @@ def analytics_export(request):
             return response
 
         except subprocess.CalledProcessError as e:
+            preserve_temp_html = True
+            failed_html_path = _preserve_failed_html(temp_html_path, "analytics_export")
+            logger.exception("Analytics PDF generation failed")
             return Response(
-                {"error": "Failed to generate PDF via Node script.", "details": e.stderr.decode()},
+                _build_pdf_process_error_payload(e, failed_html_path),
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
         except Exception as e:
+            preserve_temp_html = True
+            failed_html_path = _preserve_failed_html(temp_html_path, "analytics_export")
+            logger.exception("Unexpected analytics export PDF error")
             return Response(
-                {"error": str(e)},
+                {
+                    "error": str(e),
+                    "failed_html_path": str(failed_html_path) if failed_html_path else "",
+                },
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+        finally:
+            if temp_html_path and not preserve_temp_html:
+                Path(temp_html_path).unlink(missing_ok=True)
