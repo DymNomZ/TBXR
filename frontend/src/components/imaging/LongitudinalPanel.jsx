@@ -150,6 +150,7 @@ function ProgressionTrendChart({ points, onActiveTransactionChange }) {
   })
 
   const pinnedPoint = pointsWithCoords.find((point) => getPointKey(point) === pinnedPointKey) ?? null
+  const activePoint = pinnedPoint ?? hoveredPoint ?? (pointsWithCoords.length > 0 ? pointsWithCoords[pointsWithCoords.length - 1] : null)
 
   useEffect(() => {
     if (pinnedPoint) return
@@ -165,6 +166,10 @@ function ProgressionTrendChart({ points, onActiveTransactionChange }) {
       setPinnedPointKey(null)
     }
   }, [pinnedPointKey, pointsWithCoords])
+
+  useEffect(() => {
+    onActiveTransactionChange?.(activePoint?.transaction_id ?? null)
+  }, [activePoint?.transaction_id, onActiveTransactionChange])
 
   if (!points || points.length === 0) {
     return (
@@ -190,11 +195,6 @@ function ProgressionTrendChart({ points, onActiveTransactionChange }) {
     .join(' ')
 
   const areaPath = `${path} L ${pointsWithCoords[pointsWithCoords.length - 1].x} ${height - padding.bottom} L ${pointsWithCoords[0].x} ${height - padding.bottom} Z`
-  const activePoint = pinnedPoint ?? hoveredPoint ?? pointsWithCoords[pointsWithCoords.length - 1]
-
-  useEffect(() => {
-    onActiveTransactionChange?.(activePoint?.transaction_id ?? null)
-  }, [activePoint?.transaction_id, onActiveTransactionChange])
 
   return (
     <div className="rounded-2xl border border-[var(--border)] bg-white p-4 shadow-sm">
