@@ -37,7 +37,7 @@ const PROGRESSION_PAYLOAD = [
 ]
 
 const OVERRIDE_RESPONSE = {
-  transaction_id: 'tx-002',
+  transaction_id: 'tx-001',
   timestamp: '2024-02-01T00:00:00Z',
   status: 'decreased_risk',
   source: 'manual_override',
@@ -98,6 +98,8 @@ describe('LongitudinalPanel override UI', () => {
 
     expect(await screen.findByText('AI risk trend')).toBeInTheDocument()
 
+    fireEvent.click(screen.getByText('40% risk').closest('button'))
+    
     fireEvent.click(screen.getByRole('button', { name: /override status/i }))
     expect(screen.getByLabelText(/Progression status/i)).toBeInTheDocument()
 
@@ -115,7 +117,7 @@ describe('LongitudinalPanel override UI', () => {
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith(
-        '/api/imaging/cases/tx-002/progression/override/',
+        '/api/imaging/cases/tx-001/progression/override/',
         expect.objectContaining({
           method: 'POST',
           credentials: 'include',
@@ -125,6 +127,6 @@ describe('LongitudinalPanel override UI', () => {
 
     expect(await screen.findByText('Clinical override based on review findings.')).toBeInTheDocument()
     expect(screen.getByText('Manual override')).toBeInTheDocument()
-    expect(screen.getByText(/Case: tx-002/i)).toBeInTheDocument()
+    expect(screen.getByText(/Case: tx-001/i)).toBeInTheDocument()
   })
 })
