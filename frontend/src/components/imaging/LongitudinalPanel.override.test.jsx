@@ -51,7 +51,7 @@ const OVERRIDE_RESPONSE = {
 const OVERRIDE_HISTORY_PAYLOAD = [
   {
     id: 11,
-    transaction_id: 'tx-002',
+    transaction_id: 'tx-001',
     xray_timestamp: '2024-02-01T00:00:00Z',
     previous_status: 'increased_risk',
     new_status: 'decreased_risk',
