@@ -53,6 +53,7 @@ export default function AnnotationCanvas({
   boxes = [],
   onBoxesChange,
   disabled = false,
+  onDeleteBoxReady,
 }) {
   const selfRef = useRef(null)
   const labelRef = useRef(null)
@@ -177,6 +178,9 @@ export default function AnnotationCanvas({
 
   const handleMouseDown = useCallback((e) => {
     if (disabled || pendingBox) return
+    // Only the primary button draws. The right button is the viewer's pan
+    // gesture and must not start an annotation (or open the label prompt).
+    if (e.button !== 0) return
     e.preventDefault()
 
     const pt = toElementSpace(e.clientX, e.clientY)
@@ -297,6 +301,14 @@ export default function AnnotationCanvas({
     deleteBox(selectedId)
   }, [deleteBox, selectedId])
 
+  // Expose the history-aware delete so sibling controls (e.g. the bounding-box
+  // panel) mutate through the same undo stack instead of bypassing it.
+  useEffect(() => {
+    if (!onDeleteBoxReady) return undefined
+    onDeleteBoxReady(deleteBox)
+    return () => onDeleteBoxReady(null)
+  }, [onDeleteBoxReady, deleteBox])
+
   const undoLastAction = useCallback(() => {
     if (!undoStack.length || !onBoxesChange) return
     const previous = undoStack[undoStack.length - 1]
@@ -350,6 +362,9 @@ export default function AnnotationCanvas({
       strokeWidth: sw,
       fill: selectedId === box.id ? 'rgba(239,68,68,0.10)' : 'rgba(91,101,220,0.12)',
       vectorEffect: 'non-scaling-stroke',
+      // The parent <svg> is pointer-events:none so drawing still works over
+      // existing shapes; opt the shapes back in so clicking one selects it.
+      pointerEvents: 'auto',
       onClick: () => setSelectedId(box.id),
       className: 'cursor-pointer',
     }
@@ -379,6 +394,7 @@ export default function AnnotationCanvas({
         strokeWidth={sw}
         strokeDasharray={dash}
         vectorEffect="non-scaling-stroke"
+        pointerEvents="auto"
         onClick={() => setSelectedId(box.id)}
         className="cursor-pointer"
       />
@@ -507,7 +523,9 @@ export default function AnnotationCanvas({
             onMouseDown={(e) => e.stopPropagation()}
             onClick={(e) => {
               e.stopPropagation()
-              setSelectedId(box.id)
+              // This control reads as "remove this region of interest", so it
+              // deletes through the history-aware path (Undo restores it).
+              deleteBox(box.id)
             }}
             style={{ position: 'absolute', left: pos.x - 8, top: pos.y - 8, zIndex: 10 }}
             className={`w-5 h-5 rounded-full flex items-center justify-center shadow-md transition-colors ${
