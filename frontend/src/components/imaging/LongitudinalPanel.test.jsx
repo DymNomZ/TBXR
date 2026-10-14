@@ -53,6 +53,9 @@ describe('LongitudinalPanel', () => {
       if (url.includes('/history/')) {
         return Promise.resolve({ ok: true, json: () => Promise.resolve(HISTORY_PAYLOAD) })
       }
+      if (url.includes('/progression/overrides/')) {
+        return Promise.resolve({ ok: true, json: () => Promise.resolve([]) })
+      }
       if (url.includes('/progression/')) {
         return Promise.resolve({ ok: true, json: () => Promise.resolve(PROGRESSION_PAYLOAD) })
       }

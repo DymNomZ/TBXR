@@ -51,6 +51,7 @@ from .serializers import (
     AIResultSerializer,
     PatientHistorySerializer,
     ProgressionStatusSerializer,
+    ProgressionOverrideAuditLogSerializer,
     ReportSerializer,
     ReportCreateSerializer,
 )
@@ -1082,6 +1083,26 @@ def patient_progression_history(request, patient_id):
     serializer = ProgressionStatusSerializer(page, many=True, context={"request": request}) if page is not None else ProgressionStatusSerializer(queryset, many=True, context={"request": request})
     if page is not None:
         return paginator.get_paginated_response(serializer.data)
+    return Response(serializer.data)
+
+
+@api_view(["GET"])
+@login_required
+def patient_progression_override_history(request, patient_id):
+    patient = get_object_or_404(Patient, patient_id=patient_id)
+
+    queryset = ProgressionOverrideAuditLog.objects.filter(
+        patient=patient,
+    ).select_related(
+        "xray_record",
+        "radiologist",
+    ).order_by("-created_at", "-id")
+
+    serializer = ProgressionOverrideAuditLogSerializer(
+        queryset,
+        many=True,
+        context={"request": request},
+    )
     return Response(serializer.data)
 
 

@@ -860,3 +860,107 @@ class ProgressionPersistenceAPITests(ProgressionDBMixin, TestCase):
         self.assertEqual(progression.status, ProgressionService.DECREASED_RISK)
         self.assertEqual(progression.overridden_by_id, radiologist.id)
         self.assertIsNotNone(progression.override_timestamp)
+
+    def test_manual_override_survives_patient_progression_refresh(self):
+        radiologist = get_user_model().objects.create_user(
+            username="override-radiologist-refresh",
+            password="password123",
+            role=UserRole.RADIOLOGIST,
+        )
+
+        base = timezone.now() - timedelta(minutes=15)
+        first = self._create_xray_record(
+            patient=self.patient,
+            uploader=self.tech,
+            filename="override-refresh-1.png",
+        )
+        self._create_ai_result(first, 0.30, model_version="m-refresh-1")
+        self._set_upload_timestamp(first, base)
+
+        second = self._create_xray_record(
+            patient=self.patient,
+            uploader=self.tech,
+            filename="override-refresh-2.png",
+        )
+        self._create_ai_result(second, 0.80, model_version="m-refresh-2")
+        self._set_upload_timestamp(second, base + timedelta(minutes=5))
+
+        ProgressionService.persist_for_record(first)
+        ProgressionService.persist_for_record(second)
+
+        self.client.force_login(radiologist)
+        override_response = self.client.post(
+            f"/api/imaging/cases/{second.pk}/progression/override/",
+            {
+                "status": ProgressionService.DECREASED_RISK,
+                "clinical_note": "Manual downgrade after chart review.",
+            },
+            content_type="application/json",
+        )
+        self.assertEqual(override_response.status_code, 201)
+
+        progression_before = ProgressionStatus.objects.get(xray_record=second)
+        self.assertTrue(progression_before.is_overridden)
+        self.assertEqual(progression_before.status, ProgressionService.DECREASED_RISK)
+
+        refresh_response = self.client.get(
+            f"/api/imaging/patients/{self.patient.patient_id}/progression/"
+        )
+        self.assertEqual(refresh_response.status_code, 200)
+
+        progression_after = ProgressionStatus.objects.get(xray_record=second)
+        self.assertTrue(progression_after.is_overridden)
+        self.assertEqual(progression_after.status, ProgressionService.DECREASED_RISK)
+        self.assertEqual(progression_after.source, "manual_override")
+        self.assertEqual(progression_after.clinical_note, "Manual downgrade after chart review.")
+
+    def test_patient_override_history_endpoint_returns_all_audit_logs(self):
+        radiologist = get_user_model().objects.create_user(
+            username="override-radiologist-history",
+            password="password123",
+            role=UserRole.RADIOLOGIST,
+        )
+
+        record = self._create_xray_record(
+            patient=self.patient,
+            uploader=self.tech,
+            filename="override-history.png",
+        )
+        self._create_ai_result(record, 0.55, model_version="m-history")
+        ProgressionService.persist_for_record(record)
+
+        self.client.force_login(radiologist)
+        first_note = "First manual adjustment."
+        second_note = "Second manual adjustment."
+
+        first_response = self.client.post(
+            f"/api/imaging/cases/{record.pk}/progression/override/",
+            {
+                "status": ProgressionService.STABLE,
+                "clinical_note": first_note,
+            },
+            content_type="application/json",
+        )
+        self.assertEqual(first_response.status_code, 201)
+
+        second_response = self.client.post(
+            f"/api/imaging/cases/{record.pk}/progression/override/",
+            {
+                "status": ProgressionService.DECREASED_RISK,
+                "clinical_note": second_note,
+            },
+            content_type="application/json",
+        )
+        self.assertEqual(second_response.status_code, 201)
+
+        history_response = self.client.get(
+            f"/api/imaging/patients/{self.patient.patient_id}/progression/overrides/"
+        )
+        self.assertEqual(history_response.status_code, 200)
+
+        payload = history_response.json()
+        self.assertEqual(len(payload), 2)
+        self.assertEqual(payload[0]["transaction_id"], str(record.transaction_id))
+        self.assertEqual(payload[0]["clinical_note"], second_note)
+        self.assertEqual(payload[1]["clinical_note"], first_note)
+        self.assertEqual(payload[0]["radiologist"]["id"], radiologist.id)

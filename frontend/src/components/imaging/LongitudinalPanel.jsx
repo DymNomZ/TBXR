@@ -28,6 +28,19 @@ function formatDisplayDate(value) {
   return date.toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
+function sortProgressionPoints(points) {
+  return [...points].sort((a, b) => {
+    const aTime = Date.parse(a.timestamp ?? '')
+    const bTime = Date.parse(b.timestamp ?? '')
+
+    if (!Number.isNaN(aTime) && !Number.isNaN(bTime) && aTime !== bTime) {
+      return aTime - bTime
+    }
+
+    return String(a.transaction_id ?? '').localeCompare(String(b.transaction_id ?? ''))
+  })
+}
+
 function TrendTooltip({ point }) {
   if (!point) return null
   const meta = PROGRESSION_META[point.status] ?? PROGRESSION_META.no_prior
@@ -119,7 +132,7 @@ function OverrideStatusModal({
   )
 }
 
-function ProgressionTrendChart({ points }) {
+function ProgressionTrendChart({ points, onActiveTransactionChange }) {
   const [hoveredPoint, setHoveredPoint] = useState(null)
   const [pinnedPointKey, setPinnedPointKey] = useState(null)
   const validPoints = Array.isArray(points) ? points.filter((point) => Number.isFinite(Number(point.score))) : []
@@ -137,6 +150,10 @@ function ProgressionTrendChart({ points }) {
   })
 
   const pinnedPoint = pointsWithCoords.find((point) => getPointKey(point) === pinnedPointKey) ?? null
+  const newestPoint = pointsWithCoords.length > 0 ? pointsWithCoords[pointsWithCoords.length - 1] : null
+  // Visual preview follows hover; the override target follows only an explicit selection (click) or the newest scan.
+  const activePoint = pinnedPoint ?? hoveredPoint ?? newestPoint
+  const selectedPoint = pinnedPoint ?? newestPoint
 
   useEffect(() => {
     if (pinnedPoint) return
@@ -152,6 +169,10 @@ function ProgressionTrendChart({ points }) {
       setPinnedPointKey(null)
     }
   }, [pinnedPointKey, pointsWithCoords])
+
+  useEffect(() => {
+    onActiveTransactionChange?.(selectedPoint?.transaction_id ?? null)
+  }, [selectedPoint?.transaction_id, onActiveTransactionChange])
 
   if (!points || points.length === 0) {
     return (
@@ -177,7 +198,6 @@ function ProgressionTrendChart({ points }) {
     .join(' ')
 
   const areaPath = `${path} L ${pointsWithCoords[pointsWithCoords.length - 1].x} ${height - padding.bottom} L ${pointsWithCoords[0].x} ${height - padding.bottom} Z`
-  const activePoint = pinnedPoint ?? hoveredPoint ?? pointsWithCoords[pointsWithCoords.length - 1]
 
   return (
     <div className="rounded-2xl border border-[var(--border)] bg-white p-4 shadow-sm">
@@ -446,20 +466,27 @@ export default function LongitudinalPanel({
   const [overrideNote, setOverrideNote] = useState('')
   const [overrideError, setOverrideError] = useState('')
   const [submittingOverride, setSubmittingOverride] = useState(false)
+  const [selectedProgressionTransactionId, setSelectedProgressionTransactionId] = useState(null)
+  const [overrideHistory, setOverrideHistory] = useState([])
 
   // Slots store full record objects — annotations travel with them
   const [slotA, setSlotA] = useState(null)
   const [slotB, setSlotB] = useState(null)
 
   const latestCaseId = records[records.length - 1]?.transaction_id ?? progression[progression.length - 1]?.transaction_id ?? null
-  const canOverride = user?.role === 'RADIOLOGIST' && Boolean(latestCaseId)
-  const manualOverrideHistory = progression.filter((point) => point.is_overridden || point.source === 'manual_override')
+  const overrideTargetCaseId = selectedProgressionTransactionId ?? latestCaseId
+  const canOverride = user?.role === 'RADIOLOGIST' && Boolean(overrideTargetCaseId)
+  const manualOverrideHistory = overrideHistory
 
   useEffect(() => {
     if (!progression.length) return
+    const selectedStatus = progression.find(
+      (point) => point.transaction_id === overrideTargetCaseId,
+    )?.status
     const newestStatus = progression[progression.length - 1]?.status ?? 'stable'
-    setOverrideStatus((current) => (current === newestStatus ? current : newestStatus))
-  }, [progression])
+    const nextStatus = selectedStatus ?? newestStatus
+    setOverrideStatus((current) => (current === nextStatus ? current : nextStatus))
+  }, [progression, overrideTargetCaseId])
 
   useEffect(() => {
     if (!patientId) return
@@ -489,10 +516,25 @@ export default function LongitudinalPanel({
       .then((r) => r.json())
       .then((data) => {
         const list = Array.isArray(data?.results) ? data.results : Array.isArray(data) ? data : []
-        setProgression(list)
+        setProgression(sortProgressionPoints(list))
       })
       .catch(() => setProgression([]))
       .finally(() => setProgressionLoading(false))
+  }, [patientId, refreshKey])
+
+  useEffect(() => {
+    if (!patientId) {
+      setOverrideHistory([])
+      return
+    }
+
+    fetch(`/api/imaging/patients/${patientId}/progression/overrides/`, { credentials: 'include' })
+      .then((r) => r.json())
+      .then((data) => {
+        const list = Array.isArray(data?.results) ? data.results : Array.isArray(data) ? data : []
+        setOverrideHistory(list)
+      })
+      .catch(() => setOverrideHistory([]))
   }, [patientId, refreshKey])
 
   const getSlot = (txId) => {
@@ -535,7 +577,7 @@ export default function LongitudinalPanel({
   const handleOverrideSubmit = async (event) => {
     event.preventDefault()
 
-    if (!latestCaseId) {
+    if (!overrideTargetCaseId) {
       setOverrideError('No case is available to override.')
       return
     }
@@ -549,7 +591,7 @@ export default function LongitudinalPanel({
     setOverrideError('')
 
     try {
-      const response = await fetch(`/api/imaging/cases/${latestCaseId}/progression/override/`, {
+      const response = await fetch(`/api/imaging/cases/${overrideTargetCaseId}/progression/override/`, {
         method: 'POST',
         credentials: 'include',
         headers: {
@@ -570,9 +612,23 @@ export default function LongitudinalPanel({
       const saved = await response.json()
       setProgression((current) => {
         const next = current.map((point) => point.transaction_id === saved.transaction_id ? { ...point, ...saved } : point)
-        if (next.some((point) => point.transaction_id === saved.transaction_id)) return next
-        return [saved, ...current]
+        if (next.some((point) => point.transaction_id === saved.transaction_id)) {
+          return sortProgressionPoints(next)
+        }
+        return sortProgressionPoints([...current, saved])
       })
+
+      const historyResponse = await fetch(`/api/imaging/patients/${patientId}/progression/overrides/`, { credentials: 'include' })
+      if (historyResponse.ok) {
+        const historyPayload = await historyResponse.json()
+        const list = Array.isArray(historyPayload?.results)
+          ? historyPayload.results
+          : Array.isArray(historyPayload)
+            ? historyPayload
+            : []
+        setOverrideHistory(list)
+      }
+
       setOverrideOpen(false)
       setOverrideNote('')
       setOverrideStatus(saved.status ?? overrideStatus)
@@ -625,7 +681,10 @@ export default function LongitudinalPanel({
           </div>
         ) : (
           <>
-            <ProgressionTrendChart points={progression} />
+            <ProgressionTrendChart
+              points={progression}
+              onActiveTransactionChange={setSelectedProgressionTransactionId}
+            />
             {canOverride && (
               <div className="mt-4 flex justify-end">
                 <button
@@ -649,14 +708,15 @@ export default function LongitudinalPanel({
                   </span>
                 </div>
                 <div className="space-y-2">
-                  {manualOverrideHistory.map((point) => (
-                    <div key={`${point.transaction_id}-${point.override_timestamp ?? point.timestamp}`} className="rounded-xl border border-amber-200 bg-white p-3">
+                  {manualOverrideHistory.map((entry) => (
+                    <div key={entry.id ?? `${entry.transaction_id}-${entry.created_at}`} className="rounded-xl border border-amber-200 bg-white p-3">
                       <div className="flex items-center justify-between gap-3">
                         <span className="text-xs font-semibold uppercase tracking-[0.12em] text-amber-700">Manual override</span>
-                        <span className="text-[10px] text-[var(--text-muted)]">{formatDisplayDate(point.override_timestamp ?? point.timestamp)}</span>
+                        <span className="text-[10px] text-[var(--text-muted)]">{formatDisplayDate(entry.created_at)}</span>
                       </div>
-                      <div className="mt-2 text-sm font-medium text-[var(--deep-navy)]">{PROGRESSION_META[point.status]?.label ?? 'Overridden'} </div>
-                      <p className="mt-1 text-xs text-[var(--text-muted)]">{point.clinical_note || 'No clinical note was recorded.'}</p>
+                      <div className="mt-1 text-[11px] text-[var(--text-muted)]">Case: {entry.transaction_id} {entry.xray_timestamp ? `(${formatDisplayDate(entry.xray_timestamp)})` : ''}</div>
+                      <div className="mt-2 text-sm font-medium text-[var(--deep-navy)]">{PROGRESSION_META[entry.new_status]?.label ?? 'Overridden'}</div>
+                      <p className="mt-1 text-xs text-[var(--text-muted)]">{entry.clinical_note || 'No clinical note was recorded.'}</p>
                     </div>
                   ))}
                 </div>
@@ -679,7 +739,7 @@ export default function LongitudinalPanel({
         error={overrideError}
         loading={submittingOverride}
         onSubmit={handleOverrideSubmit}
-        caseId={latestCaseId}
+        caseId={overrideTargetCaseId}
       />
 
       <Modal isOpen={compareOpen} onClose={handleClose} title="" hideClose noPadding size="3xl">

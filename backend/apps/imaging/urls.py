@@ -51,6 +51,11 @@ urlpatterns = [
         name="patient_progression_history",
     ),
     path(
+        "patients/<int:patient_id>/progression/overrides/",
+        views.patient_progression_override_history,
+        name="patient_progression_override_history",
+    ),
+    path(
         "dashboard/technologist/",
         views.technologist_dashboard,
         name="technologist_dashboard",
