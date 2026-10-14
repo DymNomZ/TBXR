@@ -150,7 +150,10 @@ function ProgressionTrendChart({ points, onActiveTransactionChange }) {
   })
 
   const pinnedPoint = pointsWithCoords.find((point) => getPointKey(point) === pinnedPointKey) ?? null
-  const activePoint = pinnedPoint ?? hoveredPoint ?? (pointsWithCoords.length > 0 ? pointsWithCoords[pointsWithCoords.length - 1] : null)
+  const newestPoint = pointsWithCoords.length > 0 ? pointsWithCoords[pointsWithCoords.length - 1] : null
+  // Visual preview follows hover; the override target follows only an explicit selection (click) or the newest scan.
+  const activePoint = pinnedPoint ?? hoveredPoint ?? newestPoint
+  const selectedPoint = pinnedPoint ?? newestPoint
 
   useEffect(() => {
     if (pinnedPoint) return
@@ -168,8 +171,8 @@ function ProgressionTrendChart({ points, onActiveTransactionChange }) {
   }, [pinnedPointKey, pointsWithCoords])
 
   useEffect(() => {
-    onActiveTransactionChange?.(activePoint?.transaction_id ?? null)
-  }, [activePoint?.transaction_id, onActiveTransactionChange])
+    onActiveTransactionChange?.(selectedPoint?.transaction_id ?? null)
+  }, [selectedPoint?.transaction_id, onActiveTransactionChange])
 
   if (!points || points.length === 0) {
     return (

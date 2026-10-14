@@ -129,4 +129,55 @@ describe('LongitudinalPanel override UI', () => {
     expect(screen.getByText('Manual override')).toBeInTheDocument()
     expect(screen.getByText(/Case: tx-001/i)).toBeInTheDocument()
   })
+
+  it('keeps the override target on the newest scan when only hovering an older scan', async () => {
+    const fetchMock = vi.fn((url) => {
+      if (url.includes('/history/')) {
+        return Promise.resolve({ ok: true, json: () => Promise.resolve(HISTORY_PAYLOAD) })
+      }
+      if (url.includes('/progression/overrides/')) {
+        return Promise.resolve({ ok: true, json: () => Promise.resolve([]) })
+      }
+      if (url.includes('/progression/')) {
+        if (url.includes('/override/')) {
+          return Promise.resolve({ ok: true, status: 201, json: () => Promise.resolve(OVERRIDE_RESPONSE) })
+        }
+        return Promise.resolve({ ok: true, json: () => Promise.resolve(PROGRESSION_PAYLOAD) })
+      }
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({}) })
+    })
+
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<LongitudinalPanel patientId="PT-100" />)
+
+    expect(await screen.findByText('AI risk trend')).toBeInTheDocument()
+
+    // Hover an older scan without clicking it. This must NOT retarget the override.
+    fireEvent.mouseEnter(screen.getByText('40% risk').closest('button'))
+
+    fireEvent.click(screen.getByRole('button', { name: /override status/i }))
+    fireEvent.change(screen.getByLabelText(/Clinical note/i), {
+      target: { value: 'Hover-only should not retarget.' },
+    })
+    fireEvent.change(screen.getByLabelText(/Progression status/i), {
+      target: { value: 'decreased_risk' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: /submit override/i }))
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/imaging/cases/tx-002/progression/override/',
+        expect.objectContaining({
+          method: 'POST',
+          credentials: 'include',
+        }),
+      )
+    })
+
+    expect(fetchMock).not.toHaveBeenCalledWith(
+      '/api/imaging/cases/tx-001/progression/override/',
+      expect.anything(),
+    )
+  })
 })
