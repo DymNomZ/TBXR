@@ -91,6 +91,7 @@ Content-Type: application/json
 Notes:
 - API responses format contact numbers using international display format (example: +63 917 123 4567).
 - If contact input starts with `+`, parsing is country-agnostic.
+- Invalid or too-short numbers (for example: `123`) are rejected with HTTP 400 validation errors.
 
 ### GET /api/patients/search/
 - Purpose: Search patients by name or patient ID.

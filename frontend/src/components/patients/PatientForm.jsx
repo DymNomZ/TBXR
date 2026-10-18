@@ -160,6 +160,9 @@ function PatientForm({ onSuccess }) {
         options={COUNTRY_OPTIONS}
         error={fieldErrors.country_code}
       />
+      <p className="-mt-2 px-1 text-xs text-slate-500">
+        If your country is not listed, enter the number in international format (for example: +49 151 23456789).
+      </p>
 
       <InputField
         id="contact_number"

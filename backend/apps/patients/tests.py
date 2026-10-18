@@ -1,5 +1,4 @@
 import json
-import re
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.urls import reverse
@@ -180,8 +179,30 @@ class PatientViewsTests(TestCase):
         data = response.json()
         self.assertEqual(len(data), 1)
         self.assertEqual(data[0]['last_name'], 'Smith')
-        # Legacy values are still rendered safely if they are not parseable.
-        self.assertTrue(re.match(r"^(\+|\d)", data[0]['contact_number']))
+        # Legacy unparseable values are returned as-is rather than causing failures.
+        self.assertEqual(data[0]['contact_number'], '1')
+
+    def test_read_paths_fallback_when_stored_country_code_is_invalid(self):
+        """Detail and search should not crash on old records with bad country codes."""
+        self.client.force_login(self.tech)
+        patient = Patient.objects.create(
+            first_name='Legacy',
+            last_name='Country',
+            date_of_birth='1990-01-01',
+            sex='F',
+            country_code='XX',
+            contact_number='09181234567',
+        )
+
+        detail_response = self.client.get(
+            reverse('patients:detail', kwargs={'patient_id': patient.patient_id})
+        )
+        self.assertEqual(detail_response.status_code, 200)
+        self.assertEqual(detail_response.json()['contact_number'], '+63 918 123 4567')
+
+        search_response = self.client.get(reverse('patients:search'), {'name': 'legacy'})
+        self.assertEqual(search_response.status_code, 200)
+        self.assertEqual(search_response.json()[0]['contact_number'], '+63 918 123 4567')
 
     def test_search_patients_by_patient_id(self):
         """A numeric query also matches the patient ID."""

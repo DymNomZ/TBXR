@@ -16,7 +16,7 @@ class PatientCreateSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(str(exc)) from exc
 
     def validate(self, attrs):
-        country_code = normalize_region_code(attrs.get("country_code", "PH"))
+        country_code = attrs.get("country_code") or "PH"
         attrs["country_code"] = country_code
 
         try:

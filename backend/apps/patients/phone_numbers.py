@@ -13,6 +13,14 @@ def normalize_region_code(value: str, default_region: str = DEFAULT_REGION) -> s
     return code
 
 
+def resolve_region_code(value: str, fallback_region: str = DEFAULT_REGION) -> str:
+    """Resolve a stored region code safely for read paths."""
+    try:
+        return normalize_region_code(value, fallback_region)
+    except ValueError:
+        return fallback_region
+
+
 def normalize_contact_number(value: str, default_region: str = DEFAULT_REGION) -> str:
     """Parse flexible phone input and return canonical E.164 format."""
     raw = (value or "").strip()
@@ -38,7 +46,7 @@ def format_contact_number(value: str, default_region: str = DEFAULT_REGION) -> s
     if not raw:
         return ""
 
-    region = normalize_region_code(default_region)
+    region = resolve_region_code(default_region)
 
     try:
         parsed = phonenumbers.parse(raw, region)
