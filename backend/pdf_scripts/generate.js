@@ -20,11 +20,19 @@ async function main() {
 	const fileUrl = new URL(`file://${resolvedPath}`)
 
 	let browser
+	let pdfWritten = false
 	try {
-		browser = await puppeteer.launch({
+		const launchOptions = {
 			headless: 'new',
-			args: ['--no-sandbox', '--disable-setuid-sandbox'],
-		})
+			args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-gpu', '--disable-dev-shm-usage'],
+		}
+
+		// Optional override for environments where Chromium is managed externally.
+		if (process.env.CHROME_PATH) {
+			launchOptions.executablePath = process.env.CHROME_PATH
+		}
+
+		browser = await puppeteer.launch(launchOptions)
 
 		const page = await browser.newPage()
 		await page.goto(fileUrl.href, { waitUntil: 'networkidle0' })
@@ -36,12 +44,20 @@ async function main() {
 		})
 
 		process.stdout.write(pdfBuffer)
+		pdfWritten = true
 	} catch (err) {
 		console.error(err?.stack || String(err))
 		process.exit(1)
 	} finally {
 		if (browser) {
-			await browser.close()
+			try {
+				await browser.close()
+			} catch (closeErr) {
+				if (!pdfWritten) {
+					console.error(closeErr?.stack || String(closeErr))
+					process.exit(1)
+				}
+			}
 		}
 	}
 }
