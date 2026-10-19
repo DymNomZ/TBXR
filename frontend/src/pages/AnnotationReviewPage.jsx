@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { ArrowLeft, User, Hash, AlertTriangle } from 'lucide-react'
 import AppLayout from '../components/layout/AppLayout'
@@ -95,9 +95,21 @@ export default function AnnotationReviewPage() {
   const patientName = xray ? `${xray.patient.first_name} ${xray.patient.last_name}` : null
   const readOnly = Boolean(lockInfo)
 
-  const handleDeleteBox = (id) => {
-    setBoxes((prev) => prev.filter((box) => box.id !== id))
-  }
+  // Deletes from the bounding-box panel must run through the canvas's history
+  // so Undo restores them; fall back to a direct filter when the canvas is not
+  // mounted (e.g. read-only / completed views where deletes are disabled).
+  const canvasDeleteRef = useRef(null)
+  const registerCanvasDelete = useCallback((fn) => {
+    canvasDeleteRef.current = fn
+  }, [])
+
+  const handleDeleteBox = useCallback((id) => {
+    if (canvasDeleteRef.current) {
+      canvasDeleteRef.current(id)
+    } else {
+      setBoxes((prev) => prev.filter((box) => box.id !== id))
+    }
+  }, [])
 
   return (
     <AppLayout>
@@ -181,6 +193,7 @@ export default function AnnotationReviewPage() {
                       boxes={boxes}
                       onBoxesChange={setBoxes}
                       disabled={readOnly}
+                      onDeleteBoxReady={registerCanvasDelete}
                     />
               }
             />
