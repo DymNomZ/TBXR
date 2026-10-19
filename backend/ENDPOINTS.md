@@ -69,7 +69,8 @@ Required headers for session-authenticated POST requests:
   - last_name
   - date_of_birth (YYYY-MM-DD)
   - sex (M|F|O)
-  - contact_number
+  - country_code (optional, ISO-3166-1 alpha-2; defaults to PH)
+  - contact_number (accepts local or international input; stored as E.164)
 - Response: 201 JSON (patient record), Location header points to detail URL
 
 Example:
@@ -82,9 +83,15 @@ Content-Type: application/json
   "last_name": "Patient",
   "date_of_birth": "1990-01-01",
   "sex": "M",
-  "contact_number": "123"
+  "country_code": "PH",
+  "contact_number": "09171234567"
 }
 ```
+
+Notes:
+- API responses format contact numbers using international display format (example: +63 917 123 4567).
+- If contact input starts with `+`, parsing is country-agnostic.
+- Invalid or too-short numbers (for example: `123`) are rejected with HTTP 400 validation errors.
 
 ### GET /api/patients/search/
 - Purpose: Search patients by name or patient ID.

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import PatientForm from './PatientForm'
 
 function jsonResponse(body, status = 200) {
@@ -57,5 +57,23 @@ describe('PatientForm validation feedback', () => {
     expect(
       await screen.findByText('You do not have permission to perform this action.')
     ).toBeInTheDocument()
+  })
+
+  it('submits the selected country code in the payload', async () => {
+    const fetchMock = vi.fn(() => jsonResponse({}, 201))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { container } = render(<PatientForm onSuccess={vi.fn()} />)
+    fillValidForm()
+    fireEvent.change(document.getElementById('country_code'), { target: { value: 'US' } })
+    fireEvent.submit(container.querySelector('form'))
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
+
+    const request = fetchMock.mock.calls[0][1]
+    expect(JSON.parse(request.body)).toMatchObject({
+      country_code: 'US',
+      contact_number: '09171234567',
+    })
   })
 })

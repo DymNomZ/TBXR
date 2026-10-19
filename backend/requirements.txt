@@ -7,3 +7,4 @@ drf-spectacular==0.27.2
 pydicom==3.0.2
 opencv-python-headless==4.13.0.92
 coverage==7.8.0
+phonenumbers==9.0.17
