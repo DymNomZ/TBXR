@@ -229,7 +229,7 @@ def _annotation_box_to_svg(box, marker=None):
         ry = height / 2
         markup = (
             f'<ellipse cx="{cx}" cy="{cy}" rx="{rx}" ry="{ry}" '
-            'fill="rgba(91,101,220,0.12)" stroke="#5b65dc" stroke-width="0.65" />'
+            'fill="rgba(91,101,220,0.12)" stroke="#5b65dc" stroke-width="0.45" />'
         )
     elif shape == "freehand":
         points = []
@@ -241,17 +241,17 @@ def _annotation_box_to_svg(box, marker=None):
             return ""
         markup = (
             f'<polyline points="{" ".join(points)}" fill="none" stroke="#5b65dc" '
-            'stroke-width="0.65" stroke-linejoin="round" stroke-linecap="round" />'
+            'stroke-width="0.45" stroke-linejoin="round" stroke-linecap="round" />'
         )
     else:
         markup = (
             f'<rect x="{x}" y="{y}" width="{width}" height="{height}" '
-            'fill="rgba(91,101,220,0.12)" stroke="#5b65dc" stroke-width="0.65" stroke-dasharray="4 3" />'
+            'fill="rgba(91,101,220,0.12)" stroke="#5b65dc" stroke-width="0.45" stroke-dasharray="4 3" />'
         )
 
     if display_label:
         markup += (
-            f'<text x="{x + 0.5}" y="{y - 1}" fill="#5b65dc" font-size="3.2" '
+            f'<text x="{x + 0.5}" y="{y - 1}" fill="#5b65dc" font-size="2.6" '
             'font-family="Segoe UI, Arial, sans-serif" font-weight="600">'
             f'{html.escape(display_label, quote=True)}</text>'
         )
@@ -1478,8 +1478,7 @@ def generate_report(request, transaction_id):
             radiologist_notes.append(ann.notes)
         for box in ann.bounding_boxes or []:
             label = str(box.get("label", "") or "").strip()
-            if label:
-                numbered_annotations.append(f"{shape_number}. {label}")
+            numbered_annotations.append(label or f"Shape {shape_number}")
             svg = _annotation_box_to_svg(box, marker=shape_number)
             if svg:
                 annotation_svg_markup.append(svg)
