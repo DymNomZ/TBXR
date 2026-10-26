@@ -8,6 +8,10 @@ Base URL (local dev): http://127.0.0.1:8000
 - Session-based auth is supported (Django admin login + cookies).
 - For session auth, include `sessionid` and matching `csrftoken`.
 
+PATIENT role (validation respondent) access profile:
+- Read-only endpoints: patient list/search/detail, finalized-case dashboard, X-ray detail/history, report detail GET.
+- Write operations remain restricted: patient registration, uploads, annotation, report create/update/finalize, PDF generation.
+
 Required headers for session-authenticated POST requests:
 - Cookie: csrftoken=<token>; sessionid=<token>
 - X-CSRFToken: <token>
@@ -56,7 +60,7 @@ Required headers for session-authenticated POST requests:
 ## Patients
 ### GET /api/patients/
 - Purpose: List all patients.
-- Roles: RADIOLOGIC_TECH, RADIOLOGIST, PHYSICIAN
+- Roles: RADIOLOGIC_TECH, RADIOLOGIST, PHYSICIAN, PATIENT
 - Response: 200 JSON list
 
 ### POST /api/patients/register/
@@ -95,7 +99,7 @@ Notes:
 
 ### GET /api/patients/search/
 - Purpose: Search patients by name or patient ID.
-- Roles: RADIOLOGIC_TECH, RADIOLOGIST, PHYSICIAN
+- Roles: RADIOLOGIC_TECH, RADIOLOGIST, PHYSICIAN, PATIENT
 - Query params:
   - name (optional, searches first or last name; a purely numeric value also matches the patient ID)
 - Response: 200 JSON list
@@ -108,7 +112,7 @@ GET /api/patients/search/?name=10
 
 ### GET /api/patients/<patient_id>/
 - Purpose: Retrieve patient detail.
-- Roles: RADIOLOGIC_TECH, RADIOLOGIST, PHYSICIAN
+- Roles: RADIOLOGIC_TECH, RADIOLOGIST, PHYSICIAN, PATIENT
 - Response: 200 JSON
 
 ## Imaging
@@ -151,12 +155,12 @@ raw_image=@/path/to/file.png
 
 ### GET /api/imaging/patients/<patient_id>/xray/
 - Purpose: Get all uploaded xrays (transactions) of the patient.
-- Roles: RADIOLOGIC_TECH, RADIOLOGIST, PHYSICIAN
+- Roles: RADIOLOGIC_TECH, RADIOLOGIST, PHYSICIAN, PATIENT
 - Response: JSON
 
 ### GET /api/imaging/patients/<patient_id>/history/
 - Purpose: Patient X-ray history ordered by upload timestamp (ascending), including AI result and annotations.
-- Roles: RADIOLOGIC_TECH, RADIOLOGIST, PHYSICIAN
+- Roles: RADIOLOGIC_TECH, RADIOLOGIST, PHYSICIAN, PATIENT
 - Response: 200 JSON list
 
 ### GET /api/imaging/patients/<patient_id>/xray/upload/confirm/<transaction_id>/
@@ -242,7 +246,7 @@ Example response:
 
 ### GET /api/physician/dashboard
 - Purpose: Physician read-only clinical summary for finalized reports, pending alerts, and patient progress.
-- Roles: PHYSICIAN
+- Roles: PHYSICIAN, PATIENT
 - Query params (optional):
   - severity (NORMAL|MILD|MODERATE|SEVERE|CRITICAL)
   - date_from (YYYY-MM-DD; filters finalized reports by report updated date)
@@ -320,16 +324,16 @@ Example response:
   - 400 when `severity` is invalid.
   - 400 when `date_from` or `date_to` format is invalid.
   - 400 when `date_from > date_to`.
-  - 403 for non-physician roles.
+  - 403 for roles other than PHYSICIAN or PATIENT.
 
 ### GET /api/imaging/physician/dashboard/
 - Purpose: Imaging-scoped alias of physician dashboard endpoint for clients already using `/api/imaging` routes.
-- Roles: PHYSICIAN
+- Roles: PHYSICIAN, PATIENT
 - Response: Same as `/api/physician/dashboard`.
 
 ### GET /api/imaging/xray/<transaction_id>/
 - Purpose: Returns the xray details with annotations
-- Roles: RADIOLOGIC_TECH, RADIOLOGIST, PHYSICIAN
+- Roles: RADIOLOGIC_TECH, RADIOLOGIST, PHYSICIAN, PATIENT
 - Notes: If another radiologist holds the review lock, returns 409 with the active reviewer and lock timestamp — clients should render read-only mode.
 - Response: 200 JSON
 ```
@@ -388,7 +392,7 @@ Example response:
 ## Reports
 ### GET/POST/PATCH /api/imaging/xray/<transaction_id>/report/
 - Purpose: Structured diagnostic report — read, save draft, or finalize.
-- Roles: RADIOLOGIST
+- Roles: RADIOLOGIST, PHYSICIAN, PATIENT
 - Headers (POST/PATCH): Content-Type: application/json, Cookie + X-CSRFToken (session auth)
 - Body (JSON):
   - findings (string)
@@ -397,6 +401,8 @@ Example response:
   - severity (NORMAL|MILD|MODERATE|SEVERE|CRITICAL)
   - status (DRAFT|SUBMITTED)
 - Notes:
+  - GET is read-only and available to RADIOLOGIST, PHYSICIAN, and PATIENT.
+  - POST/PATCH are write operations and only RADIOLOGIST can perform them (others receive 403).
   - POST always creates the report with status=DRAFT (empty fields allowed while drafting).
   - PATCH with status=SUBMITTED finalizes; all four fields are then required (400 with field errors otherwise).
   - Finalized (SUBMITTED) reports are immutable.

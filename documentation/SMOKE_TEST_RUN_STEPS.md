@@ -25,7 +25,7 @@ touch your local Postgres database — this is exactly how CI runs them too. A
 convenience runner with readable output and failure hints is also available:
 `python scripts/run_smoke.py` (from `backend/`, venv active).
 
-Expect 18 tests, all green:
+Expect 22 tests, all green:
 
 ```
 Found 18 test(s).
@@ -46,10 +46,14 @@ test_final_submit_succeeds_with_all_fields ... ok
 test_draft_then_finalize_workflow ... ok
 test_tech_cannot_create_report ... ok
 test_generate_report_uses_persisted_report_data ... ok
+test_patient_role_can_access_dashboard_summary ... ok
+test_patient_role_has_read_only_report_access ... ok
+test_patient_role_cannot_generate_pdf ... ok
+test_patient_role_can_view_xray_detail ... ok
 test_physician_dashboard_smoke_flow ... ok
 test_ai_failure_then_retry_succeeds ... ok
 
-Ran 18 tests
+Ran 22 tests
 
 OK
 ```
@@ -104,6 +108,10 @@ PDF renderer's output.
 | Test | What it does | Expected result |
 |------|--------------|-----------------|
 | `test_physician_dashboard_smoke_flow` | Physician logs in and opens the dashboard | HTTP **200** with the summary payload (finalized cases, alerts, patient progress) |
+| `test_patient_role_can_access_dashboard_summary` | PATIENT respondent opens the same finalized-case dashboard endpoint | HTTP **200** with read-only summary payload |
+| `test_patient_role_has_read_only_report_access` | PATIENT respondent attempts report read and write actions | `GET` succeeds, `POST/PATCH` return **403** |
+| `test_patient_role_cannot_generate_pdf` | PATIENT respondent tries PDF generation | HTTP **403** |
+| `test_patient_role_can_view_xray_detail` | PATIENT respondent opens X-ray details | HTTP **200** |
 | `test_ai_failure_then_retry_succeeds` | AI inference fails, then the case is re-analysed | Failure routes the case to **MANUAL_REVIEW**; re-running `POST .../analyse/` recovers with a stored AI result |
 
 ### Why these tests matter
