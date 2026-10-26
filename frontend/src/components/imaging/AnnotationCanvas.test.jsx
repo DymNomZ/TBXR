@@ -210,6 +210,23 @@ describe('AnnotationCanvas (T06 — F-2.3.1/2/3)', () => {
     expect(screen.getByTitle('Undo')).toBeDisabled()
   })
 
+  it('dragging an existing box moves it without duplicating it', () => {
+    render(<Harness />)
+    drawRectangle({ x: 20, y: 10 }, { x: 70, y: 40 }, 'move-me')
+
+    const root = canvasRoot()
+    const shape = shapeElements()[0]
+    fireEvent.mouseDown(shape, { clientX: 30, clientY: 20, button: 0 })
+    fireEvent.mouseMove(root, { clientX: 90, clientY: 60, button: 0 })
+    fireEvent.mouseUp(root, { clientX: 90, clientY: 60, button: 0 })
+
+    const [box] = readBoxes()
+    expect(box.label).toBe('move-me')
+    expect(box.x).toBeGreaterThan(0.25)
+    expect(box.y).toBeGreaterThan(0.2)
+    expect(readBoxes()).toHaveLength(1)
+  })
+
   it('drawing a shape ignores non-primary mouse buttons (pan must not annotate)', () => {
     render(<Harness />)
     selectTool('Rectangle')
