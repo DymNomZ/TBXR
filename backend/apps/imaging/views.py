@@ -209,7 +209,7 @@ def _to_svg_coord(value, fallback=0):
     return numeric
 
 
-def _annotation_box_to_svg(box):
+def _annotation_box_to_svg(box, marker=None):
     if not isinstance(box, dict):
         return ""
 
@@ -220,6 +220,7 @@ def _annotation_box_to_svg(box):
     height = _to_svg_coord(box.get("height"), 0)
     label = box.get("label", "")
     safe_label = html.escape(str(label), quote=True)
+    display_label = str(marker) if marker is not None else safe_label
 
     if shape == "circle":
         cx = x + (width / 2)
@@ -228,7 +229,7 @@ def _annotation_box_to_svg(box):
         ry = height / 2
         markup = (
             f'<ellipse cx="{cx}" cy="{cy}" rx="{rx}" ry="{ry}" '
-            'fill="rgba(91,101,220,0.12)" stroke="#5b65dc" stroke-width="1.5" />'
+            'fill="rgba(91,101,220,0.12)" stroke="#5b65dc" stroke-width="0.65" />'
         )
     elif shape == "freehand":
         points = []
@@ -240,19 +241,19 @@ def _annotation_box_to_svg(box):
             return ""
         markup = (
             f'<polyline points="{" ".join(points)}" fill="none" stroke="#5b65dc" '
-            'stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" />'
+            'stroke-width="0.65" stroke-linejoin="round" stroke-linecap="round" />'
         )
     else:
         markup = (
             f'<rect x="{x}" y="{y}" width="{width}" height="{height}" '
-            'fill="rgba(91,101,220,0.12)" stroke="#5b65dc" stroke-width="1.5" stroke-dasharray="6 3" />'
+            'fill="rgba(91,101,220,0.12)" stroke="#5b65dc" stroke-width="0.65" stroke-dasharray="4 3" />'
         )
 
-    if safe_label:
+    if display_label:
         markup += (
-            f'<text x="{x + 0.5}" y="{y - 1}" fill="#5b65dc" font-size="4" '
+            f'<text x="{x + 0.5}" y="{y - 1}" fill="#5b65dc" font-size="3.2" '
             'font-family="Segoe UI, Arial, sans-serif" font-weight="600">'
-            f'{safe_label}</text>'
+            f'{html.escape(display_label, quote=True)}</text>'
         )
 
     return markup
@@ -1469,14 +1470,20 @@ def generate_report(request, transaction_id):
                 heatmap_base64 = base64.b64encode(img_file.read()).decode("utf-8")
 
     radiologist_notes = []
+    numbered_annotations = []
     annotation_svg_markup = []
+    shape_number = 1
     for ann in annotations:
         if ann.notes:
             radiologist_notes.append(ann.notes)
         for box in ann.bounding_boxes or []:
-            svg = _annotation_box_to_svg(box)
+            label = str(box.get("label", "") or "").strip()
+            if label:
+                numbered_annotations.append(f"{shape_number}. {label}")
+            svg = _annotation_box_to_svg(box, marker=shape_number)
             if svg:
                 annotation_svg_markup.append(svg)
+            shape_number += 1
 
     diagnostic_notes_text = "\n".join(radiologist_notes) if radiologist_notes else "No diagnostic notes provided."
 
@@ -1496,7 +1503,7 @@ def generate_report(request, transaction_id):
         "ai_risk_score": f"{ai_result.risk_score:.2f}" if ai_result else "N/A",
         "ai_risk_label": ai_result.risk_label if ai_result else "N/A",
         "heatmap_base64": heatmap_base64,
-        "radiologist_annotations": radiologist_notes,
+        "radiologist_annotations": numbered_annotations,
         "annotation_svg_markup": "\n".join(annotation_svg_markup),
         "diagnostic_notes": diagnostic_notes_text,
         "clinical_impression": report.impression if report else "",

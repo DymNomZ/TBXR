@@ -374,6 +374,9 @@ class ImagingAccessTests(TestCase):
         self.assertIn("<svg", captured_html["markup"])
         self.assertIn("polyline", captured_html["markup"])
         self.assertIn("ellipse", captured_html["markup"])
+        self.assertIn("1. rectangle", captured_html["markup"])
+        self.assertIn("2. circle", captured_html["markup"])
+        self.assertIn("3. freehand", captured_html["markup"])
 
     def test_radiologist_can_save_and_restore_own_annotation_draft(self):
         self.client.force_login(self.rad)
