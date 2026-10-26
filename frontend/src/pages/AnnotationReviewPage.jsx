@@ -27,6 +27,7 @@ export default function AnnotationReviewPage() {
   const [loading, setLoading] = useState(true)
   const [lockInfo, setLockInfo] = useState(null)
   const [lockAcquired, setLockAcquired] = useState(false)
+  const [draftStatus, setDraftStatus] = useState({ state: 'idle', lastSavedAt: null, error: null })
   const readOnly = Boolean(lockInfo)
 
   useEffect(() => {
@@ -94,19 +95,39 @@ export default function AnnotationReviewPage() {
   useEffect(() => {
     if (!transactionId || !lockAcquired || !xray || xray.status === 'COMPLETED' || readOnly) return
 
-    const timer = setTimeout(() => {
-      fetch(`/api/imaging/xray/${transactionId}/draft/`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-CSRFToken': getCsrfToken(),
-        },
-        body: JSON.stringify({
-          bounding_boxes: boxes,
-          notes: draftNotes,
-        }),
-      }).catch(() => {})
+    const timer = setTimeout(async () => {
+      setDraftStatus((prev) => ({ ...prev, state: 'saving', error: null }))
+
+      try {
+        const response = await fetch(`/api/imaging/xray/${transactionId}/draft/`, {
+          method: 'POST',
+          credentials: 'include',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCsrfToken(),
+          },
+          body: JSON.stringify({
+            bounding_boxes: boxes,
+            notes: draftNotes,
+          }),
+        })
+
+        if (!response.ok) {
+          throw new Error('Draft save failed')
+        }
+
+        setDraftStatus({
+          state: 'saved',
+          lastSavedAt: new Date().toISOString(),
+          error: null,
+        })
+      } catch {
+        setDraftStatus((prev) => ({
+          ...prev,
+          state: 'error',
+          error: 'Draft save failed. Please retry.',
+        }))
+      }
     }, 400)
 
     return () => clearTimeout(timer)
@@ -254,6 +275,7 @@ export default function AnnotationReviewPage() {
             transactionId={transactionId}
             boxes={boxes}
             draftNotes={draftNotes}
+            draftStatus={draftStatus}
             onDraftNotesChange={setDraftNotes}
             onDeleteBox={handleDeleteBox}
             isCompleted={xray?.status === 'COMPLETED'}
