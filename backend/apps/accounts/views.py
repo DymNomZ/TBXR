@@ -17,6 +17,7 @@ ROLE_FRONTEND_URLS = {
     UserRole.RADIOLOGIC_TECH: '/dashboard/technologist',
     UserRole.RADIOLOGIST:     '/dashboard/radiologist',
 	UserRole.PHYSICIAN:       '/dashboard/physician',
+	UserRole.PATIENT:         '/dashboard/patient',
 }
 
 

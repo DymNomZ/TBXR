@@ -54,6 +54,22 @@ class AccountAuthViewsTests(TestCase):
             {'redirect': expected_redirect, 'role': UserRole.RADIOLOGIST},
         )
 
+    def test_login_redirects_patient_to_patient_dashboard(self):
+        self._create_user('patient1', 'password123', UserRole.PATIENT)
+        expected_redirect = views.ROLE_FRONTEND_URLS[UserRole.PATIENT]
+
+        response = self.client.post(
+            reverse('accounts:login'),
+            data=json.dumps({'username': 'patient1', 'password': 'password123'}),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertJSONEqual(
+            response.content,
+            {'redirect': expected_redirect, 'role': UserRole.PATIENT},
+        )
+
     def test_login_returns_descriptive_error_for_bad_credentials(self):
         self._create_user('tech', 'password123', UserRole.RADIOLOGIC_TECH)
 
