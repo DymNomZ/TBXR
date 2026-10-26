@@ -22,10 +22,12 @@ export default function AnnotationReviewPage() {
 
   const [transform, setTransform] = useState({ scale: 1, translate: { x: 0, y: 0 } })
   const [boxes, setBoxes] = useState([])
+  const [draftNotes, setDraftNotes] = useState('')
   const [xray, setXray] = useState(null)
   const [loading, setLoading] = useState(true)
   const [lockInfo, setLockInfo] = useState(null)
   const [lockAcquired, setLockAcquired] = useState(false)
+  const readOnly = Boolean(lockInfo)
 
   useEffect(() => {
     if (!transactionId) return
@@ -60,6 +62,56 @@ export default function AnnotationReviewPage() {
     loadXray()
   }, [transactionId])
 
+  useEffect(() => {
+    if (!transactionId || !lockAcquired || !xray || xray.status === 'COMPLETED' || readOnly) return
+
+    let ignore = false
+    fetch(`/api/imaging/xray/${transactionId}/draft/`, {
+      credentials: 'include',
+    })
+      .then((response) => {
+        if (!response.ok) {
+          if (response.status === 404) {
+            setBoxes([])
+            setDraftNotes('')
+          }
+          return
+        }
+        return response.json()
+      })
+      .then((draft) => {
+        if (!draft || ignore) return
+        setBoxes(Array.isArray(draft.bounding_boxes) ? draft.bounding_boxes : [])
+        setDraftNotes(draft.notes ?? '')
+      })
+      .catch(() => {})
+
+    return () => {
+      ignore = true
+    }
+  }, [transactionId, lockAcquired, xray, readOnly])
+
+  useEffect(() => {
+    if (!transactionId || !lockAcquired || !xray || xray.status === 'COMPLETED' || readOnly) return
+
+    const timer = setTimeout(() => {
+      fetch(`/api/imaging/xray/${transactionId}/draft/`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': getCsrfToken(),
+        },
+        body: JSON.stringify({
+          bounding_boxes: boxes,
+          notes: draftNotes,
+        }),
+      }).catch(() => {})
+    }, 400)
+
+    return () => clearTimeout(timer)
+  }, [transactionId, lockAcquired, xray, boxes, draftNotes, readOnly])
+
   // While this radiologist holds the lock: renew it on a heartbeat and release it
   // on the way out (in-app navigation, tab close/reload) so cases are not left blocked.
   useEffect(() => {
@@ -93,7 +145,6 @@ export default function AnnotationReviewPage() {
   }, [transactionId, lockAcquired])
 
   const patientName = xray ? `${xray.patient.first_name} ${xray.patient.last_name}` : null
-  const readOnly = Boolean(lockInfo)
 
   // Deletes from the bounding-box panel must run through the canvas's history
   // so Undo restores them; fall back to a direct filter when the canvas is not
@@ -202,6 +253,8 @@ export default function AnnotationReviewPage() {
           <AnnotationPanel
             transactionId={transactionId}
             boxes={boxes}
+            draftNotes={draftNotes}
+            onDraftNotesChange={setDraftNotes}
             onDeleteBox={handleDeleteBox}
             isCompleted={xray?.status === 'COMPLETED'}
             existingAnnotation={xray?.annotations?.[0] ?? null}

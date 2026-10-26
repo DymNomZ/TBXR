@@ -47,6 +47,8 @@ function BoxItem({ box, onDelete, canDelete = true }) {
 export default function AnnotationPanel({
   transactionId,
   boxes = [],
+  draftNotes = '',
+  onDraftNotesChange,
   onDeleteBox,
   isCompleted = false,
   existingAnnotation = null,
@@ -64,8 +66,14 @@ export default function AnnotationPanel({
   useEffect(() => {
     if (isCompleted && existingAnnotation?.notes) {
       setNotes(existingAnnotation.notes)
+      onDraftNotesChange?.(existingAnnotation.notes)
+      return
     }
-  }, [isCompleted, existingAnnotation])
+
+    if (!isCompleted) {
+      setNotes(draftNotes)
+    }
+  }, [draftNotes, existingAnnotation, isCompleted, onDraftNotesChange])
 
   const handleSubmit = async () => {
     setLoading(true)
@@ -162,7 +170,11 @@ export default function AnnotationPanel({
         <div className="p-4">
           <textarea
             value={notes}
-            onChange={(e) => setNotes(e.target.value)}
+            onChange={(e) => {
+              const nextValue = e.target.value
+              setNotes(nextValue)
+              onDraftNotesChange?.(nextValue)
+            }}
             placeholder={readOnly ? 'This case is locked by another reviewer.' : 'Enter your findings, observations, and recommendations…'}
             rows={6}
             disabled={editingDisabled}

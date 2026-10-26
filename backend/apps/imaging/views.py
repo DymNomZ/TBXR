@@ -40,7 +40,7 @@ from apps.accounts.enums import UserRole
 from apps.patients.models import Patient
 
 from .preprocessing import preprocess_xray
-from .models import Annotation, XrayRecord, ProcessedImage, AIResult, ProgressionStatus, ProgressionOverrideAuditLog, Report, Notification
+from .models import Annotation, AnnotationDraft, XrayRecord, ProcessedImage, AIResult, ProgressionStatus, ProgressionOverrideAuditLog, Report, Notification
 from django.db import models
 from .serializers import (
     XrayRecordUploadSerializer,
@@ -603,6 +603,101 @@ def analyse_xray(request, transaction_id):
         status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
     )
 
+@api_view(["GET", "POST"])
+@role_required(UserRole.RADIOLOGIST)
+def annotation_draft(request, transaction_id):
+    xray_record = get_object_or_404(XrayRecord, transaction_id=transaction_id)
+
+    xray_record.clear_if_expired()
+    if _lock_blocks_user(xray_record, request.user):
+        return _lock_conflict_response(xray_record)
+
+    if xray_record.active_reviewer_id != request.user.id:
+        if not xray_record.acquire_lock(request.user):
+            return _lock_conflict_response(xray_record)
+
+    if request.method == "GET":
+        draft = AnnotationDraft.objects.filter(
+            xray_record=xray_record,
+            radiologist=request.user,
+        ).order_by("-updated_at").first()
+
+        if draft is None:
+            return Response({"detail": "No draft found."}, status=status.HTTP_404_NOT_FOUND)
+
+        return Response({
+            "bounding_boxes": draft.bounding_boxes,
+            "notes": draft.notes,
+            "updated_at": draft.updated_at.isoformat(),
+        })
+
+    bounding_boxes = request.data.get("bounding_boxes", [])
+    notes = request.data.get("notes", "")
+
+    if isinstance(bounding_boxes, str):
+        try:
+            bounding_boxes = json.loads(bounding_boxes)
+        except json.JSONDecodeError:
+            return Response(
+                {"errors": {"bounding_boxes": "Must be a JSON array."}},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+    if bounding_boxes is None:
+        bounding_boxes = []
+
+    if not isinstance(bounding_boxes, list):
+        return Response(
+            {"errors": {"bounding_boxes": "Must be a JSON array."}},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    if notes is None:
+        notes = ""
+
+    if not isinstance(notes, str):
+        return Response(
+            {"errors": {"notes": "Must be a string."}},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    normalized_boxes = []
+    for box in bounding_boxes:
+        if not isinstance(box, dict):
+            continue
+        normalized_box = {
+            "x": box.get("x"),
+            "y": box.get("y"),
+            "width": box.get("width"),
+            "height": box.get("height"),
+            "label": box.get("label", ""),
+        }
+        if "shape" in box:
+            normalized_box["shape"] = box.get("shape")
+        if "points" in box:
+            normalized_box["points"] = box.get("points")
+        normalized_boxes.append(normalized_box)
+
+    draft, created = AnnotationDraft.objects.update_or_create(
+        xray_record=xray_record,
+        radiologist=request.user,
+        defaults={
+            "bounding_boxes": normalized_boxes,
+            "notes": notes,
+        },
+    )
+
+    return Response(
+        {
+            "transaction_id": str(xray_record.transaction_id),
+            "draft_id": draft.id,
+            "saved": True,
+            "updated_at": draft.updated_at.isoformat(),
+        },
+        status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
+    )
+
+
 @api_view(["POST"])
 @role_required(UserRole.RADIOLOGIST)
 def annotate_xray(request, transaction_id):
@@ -769,6 +864,7 @@ def annotate_xray(request, transaction_id):
 
     xray_record.status = "COMPLETED"
     xray_record.save(update_fields=["status"])
+    AnnotationDraft.objects.filter(xray_record=xray_record, radiologist=request.user).delete()
 
     # Case finalized — the review lock is no longer needed.
     xray_record.release_lock()
