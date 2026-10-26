@@ -18,7 +18,7 @@ from django.utils import timezone
 from apps.accounts.enums import UserRole
 from apps.patients.models import Patient
 
-from .models import AIResult, Annotation, ProcessedImage, XrayRecord, Report
+from .models import AIResult, Annotation, AnnotationDraft, ProcessedImage, XrayRecord, Report
 
 
 class ImagingAccessTests(TestCase):
@@ -342,6 +342,43 @@ class ImagingAccessTests(TestCase):
         self.tech_one_record.refresh_from_db()
         self.assertEqual(self.tech_one_record.status, "COMPLETED")
         self.assertEqual(response.json()["status"], "COMPLETED")
+
+    def test_radiologist_can_save_and_restore_own_annotation_draft(self):
+        self.client.force_login(self.rad)
+        draft_url = reverse(
+            "imaging:xray-draft",
+            kwargs={"transaction_id": str(self.tech_one_record.transaction_id)},
+        )
+
+        payload = {
+            "bounding_boxes": [{"x": 12, "y": 25, "width": 40, "height": 52, "label": "draft-nodule", "shape": "rectangle"}],
+            "notes": "Paused draft",
+        }
+
+        save_response = self.client.post(draft_url, data=json.dumps(payload), content_type="application/json")
+        self.assertEqual(save_response.status_code, 201)
+        self.assertTrue(AnnotationDraft.objects.filter(xray_record=self.tech_one_record, radiologist=self.rad).exists())
+
+        get_response = self.client.get(draft_url)
+        self.assertEqual(get_response.status_code, 200)
+        self.assertEqual(get_response.json()["notes"], "Paused draft")
+        self.assertEqual(get_response.json()["bounding_boxes"][0]["label"], "draft-nodule")
+
+    def test_radiologist_only_sees_their_own_annotation_draft(self):
+        self.client.force_login(self.rad)
+        draft_url = reverse(
+            "imaging:xray-draft",
+            kwargs={"transaction_id": str(self.tech_one_record.transaction_id)},
+        )
+        self.client.post(
+            draft_url,
+            data=json.dumps({"bounding_boxes": [{"x": 1, "y": 2, "width": 3, "height": 4, "label": "mine"}], "notes": "mine only"}),
+            content_type="application/json",
+        )
+
+        self.client.force_login(self.rad_two)
+        get_response = self.client.get(draft_url)
+        self.assertEqual(get_response.status_code, 409)
 
     def test_non_radiologists_cannot_submit_annotations(self):
         annotate_url = reverse(

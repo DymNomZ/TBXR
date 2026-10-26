@@ -47,6 +47,9 @@ function BoxItem({ box, onDelete, canDelete = true }) {
 export default function AnnotationPanel({
   transactionId,
   boxes = [],
+  draftNotes = '',
+  draftStatus = { state: 'idle', lastSavedAt: null, error: null },
+  onDraftNotesChange,
   onDeleteBox,
   isCompleted = false,
   existingAnnotation = null,
@@ -64,8 +67,14 @@ export default function AnnotationPanel({
   useEffect(() => {
     if (isCompleted && existingAnnotation?.notes) {
       setNotes(existingAnnotation.notes)
+      onDraftNotesChange?.(existingAnnotation.notes)
+      return
     }
-  }, [isCompleted, existingAnnotation])
+
+    if (!isCompleted) {
+      setNotes(draftNotes)
+    }
+  }, [draftNotes, existingAnnotation, isCompleted, onDraftNotesChange])
 
   const handleSubmit = async () => {
     setLoading(true)
@@ -159,10 +168,28 @@ export default function AnnotationPanel({
           <h3 className="text-sm font-bold text-[var(--deep-navy)]">Diagnostic Notes</h3>
         </div>
 
+        <div className="px-4 pt-3 pb-0">
+          <div className="flex items-center justify-between gap-2 rounded-lg border border-[var(--border)] bg-[var(--surface-soft)] px-2.5 py-1.5 text-[11px] text-[var(--text-muted)]">
+            <span>
+              {draftStatus.state === 'saving' && 'Saving draft…'}
+              {draftStatus.state === 'saved' && draftStatus.lastSavedAt && `Draft saved ${new Date(draftStatus.lastSavedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`}
+              {draftStatus.state === 'idle' && 'Draft not yet saved'}
+              {draftStatus.state === 'error' && (draftStatus.error || 'Draft save failed')}
+            </span>
+            {draftStatus.state === 'saved' && <span className="h-2 w-2 rounded-full bg-emerald-500" title="Draft saved" />}
+            {draftStatus.state === 'saving' && <span className="h-2 w-2 rounded-full bg-amber-500 animate-pulse" title="Saving draft" />}
+            {draftStatus.state === 'error' && <span className="h-2 w-2 rounded-full bg-red-500" title="Draft save failed" />}
+          </div>
+        </div>
+
         <div className="p-4">
           <textarea
             value={notes}
-            onChange={(e) => setNotes(e.target.value)}
+            onChange={(e) => {
+              const nextValue = e.target.value
+              setNotes(nextValue)
+              onDraftNotesChange?.(nextValue)
+            }}
             placeholder={readOnly ? 'This case is locked by another reviewer.' : 'Enter your findings, observations, and recommendations…'}
             rows={6}
             disabled={editingDisabled}

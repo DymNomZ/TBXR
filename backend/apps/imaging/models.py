@@ -162,6 +162,30 @@ class Annotation(models.Model):
 
     def __str__(self):
         return f'Annotation for {self.xray_record.transaction_id} by {self.radiologist}'
+
+
+class AnnotationDraft(models.Model):
+    xray_record = models.ForeignKey(
+        XrayRecord,
+        on_delete=models.CASCADE,
+        related_name='annotation_drafts',
+    )
+    radiologist = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='annotation_drafts',
+    )
+    bounding_boxes = models.JSONField(default=list)
+    notes = models.TextField(blank=True, default='')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = [('xray_record', 'radiologist')]
+        ordering = ['-updated_at']
+
+    def __str__(self):
+        return f'Draft annotation for {self.xray_record.transaction_id} by {self.radiologist}'
     
 class AIResult(models.Model):
     class RiskLabel(models.TextChoices):
