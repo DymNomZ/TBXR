@@ -15,15 +15,24 @@ Including another URLconf
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
 from django.contrib import admin
-from django.urls import path, include
+from django.urls import path, include, re_path
 from django.conf import settings
 from django.conf.urls.static import static
+from django.http import Http404, HttpResponse
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 from apps.accounts.decorators import staff_or_debug_required
 from apps.imaging.views import physician_dashboard, analytics_summary, analytics_export
 
 schema_view = staff_or_debug_required(SpectacularAPIView.as_view())
 docs_view   = staff_or_debug_required(SpectacularSwaggerView.as_view(url_name='schema'))
+
+
+def serve_frontend_index(_request):
+    """Serve the built frontend app for SPA deep links when proxied to Django."""
+    index_path = settings.BASE_DIR.parent / 'frontend' / 'dist' / 'index.html'
+    if not index_path.exists():
+        raise Http404('Frontend build not found.')
+    return HttpResponse(index_path.read_text(encoding='utf-8'), content_type='text/html')
 
 urlpatterns = [
     path('admin/', admin.site.urls),
@@ -36,6 +45,8 @@ urlpatterns = [
     path('api/physician/dashboard/', physician_dashboard, name='physician_dashboard_root_slash'),
     path('api/schema/', schema_view, name='schema'),
     path('api/docs/', docs_view, name='swagger-ui'),
+    # Fallback for SPA routes (e.g. /patients/4) when requests hit Django directly.
+    re_path(r'^(?!api/|admin/|accounts/|media/).*$', serve_frontend_index, name='frontend_spa_fallback'),
 ]
 
 if settings.DEBUG:
