@@ -1359,11 +1359,17 @@ def notification_mark_read(request, notification_id):
 
 
 @api_view(["GET", "POST", "PATCH"])
-@role_required(UserRole.RADIOLOGIST)
+@role_required(UserRole.RADIOLOGIST, UserRole.PHYSICIAN)
 def report_detail(request, transaction_id):
     xray_record = get_object_or_404(XrayRecord, transaction_id=transaction_id)
 
     if request.method in {"POST", "PATCH"}:
+        if request.user.role != UserRole.RADIOLOGIST:
+            return Response(
+                {"detail": "Only radiologists can edit or submit reports."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
         xray_record.clear_if_expired()
         if _lock_blocks_user(xray_record, request.user):
             return _lock_conflict_response(xray_record)
