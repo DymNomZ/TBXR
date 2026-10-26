@@ -373,10 +373,87 @@ function ThumbnailCard({ record, slot, onClick }) {
   )
 }
 
+function FullViewCard({ record, label, labelColor }) {
+  const [transform, setTransform] = useState({ scale: 1, translate: { x: 0, y: 0 } })
+  const [xrayData, setXrayData] = useState(null)
+
+  useEffect(() => {
+    if (!record) return
+    const controller = new AbortController()
+    setXrayData(null)
+    fetch(`/api/imaging/xray/${record.transaction_id}/`, {
+      credentials: 'include',
+      signal: controller.signal,
+    })
+      .then((r) => r.json())
+      .then(setXrayData)
+      .catch((err) => {
+        if (err.name !== 'AbortError') console.error(err)
+      })
+    return () => controller.abort()
+  }, [record?.transaction_id])
+
+  return (
+    <div className="rounded-[32px] border border-white/10 bg-slate-950/60 p-5 shadow-[0_30px_80px_rgba(15,23,42,0.55)]">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <span className={`text-xs font-bold px-2.5 py-1 rounded-full text-white ${labelColor}`}>
+          {label}
+        </span>
+        <span className="text-[11px] font-medium text-slate-200">{record.transaction_id}</span>
+      </div>
+
+      <div className="rounded-2xl overflow-hidden border border-white/10 bg-black min-h-[55vh] max-h-[75vh]">
+        <HeatmapViewer
+          rawImageUrl={xrayData?.display_image ?? null}
+          heatmapUrl={xrayData?.ai_result?.heatmap_url ?? null}
+          onTransformChange={setTransform}
+          overlay={
+            <StaticAnnotationOverlay
+              annotations={xrayData?.annotations ?? []}
+              scale={transform.scale}
+              translate={transform.translate}
+            />
+          }
+        />
+      </div>
+    </div>
+  )
+}
+
+function FullViewOverlay({ records, onClose }) {
+  if (!records || records.length === 0) return null
+
+  return (
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/70 backdrop-blur-sm p-5 sm:p-10 lg:p-12">
+      <div className="relative w-full max-w-[95vw] xl:max-w-[90vw]">
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Close full view"
+          className="absolute -top-3 right-0 z-10 flex h-11 w-11 items-center justify-center rounded-full border border-white/15 bg-black/40 text-white shadow-lg transition hover:bg-black/60"
+        >
+          <X size={18} />
+        </button>
+
+        <div className={`grid gap-6 ${records.length > 1 ? 'xl:grid-cols-2' : 'grid-cols-1'}`}>
+          {records.map((record, index) => (
+            <FullViewCard
+              key={`${record.transaction_id}-${index}`}
+              record={record}
+              label={index === 0 ? 'A' : 'B'}
+              labelColor={index === 0 ? 'bg-[var(--accent)]' : 'bg-orange-400'}
+            />
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ─── Viewer slot ──────────────────────────────────────────────────────────────
 // Owns its own transform state so StaticAnnotationOverlay stays in sync
 
-function ViewerSlot({ record, label, labelColor }) {
+function ViewerSlot({ record, label, labelColor, onOpenFullView }) {
   const [transform, setTransform] = useState({ scale: 1, translate: { x: 0, y: 0 } })
   const [xrayData, setXrayData] = useState(null)
 
@@ -411,9 +488,18 @@ function ViewerSlot({ record, label, labelColor }) {
 
   return (
     <div className="flex-1 flex flex-col gap-3 min-w-0 overflow-y-auto max-h-[65vh]">
-      <span className={`self-start text-xs font-bold px-2 py-0.5 rounded-full text-white ${labelColor}`}>
-        {label}
-      </span>
+      <div className="flex items-center justify-between gap-2">
+        <span className={`self-start text-xs font-bold px-2 py-0.5 rounded-full text-white ${labelColor}`}>
+          {label}
+        </span>
+        <button
+          type="button"
+          onClick={onOpenFullView}
+          className="rounded-lg border border-[var(--border)] bg-white px-2.5 py-1 text-[11px] font-medium text-[var(--text)] transition hover:bg-[var(--surface-soft)]"
+        >
+          Full view
+        </button>
+      </div>
 
       <HeatmapViewer
         rawImageUrl={xrayData?.display_image ?? null}
@@ -468,6 +554,7 @@ export default function LongitudinalPanel({
   const [submittingOverride, setSubmittingOverride] = useState(false)
   const [selectedProgressionTransactionId, setSelectedProgressionTransactionId] = useState(null)
   const [overrideHistory, setOverrideHistory] = useState([])
+  const [fullViewRecords, setFullViewRecords] = useState([])
 
   // Slots store full record objects — annotations travel with them
   const [slotA, setSlotA] = useState(null)
@@ -771,12 +858,14 @@ export default function LongitudinalPanel({
               record={slotA}
               label="A"
               labelColor="bg-[var(--accent)]"
+              onOpenFullView={() => setFullViewRecords([slotA, slotB].filter(Boolean))}
             />
             <ViewerSlot
               key={slotB?.transaction_id ?? 'slot-b-empty'}
               record={slotB}
               label="B"
               labelColor="bg-orange-400"
+              onOpenFullView={() => setFullViewRecords([slotA, slotB].filter(Boolean))}
             />
           </div>
 
@@ -801,6 +890,11 @@ export default function LongitudinalPanel({
           </div>
         </div>
       </Modal>
+
+      <FullViewOverlay
+        records={fullViewRecords}
+        onClose={() => setFullViewRecords([])}
+      />
     </>
   )
 }
