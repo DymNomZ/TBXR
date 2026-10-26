@@ -3,6 +3,7 @@ import tempfile
 import subprocess
 import math
 import shutil
+import html
 from django.conf import settings
 from datetime import date
 from django.contrib.auth.decorators import login_required
@@ -194,6 +195,68 @@ def _extract_pdf_bytes_from_output(output):
         return raw
 
     return None
+
+
+def _to_svg_coord(value, fallback=0):
+    if value is None:
+        return fallback
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError):
+        return fallback
+    if 0 <= numeric <= 1:
+        return numeric * 100
+    return numeric
+
+
+def _annotation_box_to_svg(box, marker=None):
+    if not isinstance(box, dict):
+        return ""
+
+    shape = str(box.get("shape") or "rectangle")
+    x = _to_svg_coord(box.get("x"), 0)
+    y = _to_svg_coord(box.get("y"), 0)
+    width = _to_svg_coord(box.get("width"), 0)
+    height = _to_svg_coord(box.get("height"), 0)
+    label = box.get("label", "")
+    safe_label = html.escape(str(label), quote=True)
+    display_label = str(marker) if marker is not None else safe_label
+
+    if shape == "circle":
+        cx = x + (width / 2)
+        cy = y + (height / 2)
+        rx = width / 2
+        ry = height / 2
+        markup = (
+            f'<ellipse cx="{cx}" cy="{cy}" rx="{rx}" ry="{ry}" '
+            'fill="rgba(91,101,220,0.12)" stroke="#5b65dc" stroke-width="0.45" />'
+        )
+    elif shape == "freehand":
+        points = []
+        for point in box.get("points", []) or []:
+            px = _to_svg_coord(point.get("x"), 0)
+            py = _to_svg_coord(point.get("y"), 0)
+            points.append(f"{px},{py}")
+        if not points:
+            return ""
+        markup = (
+            f'<polyline points="{" ".join(points)}" fill="none" stroke="#5b65dc" '
+            'stroke-width="0.45" stroke-linejoin="round" stroke-linecap="round" />'
+        )
+    else:
+        markup = (
+            f'<rect x="{x}" y="{y}" width="{width}" height="{height}" '
+            'fill="rgba(91,101,220,0.12)" stroke="#5b65dc" stroke-width="0.45" stroke-dasharray="4 3" />'
+        )
+
+    if display_label:
+        markup += (
+            f'<text x="{x + 0.5}" y="{y - 1}" fill="#5b65dc" font-size="2.6" '
+            'font-family="Segoe UI, Arial, sans-serif" font-weight="600">'
+            f'{html.escape(display_label, quote=True)}</text>'
+        )
+
+    return markup
 
 
 class ProgressionHistoryPagination(PageNumberPagination):
@@ -1407,9 +1470,19 @@ def generate_report(request, transaction_id):
                 heatmap_base64 = base64.b64encode(img_file.read()).decode("utf-8")
 
     radiologist_notes = []
+    numbered_annotations = []
+    annotation_svg_markup = []
+    shape_number = 1
     for ann in annotations:
         if ann.notes:
             radiologist_notes.append(ann.notes)
+        for box in ann.bounding_boxes or []:
+            label = str(box.get("label", "") or "").strip()
+            numbered_annotations.append(label or f"Shape {shape_number}")
+            svg = _annotation_box_to_svg(box, marker=shape_number)
+            if svg:
+                annotation_svg_markup.append(svg)
+            shape_number += 1
 
     diagnostic_notes_text = "\n".join(radiologist_notes) if radiologist_notes else "No diagnostic notes provided."
 
@@ -1429,7 +1502,8 @@ def generate_report(request, transaction_id):
         "ai_risk_score": f"{ai_result.risk_score:.2f}" if ai_result else "N/A",
         "ai_risk_label": ai_result.risk_label if ai_result else "N/A",
         "heatmap_base64": heatmap_base64,
-        "radiologist_annotations": radiologist_notes,
+        "radiologist_annotations": numbered_annotations,
+        "annotation_svg_markup": "\n".join(annotation_svg_markup),
         "diagnostic_notes": diagnostic_notes_text,
         "clinical_impression": report.impression if report else "",
         "recommendations": report.recommendation if report else "",

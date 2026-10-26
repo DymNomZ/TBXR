@@ -343,6 +343,42 @@ class ImagingAccessTests(TestCase):
         self.assertEqual(self.tech_one_record.status, "COMPLETED")
         self.assertEqual(response.json()["status"], "COMPLETED")
 
+    def test_generate_report_includes_annotation_shapes_in_html(self):
+        self.tech_one_record.status = "COMPLETED"
+        self.tech_one_record.save(update_fields=["status"])
+
+        Annotation.objects.create(
+            xray_record=self.tech_one_record,
+            radiologist=self.rad,
+            bounding_boxes=[
+                {"x": 0.20, "y": 0.15, "width": 0.30, "height": 0.25, "label": "rectangle", "shape": "rectangle"},
+                {"x": 0.55, "y": 0.50, "width": 0.10, "height": 0.10, "label": "circle", "shape": "circle"},
+                {"x": 0.30, "y": 0.60, "width": 0.20, "height": 0.10, "label": "freehand", "shape": "freehand", "points": [{"x": 0.30, "y": 0.60}, {"x": 0.40, "y": 0.65}, {"x": 0.50, "y": 0.60}]},
+            ],
+            notes="Upper lobe opacity noted.",
+        )
+
+        self.client.force_login(self.rad)
+        url = reverse("imaging:generate_report", kwargs={"transaction_id": str(self.tech_one_record.transaction_id)})
+        captured_html = {}
+
+        def fake_run(cmd, *args, **kwargs):
+            with open(cmd[2], "r", encoding="utf-8") as html_file:
+                captured_html["markup"] = html_file.read()
+            return SimpleNamespace(stdout=b"%PDF-1.4 fake pdf bytes", stderr=b"", returncode=0)
+
+        with mock.patch("apps.imaging.views.subprocess.run", side_effect=fake_run):
+            response = self.client.get(url)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("<svg", captured_html["markup"])
+        self.assertIn("polyline", captured_html["markup"])
+        self.assertIn("ellipse", captured_html["markup"])
+        self.assertIn(">1<", captured_html["markup"])
+        self.assertIn(">2<", captured_html["markup"])
+        self.assertIn(">3<", captured_html["markup"])
+        self.assertNotIn("1. 1.", captured_html["markup"])
+
     def test_radiologist_can_save_and_restore_own_annotation_draft(self):
         self.client.force_login(self.rad)
         draft_url = reverse(
