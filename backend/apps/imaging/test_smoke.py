@@ -43,6 +43,11 @@ class ReportSmokeTests(TestCase):
             password="password123",
             role=UserRole.RADIOLOGIC_TECH,
         )
+        cls.respondent = user_model.objects.create_user(
+            username="smoke-respondent",
+            password="password123",
+            role=UserRole.PATIENT,
+        )
         cls.patient = Patient.objects.create(
             first_name="Smoke",
             last_name="Patient",
@@ -282,6 +287,52 @@ class ReportSmokeTests(TestCase):
         response = self.client.post(url, {"findings": "x", "impression": "x", "recommendation": "x", "severity": "NORMAL"}, content_type="application/json")
         self.assertEqual(response.status_code, 403)
 
+    def test_patient_role_has_read_only_report_access(self):
+        Report.objects.create(
+            xray_record=self.completed_record,
+            findings="Readonly findings",
+            impression="Readonly impression",
+            recommendation="Readonly recommendation",
+            severity=Report.SeverityChoices.NORMAL,
+            status="DRAFT",
+            created_by=self.rad,
+        )
+        url = self._report_detail_url(self.completed_record.transaction_id)
+
+        self.client.force_login(self.respondent)
+        get_response = self.client.get(url)
+        self.assertEqual(get_response.status_code, 200)
+
+        post_response = self.client.post(
+            url,
+            {"findings": "x", "impression": "x", "recommendation": "x", "severity": "NORMAL"},
+            content_type="application/json",
+        )
+        self.assertEqual(post_response.status_code, 403)
+
+        patch_response = self.client.patch(
+            url,
+            {"severity": "CRITICAL"},
+            content_type="application/json",
+        )
+        self.assertEqual(patch_response.status_code, 403)
+
+    def test_patient_role_cannot_generate_pdf(self):
+        self.client.force_login(self.respondent)
+        response = self.client.get(self._report_url(self.completed_record.transaction_id))
+        self.assertEqual(response.status_code, 403)
+
+    def test_patient_role_can_view_xray_detail(self):
+        self.client.force_login(self.respondent)
+        response = self.client.get(
+            reverse("imaging:xray-detail", kwargs={"transaction_id": str(self.completed_record.transaction_id)})
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            str(response.data["transaction_id"]),
+            str(self.completed_record.transaction_id),
+        )
+
     def test_generate_report_uses_persisted_report_data(self):
         """PDF generation uses Report model fields."""
         self.client.force_login(self.rad)
@@ -313,6 +364,11 @@ class PhysicianDashboardSmokeTests(TestCase):
             username="smoke-physician",
             password="password123",
             role=UserRole.PHYSICIAN,
+        )
+        cls.respondent = user_model.objects.create_user(
+            username="smoke-respondent-dashboard",
+            password="password123",
+            role=UserRole.PATIENT,
         )
         cls.radiologist = user_model.objects.create_user(
             username="smoke-rad-physician",
@@ -372,6 +428,16 @@ class PhysicianDashboardSmokeTests(TestCase):
         self.assertGreaterEqual(payload["summary"]["finalized_report_count"], 1)
         self.assertIn("pending_alerts", payload)
         self.assertTrue(any("Report ready" in item["message"] for item in payload["pending_alerts"]))
+
+    def test_patient_role_can_access_dashboard_summary(self):
+        self.client.force_login(self.respondent)
+
+        response = self.client.get("/api/physician/dashboard")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertIn("summary", payload)
+        self.assertIn("finalized_cases", payload)
 
 
 class AIFailureRetrySmokeTests(TestCase):

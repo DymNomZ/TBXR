@@ -1018,7 +1018,7 @@ def radiologist_queue(request):
 
 
 @api_view(["GET"])
-@role_required(UserRole.PHYSICIAN)
+@role_required(UserRole.PHYSICIAN, UserRole.PATIENT)
 def physician_dashboard(request):
     finalized_reports = (
         Report.objects.filter(status="SUBMITTED")
@@ -1088,7 +1088,7 @@ def physician_dashboard(request):
     )
 
 @api_view(["GET"])
-@role_required(UserRole.RADIOLOGIC_TECH, UserRole.RADIOLOGIST, UserRole.PHYSICIAN)
+@role_required(UserRole.RADIOLOGIC_TECH, UserRole.RADIOLOGIST, UserRole.PHYSICIAN, UserRole.PATIENT)
 def xray_detail(request, transaction_id):
     xray_record = get_object_or_404(XrayRecord, transaction_id=transaction_id)
 
@@ -1166,7 +1166,7 @@ def renew_review_lock(request, transaction_id):
     )
 
 @api_view(["GET"])
-@role_required(UserRole.RADIOLOGIC_TECH, UserRole.RADIOLOGIST, UserRole.PHYSICIAN)
+@role_required(UserRole.RADIOLOGIC_TECH, UserRole.RADIOLOGIST, UserRole.PHYSICIAN, UserRole.PATIENT)
 def patient_history(request, patient_id):
     patient = get_object_or_404(Patient, patient_id=patient_id)
     records = (
@@ -1361,7 +1361,7 @@ def notification_mark_read(request, notification_id):
 
 
 @api_view(["GET", "POST", "PATCH"])
-@role_required(UserRole.RADIOLOGIST, UserRole.PHYSICIAN)
+@role_required(UserRole.RADIOLOGIST, UserRole.PHYSICIAN, UserRole.PATIENT)
 def report_detail(request, transaction_id):
     xray_record = get_object_or_404(XrayRecord, transaction_id=transaction_id)
 
