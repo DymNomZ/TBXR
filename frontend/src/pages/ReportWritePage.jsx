@@ -81,6 +81,11 @@ export default function ReportWritePage() {
         }
 
         if (!response.ok) {
+          if (isPhysicianView) {
+            setForm(EMPTY_FORM)
+            setReportExists(false)
+            return
+          }
           throw new Error('Unable to load report draft.')
         }
 
@@ -93,13 +98,19 @@ export default function ReportWritePage() {
           severity: data.severity ?? '',
         })
       } catch (error) {
+        if (isPhysicianView) {
+          setForm(EMPTY_FORM)
+          setReportExists(false)
+          return
+        }
+
         setStatusType('error')
         setStatusMessage(error.message || 'Unable to load the report draft.')
       }
     }
 
     loadReport()
-  }, [transactionId])
+  }, [transactionId, isPhysicianView])
 
   const requiredCount = useMemo(() => {
     return Object.keys(EMPTY_FORM).filter((key) => !!String(form[key] ?? '').trim()).length

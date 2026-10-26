@@ -248,6 +248,25 @@ describe('ReportWritePage', () => {
     expect(screen.getByText('4/4 sections complete')).toBeInTheDocument()
   })
 
+  it('hides the draft-load error in the physician read-only view when no report exists yet', async () => {
+    localStorage.setItem('user', JSON.stringify({ role: 'PHYSICIAN' }))
+    vi.stubGlobal('fetch', vi.fn(() => jsonResponse({ detail: 'Report not found for this X-ray.' }, 404)))
+
+    render(
+      <MemoryRouter initialEntries={[`/radiologist/report/${TX_ID}`]}>
+        <AuthProvider>
+          <Routes>
+            <Route path="/radiologist/report/:transactionId" element={<ReportWritePage />} />
+          </Routes>
+        </AuthProvider>
+      </MemoryRouter>,
+    )
+
+    await waitFor(() => {
+      expect(screen.queryByText('Unable to load report draft.')).not.toBeInTheDocument()
+    })
+  })
+
   it('shows an error banner when the report draft cannot be loaded', async () => {
     seedUser()
     vi.stubGlobal('fetch', vi.fn(() => jsonResponse({ detail: 'Server exploded.' }, 500)))
