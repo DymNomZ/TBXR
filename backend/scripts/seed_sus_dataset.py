@@ -7,6 +7,7 @@ What this script creates:
 - 1 RADIOLOGIC_TECH user
 - 1 RADIOLOGIST user
 - 1 PHYSICIAN user
+- 1 PATIENT respondent user
 - 5 patients
 - 2 X-ray records for physician dashboard walkthrough
 - 1 submitted report and 1 pending physician notification
@@ -65,6 +66,12 @@ USER_FIXTURES = [
         "password": SEED_PASSWORD,
         "role": UserRole.PHYSICIAN,
         "email": "physician1@example.com",
+    },
+    {
+        "username": "respondent1",
+        "password": SEED_PASSWORD,
+        "role": UserRole.PATIENT,
+        "email": "respondent1@example.com",
     },
 ]
 

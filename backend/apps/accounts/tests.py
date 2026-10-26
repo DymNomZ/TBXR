@@ -112,6 +112,9 @@ class RolePermissionTests(TestCase):
         cls.rad = user_model.objects.create_user(
             username='rad1', password='password123', role=UserRole.RADIOLOGIST
         )
+        cls.respondent = user_model.objects.create_user(
+            username='respondent1', password='password123', role=UserRole.PATIENT
+        )
         cls.rfactory = RequestFactory()
 
     def _request_for_user(self, path, user):
@@ -135,6 +138,10 @@ class RolePermissionTests(TestCase):
     def test_authenticated_user_with_wrong_role_receives_403(self):
         with self.assertRaises(PermissionDenied):
             views.technologist_dashboard(self._request_for_user('/dashboard/technologist', self.rad))
+
+    def test_patient_role_is_forbidden_from_technologist_dashboard(self):
+        with self.assertRaises(PermissionDenied):
+            views.technologist_dashboard(self._request_for_user('/dashboard/technologist', self.respondent))
 
     def test_register_patient_allows_technologist(self):
         self.client.force_login(self.tech)
