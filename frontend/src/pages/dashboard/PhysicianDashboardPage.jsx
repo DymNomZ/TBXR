@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { Activity, AlertTriangle, CalendarDays, FileCheck2, RefreshCcw } from 'lucide-react'
+import { Activity, AlertTriangle, FileCheck2, RefreshCcw } from 'lucide-react'
 import AppLayout from '../../components/layout/AppLayout'
 import StatCard from '../../components/ui/StatCard'
 import Button from '../../components/ui/Button'
@@ -17,6 +17,13 @@ function formatDateTime(value) {
 
 function normalize(value) {
   return String(value ?? '').trim().toLowerCase()
+}
+
+function getCsrfToken() {
+  return document.cookie
+    .split('; ')
+    .find((row) => row.startsWith('csrftoken='))
+    ?.split('=')[1] ?? ''
 }
 
 function extractCaseIdFromAlert(message = '') {
@@ -123,14 +130,6 @@ export default function PhysicianDashboardPage() {
     })
   }, [data.recent_reports, searchTerm])
 
-  const reportReadyItems = useMemo(() => {
-    if (!searchTerm) return data.report_ready_items
-    return data.report_ready_items.filter((item) => {
-      const fullName = `${item.patient?.first_name ?? ''} ${item.patient?.last_name ?? ''}`
-      return normalize(fullName).includes(searchTerm) || normalize(item.patient?.patient_id).includes(searchTerm)
-    })
-  }, [data.report_ready_items, searchTerm])
-
   const pendingAlerts = useMemo(() => {
     if (!searchTerm) return data.pending_alerts
     return data.pending_alerts.filter((item) => normalize(item.message).includes(searchTerm))
@@ -149,9 +148,31 @@ export default function PhysicianDashboardPage() {
     navigate(`/radiologist/report/${item.transaction_id}`)
   }
 
-  const openAlertCase = (alert) => {
+  const openAlertCase = async (alert) => {
     const caseId = extractCaseIdFromAlert(alert.message)
     if (!caseId) return
+
+    if (alert?.id) {
+      try {
+        await fetch(`/api/imaging/notifications/${alert.id}/mark-read/`, {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'X-CSRFToken': getCsrfToken() },
+        })
+      } catch {
+        // continue with navigation even if read-state update fails
+      }
+
+      setData((previous) => ({
+        ...previous,
+        pending_alerts: previous.pending_alerts.filter((item) => item.id !== alert.id),
+        summary: {
+          ...previous.summary,
+          pending_alert_count: Math.max(0, (previous.summary.pending_alert_count || 0) - 1),
+        },
+      }))
+    }
+
     const item = transactionToCase.get(caseId)
     if (!item) {
       setSearchParams({ case: caseId })
@@ -181,8 +202,7 @@ export default function PhysicianDashboardPage() {
         <div className="flex gap-4 flex-wrap">
           <StatCard label="Finalized Reports" value={data.summary.finalized_report_count} />
           <StatCard label="Pending Alerts" value={data.summary.pending_alert_count} highlight />
-          <StatCard label="Recent Reports" value={data.summary.recent_report_count} />
-          <StatCard label="Report-Ready Cases" value={data.summary.report_ready_count} />
+          <StatCard label="Latest Finalized Reports" value={data.summary.recent_report_count} />
           <StatCard label="Tracked Patients" value={data.summary.patient_progress_count} />
         </div>
 
@@ -287,7 +307,7 @@ export default function PhysicianDashboardPage() {
               <section className="bg-white rounded-2xl border border-[var(--border)] p-4 shadow-sm flex flex-col gap-3">
                 <div className="flex items-center gap-2">
                   <FileCheck2 size={16} className="text-[var(--accent)]" />
-                  <h2 className="text-base font-semibold text-[var(--deep-navy)]">Recent Reports</h2>
+                  <h2 className="text-base font-semibold text-[var(--deep-navy)]">Latest Finalized Reports</h2>
                 </div>
                 {recentReports.length === 0 ? (
                   <p className="text-sm text-[var(--text-muted)]">No recent finalized reports in this view.</p>
@@ -310,34 +330,6 @@ export default function PhysicianDashboardPage() {
                           {formatDateTime(report.reported_at)}
                         </p>
                       </button>
-                    ))}
-                  </div>
-                )}
-              </section>
-
-              <section className="bg-white rounded-2xl border border-[var(--border)] p-4 shadow-sm flex flex-col gap-3">
-                <div className="flex items-center gap-2">
-                  <CalendarDays size={16} className="text-[var(--deep-navy)]" />
-                  <h2 className="text-base font-semibold text-[var(--deep-navy)]">Report-Ready Items</h2>
-                </div>
-                {reportReadyItems.length === 0 ? (
-                  <p className="text-sm text-[var(--text-muted)]">No report-ready items in this view.</p>
-                ) : (
-                  <div className="flex flex-col gap-2">
-                    {reportReadyItems.map((item) => (
-                      <div key={`ready-${item.report_id}`} className="rounded-xl border border-[var(--border)] p-3">
-                        <p className="text-sm font-semibold text-[var(--deep-navy)]">
-                          {item.patient.first_name} {item.patient.last_name}
-                        </p>
-                        <p className="text-xs text-[var(--text-muted)] mt-0.5">
-                          Case: {item.transaction_id}
-                        </p>
-                        <div className="mt-2">
-                          <Button type="button" size="sm" variant="secondary" onClick={() => openCase(item)}>
-                            Open case
-                          </Button>
-                        </div>
-                      </div>
                     ))}
                   </div>
                 )}
