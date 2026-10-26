@@ -455,6 +455,62 @@ class ImagingAccessTests(TestCase):
         self.assertIn("No diagnostic notes provided.", captured_html["markup"])
         self.assertIn("No summary of findings provided.", captured_html["markup"])
 
+    def test_generate_report_auto_create_path_uses_distinct_placeholders(self):
+        self.tech_one_record.status = "COMPLETED"
+        self.tech_one_record.save(update_fields=["status"])
+
+        Report.objects.filter(xray_record=self.tech_one_record).delete()
+
+        self.client.force_login(self.rad)
+        url = reverse("imaging:generate_report", kwargs={"transaction_id": str(self.tech_one_record.transaction_id)})
+        captured_html = {}
+
+        def fake_run(cmd, *args, **kwargs):
+            with open(cmd[2], "r", encoding="utf-8") as html_file:
+                captured_html["markup"] = html_file.read()
+            return SimpleNamespace(stdout=b"%PDF-1.4 fake pdf bytes", stderr=b"", returncode=0)
+
+        with mock.patch("apps.imaging.views.subprocess.run", side_effect=fake_run):
+            response = self.client.get(url)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("No diagnostic notes provided.", captured_html["markup"])
+        self.assertIn("No summary of findings provided.", captured_html["markup"])
+        self.assertNotIn("Report not yet structured. See diagnostic notes below.", captured_html["markup"])
+
+    def test_generate_report_ignores_legacy_shared_findings_placeholder(self):
+        self.tech_one_record.status = "COMPLETED"
+        self.tech_one_record.save(update_fields=["status"])
+
+        Report.objects.update_or_create(
+            xray_record=self.tech_one_record,
+            defaults={
+                "findings": "Report not yet structured. See diagnostic notes below.",
+                "impression": "Pending radiologist finalization.",
+                "recommendation": "Clinical correlation recommended.",
+                "severity": Report.SeverityChoices.NORMAL,
+                "status": "DRAFT",
+                "created_by": self.rad,
+            },
+        )
+
+        self.client.force_login(self.rad)
+        url = reverse("imaging:generate_report", kwargs={"transaction_id": str(self.tech_one_record.transaction_id)})
+        captured_html = {}
+
+        def fake_run(cmd, *args, **kwargs):
+            with open(cmd[2], "r", encoding="utf-8") as html_file:
+                captured_html["markup"] = html_file.read()
+            return SimpleNamespace(stdout=b"%PDF-1.4 fake pdf bytes", stderr=b"", returncode=0)
+
+        with mock.patch("apps.imaging.views.subprocess.run", side_effect=fake_run):
+            response = self.client.get(url)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("No diagnostic notes provided.", captured_html["markup"])
+        self.assertIn("No summary of findings provided.", captured_html["markup"])
+        self.assertNotIn("Report not yet structured. See diagnostic notes below.", captured_html["markup"])
+
     def test_radiologist_can_save_and_restore_own_annotation_draft(self):
         self.client.force_login(self.rad)
         draft_url = reverse(

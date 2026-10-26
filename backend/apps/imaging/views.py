@@ -139,6 +139,8 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+LEGACY_SHARED_FINDINGS_PLACEHOLDER = "Report not yet structured. See diagnostic notes below."
+
 
 def _decode_process_output(output):
     if not output:
@@ -1458,7 +1460,7 @@ def generate_report(request, transaction_id):
         # Auto-create minimal report for PDF generation
         report = Report.objects.create(
             xray_record=xray_record,
-            findings="Report not yet structured. See diagnostic notes below.",
+            findings="",
             impression="Pending radiologist finalization.",
             recommendation="Clinical correlation recommended.",
             severity=Report.SeverityChoices.NORMAL,
@@ -1492,6 +1494,8 @@ def generate_report(request, transaction_id):
 
     annotation_notes_text = "\n".join(radiologist_notes) if radiologist_notes else "No diagnostic notes provided."
     report_findings_text = (report.findings or "").strip() if report else ""
+    if report_findings_text == LEGACY_SHARED_FINDINGS_PLACEHOLDER:
+        report_findings_text = ""
     diagnostic_notes_text = report_findings_text or annotation_notes_text
     summary_findings_text = report_findings_text or "No summary of findings provided."
 
