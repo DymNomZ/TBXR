@@ -1,4 +1,4 @@
-function SelectField({ id, label, value, onChange, options, error }) {
+function SelectField({ id, label, value, onChange, options, error, disabled = false }) {
   return (
     <label className="block text-sm font-medium text-slate-700" htmlFor={id}>
       {label}
@@ -8,6 +8,7 @@ function SelectField({ id, label, value, onChange, options, error }) {
         value={value}
         onChange={onChange}
         required
+        disabled={disabled}
         className={`mt-3 w-full rounded-3xl border bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:ring-4 focus:ring-slate-100 ${
           error
             ? 'border-red-400 focus:border-red-400'

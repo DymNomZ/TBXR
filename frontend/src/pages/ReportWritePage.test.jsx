@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Routes, Route, useLocation } from 'react-router-dom'
@@ -78,6 +78,10 @@ async function fillEveryField() {
 }
 
 describe('ReportWritePage', () => {
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
   it('blocks an empty submit with validation errors and no save request', async () => {
     seedUser()
     const fetchMock = stubFetch()

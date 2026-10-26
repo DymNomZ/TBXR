@@ -145,10 +145,8 @@ export default function PhysicianDashboardPage() {
   }, [data.patient_progress, searchTerm])
 
   const openCase = (item) => {
-    if (!item?.patient?.patient_id || !item?.transaction_id) return
-    navigate(`/patients/${item.patient.patient_id}`, {
-      state: { openXray: item.transaction_id },
-    })
+    if (!item?.transaction_id) return
+    navigate(`/radiologist/report/${item.transaction_id}`)
   }
 
   const openAlertCase = (alert) => {

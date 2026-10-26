@@ -33,6 +33,7 @@ function renderPage(initialEntry = '/dashboard/physician') {
         <Routes>
           <Route path="/dashboard/physician" element={<PhysicianDashboardPage />} />
           <Route path="/patients/:patientId" element={<LocationDisplay />} />
+          <Route path="/radiologist/report/:transactionId" element={<LocationDisplay />} />
         </Routes>
       </AuthProvider>
     </MemoryRouter>,
@@ -170,9 +171,7 @@ describe('PhysicianDashboardPage', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Open case' }))
 
     await waitFor(() => {
-      expect(screen.getByTestId('location-display')).toHaveTextContent('/patients/101')
-      expect(screen.getByTestId('location-display')).toHaveTextContent('openXray')
-      expect(screen.getByTestId('location-display')).toHaveTextContent('123e4567-e89b-12d3-a456-426614174001')
+      expect(screen.getByTestId('location-display')).toHaveTextContent('/radiologist/report/123e4567-e89b-12d3-a456-426614174001')
     })
   })
 })
