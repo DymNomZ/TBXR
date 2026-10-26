@@ -63,6 +63,8 @@ export default function AnnotationCanvas({
   const [draft, setDraft] = useState('')
   const [tool, setTool] = useState('rectangle')
   const [selectedId, setSelectedId] = useState(null)
+  const [dragging, setDragging] = useState(null)
+  const draggingRef = useRef(null)
   const [undoStack, setUndoStack] = useState([])
 
   const pushHistory = useCallback((snapshot) => {
@@ -200,6 +202,37 @@ export default function AnnotationCanvas({
   }, [disabled, pendingBox, tool, toElementSpace])
 
   const handleMouseMove = useCallback((e) => {
+    const activeDrag = draggingRef.current
+    if (activeDrag) {
+      const pt = toElementSpace(e.clientX, e.clientY)
+      const size = getCanvasSize()
+      const dx = (pt.x - activeDrag.startX) / (size.w || 1)
+      const dy = (pt.y - activeDrag.startY) / (size.h || 1)
+      const nextBoxes = boxes.map((box) => {
+        if (box.id !== activeDrag.id) return box
+
+        const moved = { ...box }
+        const clamp01 = (value) => Math.min(Math.max(value, 0), 1)
+        const originX = activeDrag.originX ?? (box.x ?? 0)
+        const originY = activeDrag.originY ?? (box.y ?? 0)
+
+        if (box.shape === 'freehand' && Array.isArray(box.points)) {
+          moved.points = box.points.map((point) => ({
+            ...point,
+            x: clamp01((point.x ?? 0) + dx),
+            y: clamp01((point.y ?? 0) + dy),
+          }))
+        }
+
+        moved.x = clamp01(originX + dx)
+        moved.y = clamp01(originY + dy)
+        return moved
+      })
+
+      if (onBoxesChange) onBoxesChange(nextBoxes)
+      return
+    }
+
     if (!drawing) return
 
     const pt = toElementSpace(e.clientX, e.clientY)
@@ -211,9 +244,15 @@ export default function AnnotationCanvas({
       }
       return { ...prev, currentX: pt.x, currentY: pt.y }
     })
-  }, [drawing, toElementSpace])
+  }, [boxes, dragging, drawing, getCanvasSize, onBoxesChange, toElementSpace])
 
   const handleMouseUp = useCallback(() => {
+    if (draggingRef.current) {
+      draggingRef.current = null
+      setDragging(null)
+      return
+    }
+
     if (!drawing) return
 
     if (drawing.type === 'freehand') {
@@ -301,6 +340,28 @@ export default function AnnotationCanvas({
     deleteBox(selectedId)
   }, [deleteBox, selectedId])
 
+  const beginBoxDrag = useCallback((event, boxId) => {
+    if (disabled || pendingBox || event.button !== 0) return
+    event.preventDefault()
+    event.stopPropagation()
+
+    const target = boxes.find((box) => box.id === boxId)
+    if (!target) return
+
+    const pt = toElementSpace(event.clientX, event.clientY)
+    pushHistory(cloneBoxes(boxes))
+    setSelectedId(boxId)
+    const nextDrag = {
+      id: boxId,
+      startX: pt.x,
+      startY: pt.y,
+      originX: target.x ?? 0,
+      originY: target.y ?? 0,
+    }
+    draggingRef.current = nextDrag
+    setDragging(nextDrag)
+  }, [boxes, cloneBoxes, disabled, pendingBox, pushHistory, toElementSpace])
+
   // Expose the history-aware delete so sibling controls (e.g. the bounding-box
   // panel) mutate through the same undo stack instead of bypassing it.
   useEffect(() => {
@@ -366,6 +427,7 @@ export default function AnnotationCanvas({
       // existing shapes; opt the shapes back in so clicking one selects it.
       pointerEvents: 'auto',
       onClick: () => setSelectedId(box.id),
+      onMouseDown: (event) => beginBoxDrag(event, box.id),
       className: 'cursor-pointer',
     }
 
@@ -396,6 +458,7 @@ export default function AnnotationCanvas({
         vectorEffect="non-scaling-stroke"
         pointerEvents="auto"
         onClick={() => setSelectedId(box.id)}
+        onMouseDown={(event) => beginBoxDrag(event, box.id)}
         className="cursor-pointer"
       />
     )
