@@ -32,6 +32,7 @@ function renderPage(initialEntry = '/dashboard/physician') {
       <AuthProvider>
         <Routes>
           <Route path="/dashboard/physician" element={<PhysicianDashboardPage />} />
+          <Route path="/dashboard/patient" element={<PhysicianDashboardPage viewerRole="PATIENT" />} />
           <Route path="/patients/:patientId" element={<LocationDisplay />} />
           <Route path="/radiologist/report/:transactionId" element={<LocationDisplay />} />
         </Routes>
@@ -248,6 +249,49 @@ describe('PhysicianDashboardPage', () => {
 
     await waitFor(() => {
       expect(screen.getByTestId('location-display')).toHaveTextContent('/radiologist/report/123e4567-e89b-12d3-a456-426614174001')
+    })
+  })
+
+  it('renders patient dashboard copy and opens patient record detail for respondents', async () => {
+    localStorage.setItem('user', JSON.stringify({ role: 'PATIENT' }))
+
+    vi.stubGlobal('fetch', vi.fn((url) => {
+      if (String(url).startsWith(DASHBOARD_URL)) {
+        return jsonResponse({
+          summary: {
+            finalized_report_count: 1,
+            recent_report_count: 1,
+            pending_alert_count: 0,
+            report_ready_count: 1,
+            patient_progress_count: 1,
+          },
+          finalized_cases: [
+            {
+              report_id: 1,
+              transaction_id: '123e4567-e89b-12d3-a456-426614174001',
+              reported_at: '2026-09-06T08:00:00Z',
+              severity: 'CRITICAL',
+              patient: { patient_id: 101, first_name: 'Juan', last_name: 'Dela Cruz' },
+            },
+          ],
+          recent_reports: [],
+          report_ready_items: [],
+          pending_alerts: [],
+          patient_progress: [],
+        })
+      }
+      return jsonResponse({}, 404)
+    }))
+
+    renderPage('/dashboard/patient')
+
+    expect(await screen.findByText('Patient Validation Dashboard')).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Open record' }))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('location-display')).toHaveTextContent('/patients/101')
+      expect(screen.getByTestId('location-display')).toHaveTextContent('"openXray":"123e4567-e89b-12d3-a456-426614174001"')
     })
   })
 })

@@ -40,4 +40,10 @@ describe('PatientsPage registration access', () => {
     expect(screen.queryByRole('button', { name: /New Patient/i })).not.toBeInTheDocument()
     expect(screen.getByText('Patients List')).toBeInTheDocument()
   })
+
+  it('hides the New Patient action for patients while keeping the list', () => {
+    renderForRole('PATIENT')
+    expect(screen.queryByRole('button', { name: /New Patient/i })).not.toBeInTheDocument()
+    expect(screen.getByText('Patients List')).toBeInTheDocument()
+  })
 })

@@ -5,6 +5,7 @@ const ROLE_DASHBOARD = {
   RADIOLOGIC_TECH: '/dashboard/technologist',
   RADIOLOGIST:     '/dashboard/radiologist',
   PHYSICIAN:       '/dashboard/physician',
+  PATIENT:         '/dashboard/patient',
 }
 
 export default function RoleGuard({ allowedRoles, children }) {
