@@ -379,6 +379,52 @@ class ImagingAccessTests(TestCase):
         self.assertIn(">3<", captured_html["markup"])
         self.assertNotIn("1. 1.", captured_html["markup"])
 
+    def test_generate_report_prefers_structured_report_fields_over_annotation_notes(self):
+        self.tech_one_record.status = "COMPLETED"
+        self.tech_one_record.save(update_fields=["status"])
+
+        Annotation.objects.create(
+            xray_record=self.tech_one_record,
+            radiologist=self.rad,
+            bounding_boxes=[
+                {"x": 0.10, "y": 0.10, "width": 0.20, "height": 0.20, "label": "left apex", "shape": "rectangle"},
+            ],
+            notes="Raw annotation note that should not replace structured report content.",
+        )
+
+        report = Report.objects.create(
+            xray_record=self.tech_one_record,
+            findings="",
+            impression="",
+            recommendation="",
+            severity=Report.SeverityChoices.NORMAL,
+            status="DRAFT",
+            created_by=self.rad,
+        )
+        report.findings = "Structured radiology findings for the physician."
+        report.impression = "Structured impression for final report."
+        report.recommendation = "Structured recommendation for follow-up."
+        report.status = "SUBMITTED"
+        report.save()
+
+        self.client.force_login(self.rad)
+        url = reverse("imaging:generate_report", kwargs={"transaction_id": str(self.tech_one_record.transaction_id)})
+        captured_html = {}
+
+        def fake_run(cmd, *args, **kwargs):
+            with open(cmd[2], "r", encoding="utf-8") as html_file:
+                captured_html["markup"] = html_file.read()
+            return SimpleNamespace(stdout=b"%PDF-1.4 fake pdf bytes", stderr=b"", returncode=0)
+
+        with mock.patch("apps.imaging.views.subprocess.run", side_effect=fake_run):
+            response = self.client.get(url)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Structured radiology findings for the physician.", captured_html["markup"])
+        self.assertIn("Structured impression for final report.", captured_html["markup"])
+        self.assertIn("Structured recommendation for follow-up.", captured_html["markup"])
+        self.assertNotIn("Raw annotation note that should not replace structured report content.", captured_html["markup"])
+
     def test_radiologist_can_save_and_restore_own_annotation_draft(self):
         self.client.force_login(self.rad)
         draft_url = reverse(
