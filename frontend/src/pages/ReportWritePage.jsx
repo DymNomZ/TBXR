@@ -4,6 +4,7 @@ import { ArrowLeft, AlertCircle, CheckCircle, Save } from 'lucide-react'
 import AppLayout from '../components/layout/AppLayout'
 import Button from '../components/ui/Button'
 import SelectField from '../components/ui/SelectField'
+import { useAuth } from '../context/AuthContext'
 
 const EMPTY_FORM = {
   findings: '',
@@ -51,6 +52,8 @@ function validateForm(form) {
 export default function ReportWritePage() {
   const { transactionId } = useParams()
   const navigate = useNavigate()
+  const { user } = useAuth()
+  const isPhysicianView = user?.role === 'PHYSICIAN'
   const [form, setForm] = useState(EMPTY_FORM)
   const [errors, setErrors] = useState({})
   const [touched, setTouched] = useState({})
@@ -78,6 +81,11 @@ export default function ReportWritePage() {
         }
 
         if (!response.ok) {
+          if (isPhysicianView) {
+            setForm(EMPTY_FORM)
+            setReportExists(false)
+            return
+          }
           throw new Error('Unable to load report draft.')
         }
 
@@ -90,13 +98,19 @@ export default function ReportWritePage() {
           severity: data.severity ?? '',
         })
       } catch (error) {
+        if (isPhysicianView) {
+          setForm(EMPTY_FORM)
+          setReportExists(false)
+          return
+        }
+
         setStatusType('error')
         setStatusMessage(error.message || 'Unable to load the report draft.')
       }
     }
 
     loadReport()
-  }, [transactionId])
+  }, [transactionId, isPhysicianView])
 
   const requiredCount = useMemo(() => {
     return Object.keys(EMPTY_FORM).filter((key) => !!String(form[key] ?? '').trim()).length
@@ -123,6 +137,8 @@ export default function ReportWritePage() {
   }
 
   const persistDraft = async () => {
+    if (isPhysicianView) return
+
     setIsSaving(true)
     setStatusType('neutral')
     setStatusMessage('')
@@ -171,6 +187,8 @@ export default function ReportWritePage() {
   }
 
   const handleSubmit = async () => {
+    if (isPhysicianView) return
+
     const nextErrors = validateForm(form)
     setErrors(nextErrors)
     setTouched({ findings: true, impression: true, recommendation: true, severity: true })
@@ -219,13 +237,18 @@ export default function ReportWritePage() {
     }
   }
 
+  const goBack = () => {
+    const fallbackPath = user?.role === 'PHYSICIAN' ? '/dashboard/physician' : '/dashboard/radiologist'
+    navigate(fallbackPath)
+  }
+
   return (
     <AppLayout>
       <div className="mx-auto max-w-5xl flex flex-col gap-6">
         <div className="flex items-center gap-4">
           <button
             type="button"
-            onClick={() => navigate('/dashboard/radiologist')}
+            onClick={goBack}
             className="w-9 h-9 flex items-center justify-center rounded-xl border border-[var(--border)] bg-white hover:bg-[var(--surface-soft)] transition-colors"
           >
             <ArrowLeft size={16} className="text-[var(--text-muted)]" />
@@ -235,6 +258,12 @@ export default function ReportWritePage() {
             <h1 className="text-2xl font-bold text-[var(--deep-navy)]">Diagnostic Report</h1>
           </div>
         </div>
+
+        {isPhysicianView && (
+          <div className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-800">
+            Read-only view for physician review.
+          </div>
+        )}
 
         <div className="rounded-2xl border border-[var(--border)] bg-white p-4 shadow-sm">
           <div className="flex items-center justify-between gap-3 flex-wrap">
@@ -274,10 +303,11 @@ export default function ReportWritePage() {
               onChange={(event) => handleFieldChange('findings', event.target.value)}
               onBlur={() => handleBlur('findings')}
               rows={6}
+              readOnly={isPhysicianView}
               placeholder="e.g., Right upper lobe opacity with cavitation and surrounding consolidation."
               className={`w-full resize-none rounded-xl border bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:ring-4 ${
                 errors.findings ? 'border-red-400 focus:border-red-400 focus:ring-red-100' : 'border-slate-200 focus:border-slate-indigo-500 focus:ring-slate-100'
-              }`}
+              } ${isPhysicianView ? 'cursor-default text-slate-700' : ''}`}
             />
             {errors.findings && <span className="mt-2 block text-xs text-red-600">{errors.findings}</span>}
           </section>
@@ -292,10 +322,11 @@ export default function ReportWritePage() {
               onChange={(event) => handleFieldChange('impression', event.target.value)}
               onBlur={() => handleBlur('impression')}
               rows={5}
+              readOnly={isPhysicianView}
               placeholder="e.g., Suspicious for active pulmonary tuberculosis requiring urgent follow-up."
               className={`w-full resize-none rounded-xl border bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:ring-4 ${
                 errors.impression ? 'border-red-400 focus:border-red-400 focus:ring-red-100' : 'border-slate-200 focus:border-slate-indigo-500 focus:ring-slate-100'
-              }`}
+              } ${isPhysicianView ? 'cursor-default text-slate-700' : ''}`}
             />
             {errors.impression && <span className="mt-2 block text-xs text-red-600">{errors.impression}</span>}
           </section>
@@ -310,10 +341,11 @@ export default function ReportWritePage() {
               onChange={(event) => handleFieldChange('recommendation', event.target.value)}
               onBlur={() => handleBlur('recommendation')}
               rows={5}
+              readOnly={isPhysicianView}
               placeholder="e.g., Recommend sputum AFB and GeneXpert testing with specialist review."
               className={`w-full resize-none rounded-xl border bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:ring-4 ${
                 errors.recommendation ? 'border-red-400 focus:border-red-400 focus:ring-red-100' : 'border-slate-200 focus:border-slate-indigo-500 focus:ring-slate-100'
-              }`}
+              } ${isPhysicianView ? 'cursor-default text-slate-700' : ''}`}
             />
             {errors.recommendation && <span className="mt-2 block text-xs text-red-600">{errors.recommendation}</span>}
           </section>
@@ -331,21 +363,24 @@ export default function ReportWritePage() {
                 onChange={(event) => handleFieldChange('severity', event.target.value)}
                 options={SEVERITY_OPTIONS}
                 error={errors.severity}
+                disabled={isPhysicianView}
               />
             </div>
           </section>
         </div>
 
-        <div className="flex flex-col sm:flex-row gap-3 pt-2">
-          <Button variant="secondary" onClick={persistDraft} disabled={isSaving || isSubmitting} className="flex-1">
-            <Save size={15} />
-            {isSaving ? 'Saving draft…' : 'Save Draft'}
-          </Button>
+        {!isPhysicianView && (
+          <div className="flex flex-col sm:flex-row gap-3 pt-2">
+            <Button variant="secondary" onClick={persistDraft} disabled={isSaving || isSubmitting} className="flex-1">
+              <Save size={15} />
+              {isSaving ? 'Saving draft…' : 'Save Draft'}
+            </Button>
 
-          <Button variant="primary" onClick={handleSubmit} disabled={isSaving || isSubmitting} className="flex-1">
-            {isSubmitting ? 'Submitting…' : 'Submit Report'}
-          </Button>
-        </div>
+            <Button variant="primary" onClick={handleSubmit} disabled={isSaving || isSubmitting} className="flex-1">
+              {isSubmitting ? 'Submitting…' : 'Submit Report'}
+            </Button>
+          </div>
+        )}
       </div>
     </AppLayout>
   )

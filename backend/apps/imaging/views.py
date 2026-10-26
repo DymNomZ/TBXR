@@ -1359,11 +1359,17 @@ def notification_mark_read(request, notification_id):
 
 
 @api_view(["GET", "POST", "PATCH"])
-@role_required(UserRole.RADIOLOGIST)
+@role_required(UserRole.RADIOLOGIST, UserRole.PHYSICIAN)
 def report_detail(request, transaction_id):
     xray_record = get_object_or_404(XrayRecord, transaction_id=transaction_id)
 
     if request.method in {"POST", "PATCH"}:
+        if request.user.role != UserRole.RADIOLOGIST:
+            return Response(
+                {"detail": "Only radiologists can edit or submit reports."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
         xray_record.clear_if_expired()
         if _lock_blocks_user(xray_record, request.user):
             return _lock_conflict_response(xray_record)
@@ -1484,7 +1490,9 @@ def generate_report(request, transaction_id):
                 annotation_svg_markup.append(svg)
             shape_number += 1
 
-    diagnostic_notes_text = "\n".join(radiologist_notes) if radiologist_notes else "No diagnostic notes provided."
+    annotation_notes_text = "\n".join(radiologist_notes) if radiologist_notes else "No diagnostic notes provided."
+    report_findings_text = (report.findings or "").strip() if report else ""
+    diagnostic_notes_text = report_findings_text or annotation_notes_text
 
     def calculate_age(dob):
         if not dob: return "N/A"
@@ -1505,9 +1513,10 @@ def generate_report(request, transaction_id):
         "radiologist_annotations": numbered_annotations,
         "annotation_svg_markup": "\n".join(annotation_svg_markup),
         "diagnostic_notes": diagnostic_notes_text,
+        "report_findings": diagnostic_notes_text,
         "clinical_impression": report.impression if report else "",
         "recommendations": report.recommendation if report else "",
-        "ai_summary": f"AI model flagged as {ai_result.risk_label if ai_result else 'N/A'} risk."
+        "ai_summary": report_findings_text or f"AI model flagged as {ai_result.risk_label if ai_result else 'N/A'} risk."
     }
     html_content = render_to_string("reports/xray_report.html", context)
     temp_html_path = None

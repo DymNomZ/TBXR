@@ -215,6 +215,30 @@ class ReportDetailViewTests(_ReportTestBase):
         report = Report.objects.get(xray_record=self.completed_record)
         self.assertEqual(report.created_by, self.rad)
 
+    def test_physician_can_get_submitted_report(self):
+        """Physicians can read finalized report content without editing it."""
+        physician = get_user_model().objects.create_user(
+            username="physician-reader",
+            password="password123",
+            role=UserRole.PHYSICIAN,
+        )
+        Report.objects.create(
+            xray_record=self.completed_record,
+            findings="Final findings for physician view",
+            impression="Final impression for physician view",
+            recommendation="Final recommendation for physician view",
+            severity=Report.SeverityChoices.SEVERE,
+            status="SUBMITTED",
+            created_by=self.rad,
+        )
+
+        self.client.force_login(physician)
+        response = self.client.get(self._report_url(self.completed_record.transaction_id))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["findings"], "Final findings for physician view")
+        self.assertEqual(response.data["severity"], "SEVERE")
+
     def test_technician_cannot_patch(self):
         """Non-radiologists are blocked by the role guard."""
         self.client.force_login(self.tech)

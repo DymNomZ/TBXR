@@ -65,7 +65,7 @@ function App() {
           <Route
             path="/radiologist/report/:transactionId"
             element={
-              <RoleGuard allowedRoles={['RADIOLOGIST']}>
+              <RoleGuard allowedRoles={['RADIOLOGIST', 'PHYSICIAN']}>
                 <ReportWritePage />
               </RoleGuard>
             }

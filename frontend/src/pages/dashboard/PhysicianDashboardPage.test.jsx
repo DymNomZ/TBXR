@@ -33,6 +33,7 @@ function renderPage(initialEntry = '/dashboard/physician') {
         <Routes>
           <Route path="/dashboard/physician" element={<PhysicianDashboardPage />} />
           <Route path="/patients/:patientId" element={<LocationDisplay />} />
+          <Route path="/radiologist/report/:transactionId" element={<LocationDisplay />} />
         </Routes>
       </AuthProvider>
     </MemoryRouter>,
@@ -120,6 +121,82 @@ describe('PhysicianDashboardPage', () => {
     expect(screen.getByText(/Report Status:\s*FINALIZED/i)).toBeInTheDocument()
   })
 
+  it('marks pending alerts as read and removes the duplicate report-ready panel', async () => {
+    localStorage.setItem('user', JSON.stringify({ role: 'PHYSICIAN' }))
+
+    const fetchMock = vi.fn((url) => {
+      if (String(url).startsWith(DASHBOARD_URL)) {
+        return jsonResponse({
+          summary: {
+            finalized_report_count: 1,
+            recent_report_count: 1,
+            pending_alert_count: 1,
+            report_ready_count: 1,
+            patient_progress_count: 0,
+          },
+          finalized_cases: [
+            {
+              report_id: 1,
+              transaction_id: '123e4567-e89b-12d3-a456-426614174001',
+              reported_at: '2026-09-06T08:00:00Z',
+              severity: 'CRITICAL',
+              patient: { patient_id: 101, first_name: 'Juan', last_name: 'Dela Cruz' },
+            },
+          ],
+          recent_reports: [
+            {
+              report_id: 1,
+              transaction_id: '123e4567-e89b-12d3-a456-426614174001',
+              reported_at: '2026-09-06T08:00:00Z',
+              severity: 'CRITICAL',
+              patient: { patient_id: 101, first_name: 'Juan', last_name: 'Dela Cruz' },
+            },
+          ],
+          report_ready_items: [
+            {
+              report_id: 1,
+              transaction_id: '123e4567-e89b-12d3-a456-426614174001',
+              reported_at: '2026-09-06T08:00:00Z',
+              severity: 'CRITICAL',
+              patient: { patient_id: 101, first_name: 'Juan', last_name: 'Dela Cruz' },
+            },
+          ],
+          pending_alerts: [
+            {
+              id: 9,
+              message: 'Report ready for Juan Dela Cruz (case 123e4567-e89b-12d3-a456-426614174001).',
+              created_at: '2026-09-06T09:00:00Z',
+              read_status: false,
+              updated_at: '2026-09-06T09:00:00Z',
+            },
+          ],
+          patient_progress: [],
+        })
+      }
+      if (String(url).includes('/notifications/9/mark-read/')) {
+        return jsonResponse({ success: true })
+      }
+      return jsonResponse({}, 404)
+    })
+
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderPage()
+
+    expect(await screen.findByText('Physician Dashboard')).toBeInTheDocument()
+    expect(screen.queryByText('Report-Ready Items')).not.toBeInTheDocument()
+
+    const openCaseButton = screen.getAllByRole('button', { name: 'Open case' })[0]
+    await userEvent.click(openCaseButton)
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.stringContaining('/notifications/9/mark-read/'),
+        expect.objectContaining({ method: 'POST' }),
+      )
+    })
+  })
+
   it('filters by patient search and deep-links to patient case', async () => {
     localStorage.setItem('user', JSON.stringify({ role: 'PHYSICIAN' }))
 
@@ -170,9 +247,7 @@ describe('PhysicianDashboardPage', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Open case' }))
 
     await waitFor(() => {
-      expect(screen.getByTestId('location-display')).toHaveTextContent('/patients/101')
-      expect(screen.getByTestId('location-display')).toHaveTextContent('openXray')
-      expect(screen.getByTestId('location-display')).toHaveTextContent('123e4567-e89b-12d3-a456-426614174001')
+      expect(screen.getByTestId('location-display')).toHaveTextContent('/radiologist/report/123e4567-e89b-12d3-a456-426614174001')
     })
   })
 })
