@@ -267,6 +267,25 @@ describe('ReportWritePage', () => {
     })
   })
 
+  it('shows patient read-only mode and hides submit controls', async () => {
+    localStorage.setItem('user', JSON.stringify({ role: 'PATIENT' }))
+    vi.stubGlobal('fetch', vi.fn(() => jsonResponse(REPORT_DATA, 200)))
+
+    render(
+      <MemoryRouter initialEntries={[`/radiologist/report/${TX_ID}`]}>
+        <AuthProvider>
+          <Routes>
+            <Route path="/radiologist/report/:transactionId" element={<ReportWritePage />} />
+          </Routes>
+        </AuthProvider>
+      </MemoryRouter>,
+    )
+
+    expect(await screen.findByText('Read-only view for validation respondents.')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Save Draft/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Submit Report/i })).not.toBeInTheDocument()
+  })
+
   it('shows an error banner when the report draft cannot be loaded', async () => {
     seedUser()
     vi.stubGlobal('fetch', vi.fn(() => jsonResponse({ detail: 'Server exploded.' }, 500)))

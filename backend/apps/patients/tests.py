@@ -15,6 +15,9 @@ class PatientViewsTests(TestCase):
         self.rad = self.user_model.objects.create_user(
             username='rad_test', password='password123', role=UserRole.RADIOLOGIST
         )
+        self.respondent = self.user_model.objects.create_user(
+            username='respondent_test', password='password123', role=UserRole.PATIENT
+        )
         
         self.valid_payload = {
             "first_name": "John",
@@ -248,3 +251,36 @@ class PatientViewsTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()['patient_id'], patient.patient_id)
         self.assertEqual(response.json()['contact_number'], '+63 918 123 4567')
+
+    def test_patient_role_can_access_read_only_patient_endpoints(self):
+        patient = Patient.objects.create(
+            first_name='Readonly',
+            last_name='Respondent',
+            date_of_birth='1995-04-11',
+            sex='M',
+            contact_number='09181231234',
+        )
+
+        self.client.force_login(self.respondent)
+
+        list_response = self.client.get(reverse('patients:list'))
+        self.assertEqual(list_response.status_code, 200)
+
+        search_response = self.client.get(reverse('patients:search'), {'name': 'readonly'})
+        self.assertEqual(search_response.status_code, 200)
+        self.assertTrue(any(item['patient_id'] == patient.patient_id for item in search_response.json()))
+
+        detail_response = self.client.get(reverse('patients:detail', kwargs={'patient_id': patient.patient_id}))
+        self.assertEqual(detail_response.status_code, 200)
+        self.assertEqual(detail_response.json()['patient_id'], patient.patient_id)
+
+    def test_patient_role_cannot_register_patient(self):
+        self.client.force_login(self.respondent)
+
+        response = self.client.post(
+            reverse('patients:register'),
+            data=json.dumps(self.valid_payload),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 403)

@@ -7,6 +7,7 @@ Test credentials:
 - tech1 / SEED_DEFAULT_PASSWORD -> RADIOLOGIC_TECH
 - rad1 / SEED_DEFAULT_PASSWORD -> RADIOLOGIST
 - physician1 / SEED_DEFAULT_PASSWORD -> PHYSICIAN
+- respondent1 / SEED_DEFAULT_PASSWORD -> PATIENT
 """
 
 import os
@@ -61,6 +62,12 @@ USER_FIXTURES = [
         "password": SEED_PASSWORD,
         "role": UserRole.PHYSICIAN,
         "email": "physician1@example.com",
+    },
+    {
+        "username": "respondent1",
+        "password": SEED_PASSWORD,
+        "role": UserRole.PATIENT,
+        "email": "respondent1@example.com",
     },
 ]
 

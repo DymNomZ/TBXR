@@ -54,6 +54,8 @@ export default function ReportWritePage() {
   const navigate = useNavigate()
   const { user } = useAuth()
   const isPhysicianView = user?.role === 'PHYSICIAN'
+  const isPatientView = user?.role === 'PATIENT'
+  const isReadOnlyView = isPhysicianView || isPatientView
   const [form, setForm] = useState(EMPTY_FORM)
   const [errors, setErrors] = useState({})
   const [touched, setTouched] = useState({})
@@ -81,7 +83,7 @@ export default function ReportWritePage() {
         }
 
         if (!response.ok) {
-          if (isPhysicianView) {
+          if (isReadOnlyView) {
             setForm(EMPTY_FORM)
             setReportExists(false)
             return
@@ -98,7 +100,7 @@ export default function ReportWritePage() {
           severity: data.severity ?? '',
         })
       } catch (error) {
-        if (isPhysicianView) {
+        if (isReadOnlyView) {
           setForm(EMPTY_FORM)
           setReportExists(false)
           return
@@ -110,7 +112,7 @@ export default function ReportWritePage() {
     }
 
     loadReport()
-  }, [transactionId, isPhysicianView])
+  }, [transactionId, isReadOnlyView])
 
   const requiredCount = useMemo(() => {
     return Object.keys(EMPTY_FORM).filter((key) => !!String(form[key] ?? '').trim()).length
@@ -137,7 +139,7 @@ export default function ReportWritePage() {
   }
 
   const persistDraft = async () => {
-    if (isPhysicianView) return
+    if (isReadOnlyView) return
 
     setIsSaving(true)
     setStatusType('neutral')
@@ -187,7 +189,7 @@ export default function ReportWritePage() {
   }
 
   const handleSubmit = async () => {
-    if (isPhysicianView) return
+    if (isReadOnlyView) return
 
     const nextErrors = validateForm(form)
     setErrors(nextErrors)
@@ -238,7 +240,9 @@ export default function ReportWritePage() {
   }
 
   const goBack = () => {
-    const fallbackPath = user?.role === 'PHYSICIAN' ? '/dashboard/physician' : '/dashboard/radiologist'
+    let fallbackPath = '/dashboard/radiologist'
+    if (user?.role === 'PHYSICIAN') fallbackPath = '/dashboard/physician'
+    if (user?.role === 'PATIENT') fallbackPath = '/dashboard/patient'
     navigate(fallbackPath)
   }
 
@@ -259,9 +263,9 @@ export default function ReportWritePage() {
           </div>
         </div>
 
-        {isPhysicianView && (
+        {isReadOnlyView && (
           <div className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-800">
-            Read-only view for physician review.
+            {isPatientView ? 'Read-only view for validation respondents.' : 'Read-only view for physician review.'}
           </div>
         )}
 
@@ -303,11 +307,11 @@ export default function ReportWritePage() {
               onChange={(event) => handleFieldChange('findings', event.target.value)}
               onBlur={() => handleBlur('findings')}
               rows={6}
-              readOnly={isPhysicianView}
+              readOnly={isReadOnlyView}
               placeholder="e.g., Right upper lobe opacity with cavitation and surrounding consolidation."
               className={`w-full resize-none rounded-xl border bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:ring-4 ${
                 errors.findings ? 'border-red-400 focus:border-red-400 focus:ring-red-100' : 'border-slate-200 focus:border-slate-indigo-500 focus:ring-slate-100'
-              } ${isPhysicianView ? 'cursor-default text-slate-700' : ''}`}
+              } ${isReadOnlyView ? 'cursor-default text-slate-700' : ''}`}
             />
             {errors.findings && <span className="mt-2 block text-xs text-red-600">{errors.findings}</span>}
           </section>
@@ -322,11 +326,11 @@ export default function ReportWritePage() {
               onChange={(event) => handleFieldChange('impression', event.target.value)}
               onBlur={() => handleBlur('impression')}
               rows={5}
-              readOnly={isPhysicianView}
+              readOnly={isReadOnlyView}
               placeholder="e.g., Suspicious for active pulmonary tuberculosis requiring urgent follow-up."
               className={`w-full resize-none rounded-xl border bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:ring-4 ${
                 errors.impression ? 'border-red-400 focus:border-red-400 focus:ring-red-100' : 'border-slate-200 focus:border-slate-indigo-500 focus:ring-slate-100'
-              } ${isPhysicianView ? 'cursor-default text-slate-700' : ''}`}
+              } ${isReadOnlyView ? 'cursor-default text-slate-700' : ''}`}
             />
             {errors.impression && <span className="mt-2 block text-xs text-red-600">{errors.impression}</span>}
           </section>
@@ -341,11 +345,11 @@ export default function ReportWritePage() {
               onChange={(event) => handleFieldChange('recommendation', event.target.value)}
               onBlur={() => handleBlur('recommendation')}
               rows={5}
-              readOnly={isPhysicianView}
+              readOnly={isReadOnlyView}
               placeholder="e.g., Recommend sputum AFB and GeneXpert testing with specialist review."
               className={`w-full resize-none rounded-xl border bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:ring-4 ${
                 errors.recommendation ? 'border-red-400 focus:border-red-400 focus:ring-red-100' : 'border-slate-200 focus:border-slate-indigo-500 focus:ring-slate-100'
-              } ${isPhysicianView ? 'cursor-default text-slate-700' : ''}`}
+              } ${isReadOnlyView ? 'cursor-default text-slate-700' : ''}`}
             />
             {errors.recommendation && <span className="mt-2 block text-xs text-red-600">{errors.recommendation}</span>}
           </section>
@@ -363,13 +367,13 @@ export default function ReportWritePage() {
                 onChange={(event) => handleFieldChange('severity', event.target.value)}
                 options={SEVERITY_OPTIONS}
                 error={errors.severity}
-                disabled={isPhysicianView}
+                disabled={isReadOnlyView}
               />
             </div>
           </section>
         </div>
 
-        {!isPhysicianView && (
+        {!isReadOnlyView && (
           <div className="flex flex-col sm:flex-row gap-3 pt-2">
             <Button variant="secondary" onClick={persistDraft} disabled={isSaving || isSubmitting} className="flex-1">
               <Save size={15} />

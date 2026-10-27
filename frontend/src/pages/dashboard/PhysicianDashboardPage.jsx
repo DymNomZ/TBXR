@@ -4,6 +4,7 @@ import { Activity, AlertTriangle, FileCheck2, RefreshCcw } from 'lucide-react'
 import AppLayout from '../../components/layout/AppLayout'
 import StatCard from '../../components/ui/StatCard'
 import Button from '../../components/ui/Button'
+import { useAuth } from '../../context/AuthContext'
 
 const DASHBOARD_ENDPOINT = '/api/physician/dashboard'
 const SEVERITY_OPTIONS = ['', 'NORMAL', 'MILD', 'MODERATE', 'SEVERE', 'CRITICAL']
@@ -49,9 +50,13 @@ function withDefaultPayload(payload) {
   }
 }
 
-export default function PhysicianDashboardPage() {
+export default function PhysicianDashboardPage({ viewerRole = null }) {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
+  const { user } = useAuth()
+
+  const effectiveRole = viewerRole || user?.role || 'PHYSICIAN'
+  const isPatientViewer = effectiveRole === 'PATIENT'
 
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -145,6 +150,12 @@ export default function PhysicianDashboardPage() {
 
   const openCase = (item) => {
     if (!item?.transaction_id) return
+    if (isPatientViewer && item?.patient?.patient_id) {
+      navigate(`/patients/${item.patient.patient_id}`, {
+        state: { openXray: item.transaction_id },
+      })
+      return
+    }
     navigate(`/radiologist/report/${item.transaction_id}`)
   }
 
@@ -192,10 +203,12 @@ export default function PhysicianDashboardPage() {
       <div className="flex flex-col gap-6">
         <div>
           <h1 className="text-2xl font-bold text-[var(--deep-navy)] tracking-tight">
-            Physician Dashboard
+            {isPatientViewer ? 'Patient Validation Dashboard' : 'Physician Dashboard'}
           </h1>
           <p className="text-sm text-[var(--text-muted)] mt-1">
-            Finalized radiologist outputs and patient follow-up context for clinical decision support.
+            {isPatientViewer
+              ? 'Read-only access to finalized radiologist outputs and case context for validation review.'
+              : 'Finalized radiologist outputs and patient follow-up context for clinical decision support.'}
           </p>
         </div>
 
@@ -263,7 +276,7 @@ export default function PhysicianDashboardPage() {
 
         {highlightedCaseId && (
           <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-            Case {highlightedCaseId} is not visible in the current filter window. Adjust date or severity filters.
+            {isPatientViewer ? 'Record' : 'Case'} {highlightedCaseId} is not visible in the current filter window. Adjust date or severity filters.
           </div>
         )}
 
@@ -295,7 +308,7 @@ export default function PhysicianDashboardPage() {
                             onClick={() => openAlertCase(alert)}
                             disabled={!extractCaseIdFromAlert(alert.message)}
                           >
-                            Open case
+                            {isPatientViewer ? 'Open record' : 'Open case'}
                           </Button>
                         </div>
                       </div>
@@ -372,7 +385,7 @@ export default function PhysicianDashboardPage() {
                         <td className="py-3 pr-3 text-[var(--text-muted)]">{formatDateTime(item.reported_at)}</td>
                         <td className="py-3 pr-3">
                           <Button type="button" size="sm" variant="secondary" onClick={() => openCase(item)}>
-                            Open case
+                            {isPatientViewer ? 'Open record' : 'Open case'}
                           </Button>
                         </td>
                       </tr>
@@ -416,7 +429,7 @@ export default function PhysicianDashboardPage() {
                             transaction_id: item.latest_transaction_id,
                           })}
                         >
-                          Open latest case
+                          {isPatientViewer ? 'Open latest record' : 'Open latest case'}
                         </Button>
                       </div>
                     </div>

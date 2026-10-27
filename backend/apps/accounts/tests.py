@@ -54,6 +54,22 @@ class AccountAuthViewsTests(TestCase):
             {'redirect': expected_redirect, 'role': UserRole.RADIOLOGIST},
         )
 
+    def test_login_redirects_patient_to_patient_dashboard(self):
+        self._create_user('patient1', 'password123', UserRole.PATIENT)
+        expected_redirect = views.ROLE_FRONTEND_URLS[UserRole.PATIENT]
+
+        response = self.client.post(
+            reverse('accounts:login'),
+            data=json.dumps({'username': 'patient1', 'password': 'password123'}),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertJSONEqual(
+            response.content,
+            {'redirect': expected_redirect, 'role': UserRole.PATIENT},
+        )
+
     def test_login_returns_descriptive_error_for_bad_credentials(self):
         self._create_user('tech', 'password123', UserRole.RADIOLOGIC_TECH)
 
@@ -96,6 +112,9 @@ class RolePermissionTests(TestCase):
         cls.rad = user_model.objects.create_user(
             username='rad1', password='password123', role=UserRole.RADIOLOGIST
         )
+        cls.respondent = user_model.objects.create_user(
+            username='respondent1', password='password123', role=UserRole.PATIENT
+        )
         cls.rfactory = RequestFactory()
 
     def _request_for_user(self, path, user):
@@ -119,6 +138,10 @@ class RolePermissionTests(TestCase):
     def test_authenticated_user_with_wrong_role_receives_403(self):
         with self.assertRaises(PermissionDenied):
             views.technologist_dashboard(self._request_for_user('/dashboard/technologist', self.rad))
+
+    def test_patient_role_is_forbidden_from_technologist_dashboard(self):
+        with self.assertRaises(PermissionDenied):
+            views.technologist_dashboard(self._request_for_user('/dashboard/technologist', self.respondent))
 
     def test_register_patient_allows_technologist(self):
         self.client.force_login(self.tech)
