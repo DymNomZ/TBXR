@@ -45,7 +45,7 @@ def register_patient(request):
 
 @extend_schema(responses={200: PatientSerializer})
 @api_view(["GET"])
-@role_required(UserRole.RADIOLOGIC_TECH, UserRole.RADIOLOGIST)
+@role_required(UserRole.RADIOLOGIC_TECH, UserRole.RADIOLOGIST, UserRole.PHYSICIAN, UserRole.PATIENT)
 def patient_detail(request, patient_id):
     patient = get_object_or_404(Patient, patient_id=patient_id)
     serializer = PatientSerializer(patient)
@@ -55,7 +55,7 @@ def patient_detail(request, patient_id):
     parameters=[
         OpenApiParameter(
             name="name",
-            description="Search by first name or last name",
+            description="Search by first name, last name, or patient ID",
             required=False,
             type=str
         )
@@ -63,16 +63,19 @@ def patient_detail(request, patient_id):
     responses={200: PatientSerializer(many=True)}
 )
 @api_view(["GET"])
-@role_required(UserRole.RADIOLOGIC_TECH, UserRole.RADIOLOGIST)
+@role_required(UserRole.RADIOLOGIC_TECH, UserRole.RADIOLOGIST, UserRole.PHYSICIAN, UserRole.PATIENT)
 def search_patients(request):
     # Get the 'name' search term from the URL
     query = request.query_params.get('name', '').strip()
 
     if query:
-        # Find patients where first OR last name matches the query (case-insensitive)
-        patients = Patient.objects.filter(
-            Q(first_name__icontains=query) | Q(last_name__icontains=query)
-        )
+        # Find patients where first OR last name matches the query (case-insensitive).
+        # A purely numeric query also matches the patient ID, e.g. "10". The length
+        # guard keeps oversized values from overflowing the integer column.
+        filters = Q(first_name__icontains=query) | Q(last_name__icontains=query)
+        if query.isascii() and query.isdigit() and len(query) <= 9:
+            filters |= Q(patient_id=int(query))
+        patients = Patient.objects.filter(filters)
     else:
         patients = Patient.objects.all()
 
@@ -80,7 +83,7 @@ def search_patients(request):
     return Response(serializer.data)
 
 @api_view(['GET'])
-@role_required(UserRole.RADIOLOGIC_TECH, UserRole.RADIOLOGIST)
+@role_required(UserRole.RADIOLOGIC_TECH, UserRole.RADIOLOGIST, UserRole.PHYSICIAN, UserRole.PATIENT)
 def patient_list(request):
     patients = Patient.objects.all().order_by('last_name', 'first_name')
     serializer = PatientSerializer(patients, many=True)

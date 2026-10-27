@@ -2,11 +2,14 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider } from './context/AuthContext'
 import LoginPage from './pages/LoginPage'
 import PatientsPage from './pages/PatientsPage'
-import PatientCard from './components/patients/PatientCard'
 import PatientDetailPage from './pages/PatientDetailPage';
 import TechnologistDashboardPage from './pages/dashboard/TechnologistDashboardPage'
 import RadiologistDashboardPage from './pages/dashboard/RadiologistDashboardPage'
+import PhysicianDashboardPage from './pages/dashboard/PhysicianDashboardPage'
+import PatientDashboardPage from './pages/dashboard/PatientDashboardPage'
+import AnalyticsDashboardPage from './pages/dashboard/AnalyticsDashboardPage'
 import AnnotationReviewPage from './pages/AnnotationReviewPage'
+import ReportWritePage from './pages/ReportWritePage'
 import RoleGuard from './components/auth/RoleGuard'
 
 function App() {
@@ -34,6 +37,30 @@ function App() {
               </RoleGuard>
             }
           />
+          <Route
+            path="/dashboard/physician"
+            element={
+              <RoleGuard allowedRoles={['PHYSICIAN']}>
+                <PhysicianDashboardPage />
+              </RoleGuard>
+            }
+          />
+          <Route
+            path="/dashboard/patient"
+            element={
+              <RoleGuard allowedRoles={['PATIENT']}>
+                <PatientDashboardPage />
+              </RoleGuard>
+            }
+          />
+          <Route
+            path="/dashboard/analytics"
+            element={
+              <RoleGuard allowedRoles={['RADIOLOGIST', 'PHYSICIAN']}>
+                <AnalyticsDashboardPage />
+              </RoleGuard>
+            }
+          />
 
           {/* Annotation review */}
           <Route
@@ -41,6 +68,14 @@ function App() {
             element={
               <RoleGuard allowedRoles={['RADIOLOGIST']}>
                 <AnnotationReviewPage />
+              </RoleGuard>
+            }
+          />
+          <Route
+            path="/radiologist/report/:transactionId"
+            element={
+              <RoleGuard allowedRoles={['RADIOLOGIST', 'PHYSICIAN']}>
+                <ReportWritePage />
               </RoleGuard>
             }
           />

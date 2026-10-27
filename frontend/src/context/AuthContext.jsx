@@ -2,9 +2,13 @@ import { createContext, useContext, useState } from 'react'
 
 const AuthContext = createContext(null)
 
+const LOGOUT_URL = '/accounts/logout/'
+
 const ROLE_DASHBOARD = {
   RADIOLOGIC_TECH: '/dashboard/technologist',
   RADIOLOGIST:     '/dashboard/radiologist',
+  PHYSICIAN:       '/dashboard/physician',
+  PATIENT:         '/dashboard/patient',
 }
 
 export function AuthProvider({ children }) {
@@ -27,12 +31,12 @@ export function AuthProvider({ children }) {
         .find(row => row.startsWith('csrftoken='))
         ?.split('=')[1]
 
-      await fetch('/api/accounts/logout/', {
+      await fetch(LOGOUT_URL, {
         method: 'POST',
         credentials: 'include',
         headers: { 'X-CSRFToken': csrfToken ?? '' },
       })
-    } catch (e) {
+    } catch {
       // proceed with local logout even if request fails
     }
 

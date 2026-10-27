@@ -1,5 +1,11 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
-import { X } from 'lucide-react'
+import { X, Square, Circle, PencilLine, Undo2, Trash2 } from 'lucide-react'
+
+const TOOL_OPTIONS = [
+  { value: 'rectangle', label: 'Rectangle', icon: Square },
+  { value: 'circle', label: 'Circle', icon: Circle },
+  { value: 'freehand', label: 'Freehand', icon: PencilLine },
+]
 
 // ─── Label input popup ────────────────────────────────────────────────────────
 
@@ -8,7 +14,6 @@ function LabelPopup({ position, value, onChange, onConfirm, onCancel, inputRef }
     <div
       style={{ position: 'absolute', left: position.x, top: position.y + 8, zIndex: 20 }}
       className="bg-white border border-[var(--border)] rounded-xl shadow-lg p-3 flex items-center gap-2 min-w-52"
-      // Prevent mouse events from bubbling into the canvas and cancelling the box
       onMouseDown={(e) => e.stopPropagation()}
       onClick={(e) => e.stopPropagation()}
     >
@@ -18,7 +23,7 @@ function LabelPopup({ position, value, onChange, onConfirm, onCancel, inputRef }
         value={value}
         onChange={(e) => onChange(e.target.value)}
         onKeyDown={(e) => {
-          if (e.key === 'Enter')  onConfirm()
+          if (e.key === 'Enter') onConfirm()
           if (e.key === 'Escape') onCancel()
         }}
         placeholder="Enter label…"
@@ -43,22 +48,111 @@ function LabelPopup({ position, value, onChange, onConfirm, onCancel, inputRef }
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export default function AnnotationCanvas({
-  scale     = 1,
+  scale = 1,
   translate = { x: 0, y: 0 },
+  boxes = [],
   onBoxesChange,
-  disabled  = false,
+  disabled = false,
+  onDeleteBoxReady,
 }) {
-  const selfRef     = useRef(null)   // the absolute inset-0 wrapper
-  const labelRef    = useRef(null)
+  const selfRef = useRef(null)
+  const labelRef = useRef(null)
 
-  const [boxes,      setBoxes]      = useState([])
-  const [drawing,    setDrawing]    = useState(null)   // {startX,startY,currentX,currentY}
-  const [pendingBox, setPending]    = useState(null)   // box awaiting label entry
-  const [draft,      setDraft]      = useState('')
+  const [drawing, setDrawing] = useState(null)
+  const [pendingBox, setPending] = useState(null)
+  const [draft, setDraft] = useState('')
+  const [tool, setTool] = useState('rectangle')
+  const [selectedId, setSelectedId] = useState(null)
+  const [dragging, setDragging] = useState(null)
+  const draggingRef = useRef(null)
+  const [undoStack, setUndoStack] = useState([])
 
-  // ── Coordinate helpers ──────────────────────────────────────────────────────
+  const pushHistory = useCallback((snapshot) => {
+    setUndoStack((prev) => [...prev.slice(-19), snapshot])
+  }, [])
 
-  // Screen coords (clientX/Y) → element space (pre-transform)
+  const cloneBoxes = useCallback((source) => (
+    source.map((box) => ({
+      ...box,
+      points: Array.isArray(box.points) ? box.points.map((pt) => ({ ...pt })) : undefined,
+    }))
+  ), [])
+
+  const getCanvasSize = useCallback(() => ({
+    w: selfRef.current?.offsetWidth || 1,
+    h: selfRef.current?.offsetHeight || 1,
+  }), [])
+
+  const isNormalizedCoord = useCallback((value) => (
+    Number.isFinite(value) && value >= 0 && value <= 1
+  ), [])
+
+  const normalizeBox = useCallback((box, size) => {
+    const safeWidth = size.w || 1
+    const safeHeight = size.h || 1
+    const normalized = {
+      id: box.id,
+      x: box.x / safeWidth,
+      y: box.y / safeHeight,
+      width: box.width / safeWidth,
+      height: box.height / safeHeight,
+      label: box.label ?? '',
+    }
+
+    if (box.shape === 'circle') normalized.shape = 'circle'
+    if (box.shape === 'freehand' && Array.isArray(box.points)) {
+      normalized.shape = 'freehand'
+      normalized.points = box.points.map((pt) => ({
+        x: pt.x / safeWidth,
+        y: pt.y / safeHeight,
+      }))
+    }
+
+    return normalized
+  }, [])
+
+  const denormalizeBox = useCallback((box, size, index) => {
+    const safeWidth = size.w || 1
+    const safeHeight = size.h || 1
+    const useNormalizedRect = (
+      isNormalizedCoord(box.x) &&
+      isNormalizedCoord(box.y) &&
+      isNormalizedCoord(box.width) &&
+      isNormalizedCoord(box.height)
+    )
+
+    const shape = box.shape === 'circle' || box.shape === 'freehand' ? box.shape : 'rectangle'
+    const points = Array.isArray(box.points)
+      ? box.points.map((pt) => {
+          const useNormalizedPoint = isNormalizedCoord(pt.x) && isNormalizedCoord(pt.y)
+          return {
+            x: useNormalizedPoint ? pt.x * safeWidth : pt.x,
+            y: useNormalizedPoint ? pt.y * safeHeight : pt.y,
+          }
+        })
+      : undefined
+
+    return {
+      id: box.id ?? `box-${index}`,
+      x: useNormalizedRect ? box.x * safeWidth : box.x,
+      y: useNormalizedRect ? box.y * safeHeight : box.y,
+      width: useNormalizedRect ? box.width * safeWidth : box.width,
+      height: useNormalizedRect ? box.height * safeHeight : box.height,
+      shape,
+      label: box.label ?? '',
+      points,
+    }
+  }, [isNormalizedCoord])
+
+  const commitBoxes = useCallback((updater) => {
+    if (!onBoxesChange) return
+
+    const snapshot = cloneBoxes(boxes)
+    const next = typeof updater === 'function' ? updater(boxes) : updater
+    pushHistory(snapshot)
+    onBoxesChange(next)
+  }, [boxes, cloneBoxes, onBoxesChange, pushHistory])
+
   const toElementSpace = useCallback((clientX, clientY) => {
     const el = selfRef.current
     if (!el) return { x: 0, y: 0 }
@@ -73,7 +167,6 @@ export default function AnnotationCanvas({
     }
   }, [scale, translate])
 
-  // Element space → container-relative screen coords (for positioned HTML overlays)
   const toScreenSpace = useCallback((ex, ey) => {
     const el = selfRef.current
     if (!el) return { x: 0, y: 0 }
@@ -85,40 +178,132 @@ export default function AnnotationCanvas({
     }
   }, [scale, translate])
 
-  // ── Drawing handlers ────────────────────────────────────────────────────────
-
   const handleMouseDown = useCallback((e) => {
     if (disabled || pendingBox) return
+    // Only the primary button draws. The right button is the viewer's pan
+    // gesture and must not start an annotation (or open the label prompt).
+    if (e.button !== 0) return
     e.preventDefault()
+
     const pt = toElementSpace(e.clientX, e.clientY)
-    setDrawing({ startX: pt.x, startY: pt.y, currentX: pt.x, currentY: pt.y })
-  }, [disabled, pendingBox, toElementSpace])
+
+    if (tool === 'freehand') {
+      setDrawing({ type: 'freehand', points: [pt] })
+      return
+    }
+
+    setDrawing({
+      type: tool,
+      startX: pt.x,
+      startY: pt.y,
+      currentX: pt.x,
+      currentY: pt.y,
+    })
+  }, [disabled, pendingBox, tool, toElementSpace])
 
   const handleMouseMove = useCallback((e) => {
+    const activeDrag = draggingRef.current
+    if (activeDrag) {
+      const pt = toElementSpace(e.clientX, e.clientY)
+      const size = getCanvasSize()
+      const dx = (pt.x - activeDrag.startX) / (size.w || 1)
+      const dy = (pt.y - activeDrag.startY) / (size.h || 1)
+      const nextBoxes = boxes.map((box) => {
+        if (box.id !== activeDrag.id) return box
+
+        const moved = { ...box }
+        const clamp01 = (value) => Math.min(Math.max(value, 0), 1)
+        const originX = activeDrag.originX ?? (box.x ?? 0)
+        const originY = activeDrag.originY ?? (box.y ?? 0)
+
+        if (box.shape === 'freehand' && Array.isArray(box.points)) {
+          moved.points = box.points.map((point) => ({
+            ...point,
+            x: clamp01((point.x ?? 0) + dx),
+            y: clamp01((point.y ?? 0) + dy),
+          }))
+        }
+
+        moved.x = clamp01(originX + dx)
+        moved.y = clamp01(originY + dy)
+        return moved
+      })
+
+      if (onBoxesChange) onBoxesChange(nextBoxes)
+      return
+    }
+
     if (!drawing) return
+
     const pt = toElementSpace(e.clientX, e.clientY)
-    setDrawing((prev) => ({ ...prev, currentX: pt.x, currentY: pt.y }))
-  }, [drawing, toElementSpace])
+
+    setDrawing((prev) => {
+      if (!prev) return prev
+      if (prev.type === 'freehand') {
+        return { ...prev, points: [...prev.points, pt] }
+      }
+      return { ...prev, currentX: pt.x, currentY: pt.y }
+    })
+  }, [boxes, dragging, drawing, getCanvasSize, onBoxesChange, toElementSpace])
 
   const handleMouseUp = useCallback(() => {
+    if (draggingRef.current) {
+      draggingRef.current = null
+      setDragging(null)
+      return
+    }
+
     if (!drawing) return
+
+    if (drawing.type === 'freehand') {
+      const points = drawing.points
+      if (points.length < 2) {
+        setDrawing(null)
+        return
+      }
+
+      const minX = Math.min(...points.map((pt) => pt.x))
+      const maxX = Math.max(...points.map((pt) => pt.x))
+      const minY = Math.min(...points.map((pt) => pt.y))
+      const maxY = Math.max(...points.map((pt) => pt.y))
+      const width = Math.max(maxX - minX, 10)
+      const height = Math.max(maxY - minY, 10)
+
+      const box = {
+        id: crypto.randomUUID(),
+        x: minX,
+        y: minY,
+        width,
+        height,
+        shape: 'freehand',
+        points,
+        label: '',
+      }
+
+      setDrawing(null)
+      setPending(box)
+      setDraft('')
+      setTimeout(() => labelRef.current?.focus(), 40)
+      return
+    }
+
     const { startX, startY, currentX, currentY } = drawing
     const w = currentX - startX
     const h = currentY - startY
 
-    // Ignore accidental tiny clicks
     if (Math.abs(w) < 8 / scale || Math.abs(h) < 8 / scale) {
       setDrawing(null)
       return
     }
 
     const box = {
-      id:     crypto.randomUUID(),
-      x:      w < 0 ? startX + w : startX,
-      y:      h < 0 ? startY + h : startY,
-      width:  Math.abs(w),
+      id: crypto.randomUUID(),
+      x: w < 0 ? startX + w : startX,
+      y: h < 0 ? startY + h : startY,
+      width: Math.abs(w),
       height: Math.abs(h),
-      label:  '',
+      shape: drawing.type === 'circle' ? 'circle' : 'rectangle',
+      label: '',
     }
 
     setDrawing(null)
@@ -127,62 +312,217 @@ export default function AnnotationCanvas({
     setTimeout(() => labelRef.current?.focus(), 40)
   }, [drawing, scale])
 
-  // Helper — normalizes element-space box to 0-1 using current container dims
-  const normalize = useCallback((box) => {
-    const el = selfRef.current
-    const W  = el?.offsetWidth  ?? 1
-    const H  = el?.offsetHeight ?? 1
-    return {
-      x:      box.x      / W,
-      y:      box.y      / H,
-      width:  box.width  / W,
-      height: box.height / H,
-      label:  box.label,
-    }
-  }, [])
-
   const confirmLabel = useCallback(() => {
     if (!pendingBox) return
-    const confirmed = { ...pendingBox, label: draft.trim() }
-    setBoxes((prev) => {
-      const next = [...prev, confirmed]
-      onBoxesChange?.(next.map(({ id, ...box }) => normalize(box)))  // ← normalized, no id
-      return next
-    })
+
+    const canvasSize = getCanvasSize()
+    const confirmed = normalizeBox(
+      {
+        ...pendingBox,
+        id: pendingBox.id ?? crypto.randomUUID(),
+        label: draft.trim(),
+      },
+      canvasSize,
+    )
+    commitBoxes((prev) => [...prev, confirmed])
     setPending(null)
     setDraft('')
-  }, [pendingBox, draft, onBoxesChange, normalize])
+    setSelectedId(confirmed.id)
+  }, [commitBoxes, draft, getCanvasSize, normalizeBox, pendingBox])
 
   const deleteBox = useCallback((id) => {
-    setBoxes((prev) => {
-      const next = prev.filter((b) => b.id !== id)
-      onBoxesChange?.(next.map(({ id, ...box }) => normalize(box)))  // ← normalized, no id
-      return next
-    })
-  }, [onBoxesChange, normalize])
+    commitBoxes((prev) => prev.filter((box) => box.id !== id))
+    if (selectedId === id) setSelectedId(null)
+  }, [commitBoxes, selectedId])
+
+  const deleteSelected = useCallback(() => {
+    if (!selectedId) return
+    deleteBox(selectedId)
+  }, [deleteBox, selectedId])
+
+  const beginBoxDrag = useCallback((event, boxId) => {
+    if (disabled || pendingBox || event.button !== 0) return
+    event.preventDefault()
+    event.stopPropagation()
+
+    const target = boxes.find((box) => box.id === boxId)
+    if (!target) return
+
+    const pt = toElementSpace(event.clientX, event.clientY)
+    pushHistory(cloneBoxes(boxes))
+    setSelectedId(boxId)
+    const nextDrag = {
+      id: boxId,
+      startX: pt.x,
+      startY: pt.y,
+      originX: target.x ?? 0,
+      originY: target.y ?? 0,
+    }
+    draggingRef.current = nextDrag
+    setDragging(nextDrag)
+  }, [boxes, cloneBoxes, disabled, pendingBox, pushHistory, toElementSpace])
+
+  // Expose the history-aware delete so sibling controls (e.g. the bounding-box
+  // panel) mutate through the same undo stack instead of bypassing it.
+  useEffect(() => {
+    if (!onDeleteBoxReady) return undefined
+    onDeleteBoxReady(deleteBox)
+    return () => onDeleteBoxReady(null)
+  }, [onDeleteBoxReady, deleteBox])
+
+  const undoLastAction = useCallback(() => {
+    if (!undoStack.length || !onBoxesChange) return
+    const previous = undoStack[undoStack.length - 1]
+    setUndoStack((prev) => prev.slice(0, -1))
+    onBoxesChange(previous)
+    setSelectedId(null)
+  }, [onBoxesChange, undoStack])
 
   const cancelPending = useCallback(() => {
     setPending(null)
     setDraft('')
   }, [])
 
-  // ── SVG visual helpers ──────────────────────────────────────────────────────
+  useEffect(() => {
+    const onKeyDown = (event) => {
+      if (disabled || pendingBox) return
+      if ((event.key === 'Delete' || event.key === 'Backspace') && selectedId) {
+        event.preventDefault()
+        deleteSelected()
+      }
 
-  // Stroke/font scale inversely so visuals stay constant size on screen
-  const sw    = 2 / scale       // stroke width
-  const dash  = `${6/scale} ${3/scale}`
-  const fSize = 11 / scale
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z') {
+        event.preventDefault()
+        undoLastAction()
+      }
+    }
+
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [deleteSelected, disabled, pendingBox, selectedId, undoLastAction])
+
+  const sw = 2 / scale
+  const dash = `${6 / scale} ${3 / scale}`
+  const drawableBoxes = boxes
+    .map((box, index) => denormalizeBox(box, getCanvasSize(), index))
+    .filter((box) => Number.isFinite(box.x) && Number.isFinite(box.y) && Number.isFinite(box.width) && Number.isFinite(box.height))
 
   const transformStyle = {
     transform: `translate(${translate.x}px, ${translate.y}px) scale(${scale})`,
     transformOrigin: 'center center',
-    pointerEvents: 'none',   // SVG is display-only; events go to the wrapper div
+    pointerEvents: 'none',
   }
 
-  // Label popup position: below the pending box's bottom-left
   const labelPos = pendingBox
     ? toScreenSpace(pendingBox.x, pendingBox.y + pendingBox.height)
     : null
+
+  const renderShape = (box) => {
+    const commonProps = {
+      stroke: selectedId === box.id ? '#ef4444' : '#5b65dc',
+      strokeWidth: sw,
+      fill: selectedId === box.id ? 'rgba(239,68,68,0.10)' : 'rgba(91,101,220,0.12)',
+      vectorEffect: 'non-scaling-stroke',
+      // The parent <svg> is pointer-events:none so drawing still works over
+      // existing shapes; opt the shapes back in so clicking one selects it.
+      pointerEvents: 'auto',
+      onClick: () => setSelectedId(box.id),
+      onMouseDown: (event) => beginBoxDrag(event, box.id),
+      className: 'cursor-pointer',
+    }
+
+    if (box.shape === 'circle') {
+      const cx = box.x + box.width / 2
+      const cy = box.y + box.height / 2
+      const rx = box.width / 2
+      const ry = box.height / 2
+      return <ellipse key={box.id} cx={cx} cy={cy} rx={rx} ry={ry} {...commonProps} />
+    }
+
+    if (box.shape === 'freehand' && box.points) {
+      const points = box.points.map((pt) => `${pt.x},${pt.y}`).join(' ')
+      return <polyline key={box.id} points={points} {...commonProps} strokeLinejoin="round" strokeLinecap="round" fill="none" />
+    }
+
+    return (
+      <rect
+        key={box.id}
+        x={box.x}
+        y={box.y}
+        width={box.width}
+        height={box.height}
+        fill={selectedId === box.id ? 'rgba(239,68,68,0.10)' : 'rgba(91,101,220,0.12)'}
+        stroke={selectedId === box.id ? '#ef4444' : '#5b65dc'}
+        strokeWidth={sw}
+        strokeDasharray={dash}
+        vectorEffect="non-scaling-stroke"
+        pointerEvents="auto"
+        onClick={() => setSelectedId(box.id)}
+        onMouseDown={(event) => beginBoxDrag(event, box.id)}
+        className="cursor-pointer"
+      />
+    )
+  }
+
+  const renderPendingShape = (box) => {
+    if (box.shape === 'circle') {
+      const cx = box.x + box.width / 2
+      const cy = box.y + box.height / 2
+      const rx = box.width / 2
+      const ry = box.height / 2
+      return <ellipse key={box.id} cx={cx} cy={cy} rx={rx} ry={ry} fill="rgba(91,101,220,0.15)" stroke="#5b65dc" strokeWidth={sw} />
+    }
+
+    if (box.shape === 'freehand' && box.points) {
+      const points = box.points.map((pt) => `${pt.x},${pt.y}`).join(' ')
+      return <polyline key={box.id} points={points} fill="none" stroke="#5b65dc" strokeWidth={sw} strokeLinejoin="round" strokeLinecap="round" />
+    }
+
+    return (
+      <rect
+        key={box.id}
+        x={box.x}
+        y={box.y}
+        width={box.width}
+        height={box.height}
+        fill="rgba(91,101,220,0.15)"
+        stroke="#5b65dc"
+        strokeWidth={sw}
+      />
+    )
+  }
+
+  const renderDrawingPreview = () => {
+    if (!drawing) return null
+
+    if (drawing.type === 'circle') {
+      const x = Math.min(drawing.startX, drawing.currentX)
+      const y = Math.min(drawing.startY, drawing.currentY)
+      const width = Math.abs(drawing.currentX - drawing.startX)
+      const height = Math.abs(drawing.currentY - drawing.startY)
+      const cx = x + width / 2
+      const cy = y + height / 2
+      return <ellipse cx={cx} cy={cy} rx={width / 2} ry={height / 2} fill="rgba(91,101,220,0.08)" stroke="#5b65dc" strokeWidth={sw} strokeDasharray={dash} />
+    }
+
+    if (drawing.type === 'freehand') {
+      const points = drawing.points.map((pt) => `${pt.x},${pt.y}`).join(' ')
+      return <polyline points={points} fill="none" stroke="#5b65dc" strokeWidth={sw} strokeLinecap="round" strokeLinejoin="round" strokeDasharray={dash} />
+    }
+
+    return (
+      <rect
+        x={Math.min(drawing.startX, drawing.currentX)}
+        y={Math.min(drawing.startY, drawing.currentY)}
+        width={Math.abs(drawing.currentX - drawing.startX)}
+        height={Math.abs(drawing.currentY - drawing.startY)}
+        fill="rgba(91,101,220,0.08)"
+        stroke="#5b65dc"
+        strokeWidth={sw}
+        strokeDasharray={dash}
+      />
+    )
+  }
 
   return (
     <div
@@ -194,80 +534,72 @@ export default function AnnotationCanvas({
       onMouseUp={handleMouseUp}
       onMouseLeave={handleMouseUp}
     >
-      {/* ── SVG overlay — same transform as XrayViewer image ── */}
-      <svg
-        className="absolute inset-0 w-full h-full overflow-visible"
-        style={transformStyle}
-      >
-        {/* Confirmed boxes */}
-        {boxes.map((box) => (
-          <g key={box.id}>
-            <rect
-              x={box.x} y={box.y}
-              width={box.width} height={box.height}
-              fill="rgba(91,101,220,0.12)"
-              stroke="#5b65dc"
-              strokeWidth={sw}
-              strokeDasharray={dash}
-            />
-            {box.label && (
-              <text
-                x={box.x + 4 / scale}
-                y={box.y - 5 / scale}
-                fontSize={fSize}
-                fill="#5b65dc"
-                fontWeight="600"
-                fontFamily="ui-monospace, monospace"
-              >
-                {box.label}
-              </text>
-            )}
-          </g>
+      <div className="absolute left-3 top-3 z-20 flex gap-2 rounded-xl border border-[var(--border)] bg-white/90 p-1 shadow-sm backdrop-blur-sm">
+        {TOOL_OPTIONS.map(({ value, label, icon: Icon }) => (
+          <button
+            key={value}
+            type="button"
+            title={label}
+            onClick={() => setTool(value)}
+            className={`flex h-8 w-8 items-center justify-center rounded-lg border transition-colors ${
+              tool === value ? 'border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent)]' : 'border-transparent text-[var(--text-muted)] hover:bg-[var(--surface-soft)]'
+            }`}
+          >
+            <Icon size={14} />
+          </button>
         ))}
 
-        {/* Pending box (awaiting label) */}
-        {pendingBox && (
-          <rect
-            x={pendingBox.x} y={pendingBox.y}
-            width={pendingBox.width} height={pendingBox.height}
-            fill="rgba(91,101,220,0.15)"
-            stroke="#5b65dc"
-            strokeWidth={sw}
-          />
-        )}
+        <button
+          type="button"
+          title="Undo"
+          onClick={undoLastAction}
+          disabled={!undoStack.length}
+          className="flex h-8 w-8 items-center justify-center rounded-lg border border-transparent text-[var(--text-muted)] hover:bg-[var(--surface-soft)] disabled:cursor-not-allowed disabled:opacity-30"
+        >
+          <Undo2 size={14} />
+        </button>
 
-        {/* In-progress drawing */}
-        {drawing && (
-          <rect
-            x={Math.min(drawing.startX, drawing.currentX)}
-            y={Math.min(drawing.startY, drawing.currentY)}
-            width={Math.abs(drawing.currentX - drawing.startX)}
-            height={Math.abs(drawing.currentY - drawing.startY)}
-            fill="rgba(91,101,220,0.08)"
-            stroke="#5b65dc"
-            strokeWidth={sw}
-            strokeDasharray={dash}
-          />
-        )}
+        <button
+          type="button"
+          title="Delete selected"
+          onClick={deleteSelected}
+          disabled={!selectedId}
+          className="flex h-8 w-8 items-center justify-center rounded-lg border border-transparent text-[var(--text-muted)] hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-30"
+        >
+          <Trash2 size={14} />
+        </button>
+      </div>
+
+      <svg className="absolute inset-0 w-full h-full overflow-visible" style={transformStyle}>
+        {drawableBoxes.map((box) => renderShape(box))}
+
+        {pendingBox && renderPendingShape(pendingBox)}
+        {drawing && renderDrawingPreview()}
       </svg>
 
-      {/* ── Delete buttons — screen space, no SVG transform ── */}
-      {boxes.map((box) => {
-        const pos = toScreenSpace(box.x, box.y)
+      {drawableBoxes.map((box) => {
+        const pos = toScreenSpace(box.x + (box.width || 0) / 2, box.y)
         return (
           <button
             key={`del-${box.id}`}
+            type="button"
             onMouseDown={(e) => e.stopPropagation()}
-            onClick={(e) => { e.stopPropagation(); deleteBox(box.id) }}
+            onClick={(e) => {
+              e.stopPropagation()
+              // This control reads as "remove this region of interest", so it
+              // deletes through the history-aware path (Undo restores it).
+              deleteBox(box.id)
+            }}
             style={{ position: 'absolute', left: pos.x - 8, top: pos.y - 8, zIndex: 10 }}
-            className="w-5 h-5 rounded-full bg-red-500 hover:bg-red-600 text-white flex items-center justify-center shadow-md transition-colors"
+            className={`w-5 h-5 rounded-full flex items-center justify-center shadow-md transition-colors ${
+              selectedId === box.id ? 'bg-red-600 text-white' : 'bg-red-500 text-white hover:bg-red-600'
+            }`}
           >
             <X size={9} />
           </button>
         )
       })}
 
-      {/* ── Label input popup ── */}
       {pendingBox && labelPos && (
         <LabelPopup
           position={labelPos}

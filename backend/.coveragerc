@@ -1,0 +1,10 @@
+[run]
+source = apps.imaging
+branch = True
+omit = */migrations/*,*/tests/*,*/test_*.py,*/tests.py,*admin.py,*apps.py,*__init__.py,*/preprocessing/*,*/preprocessing.py
+
+[report]
+show_missing = True
+skip_covered = True
+precision = 1
+fail_under = 40

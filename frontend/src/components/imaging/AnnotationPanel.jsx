@@ -15,7 +15,7 @@ function getCsrfToken() {
 
 // ─── Box list item ────────────────────────────────────────────────────────────
 
-function BoxItem({ box, index, onDelete }) {
+function BoxItem({ box, onDelete, canDelete = true }) {
   return (
     <div className="flex items-start gap-3 p-3 rounded-xl bg-[var(--surface-soft)] border border-[var(--border)]">
       <div className="w-6 h-6 rounded-lg bg-[var(--accent-soft)] flex items-center justify-center shrink-0 mt-0.5">
@@ -32,7 +32,8 @@ function BoxItem({ box, index, onDelete }) {
       </div>
 
       <button
-        onClick={() => onDelete(index)}
+        onClick={() => onDelete(box.id)}
+        disabled={!canDelete}
         className="w-7 h-7 flex items-center justify-center rounded-lg text-[var(--text-muted)] hover:text-[var(--danger)] hover:bg-red-50 transition-colors shrink-0"
       >
         <Trash2 size={13} />
@@ -46,9 +47,13 @@ function BoxItem({ box, index, onDelete }) {
 export default function AnnotationPanel({
   transactionId,
   boxes = [],
-  onDeleteBox,       // (index) => void — lets panel delete from canvas state
+  draftNotes = '',
+  draftStatus = { state: 'idle', lastSavedAt: null, error: null },
+  onDraftNotesChange,
+  onDeleteBox,
   isCompleted = false,
   existingAnnotation = null,
+  readOnly = false,
 }) {
   const navigate = useNavigate()
   const [notes,   setNotes]   = useState('')
@@ -57,16 +62,33 @@ export default function AnnotationPanel({
   const [success, setSuccess] = useState(false)
   const { user } = useAuth()
   const canDownload = isCompleted && (user?.role === 'RADIOLOGIST' || user?.role === 'RADIOLOGIC_TECH')
+  const editingDisabled = loading || success || isCompleted || readOnly
 
   useEffect(() => {
     if (isCompleted && existingAnnotation?.notes) {
       setNotes(existingAnnotation.notes)
+      onDraftNotesChange?.(existingAnnotation.notes)
+      return
     }
-  }, [isCompleted, existingAnnotation])
+
+    if (!isCompleted) {
+      setNotes(draftNotes)
+    }
+  }, [draftNotes, existingAnnotation, isCompleted, onDraftNotesChange])
 
   const handleSubmit = async () => {
     setLoading(true)
     setError(null)
+
+    const sanitizedBoxes = boxes.map((box) => ({
+      x: box.x,
+      y: box.y,
+      width: box.width,
+      height: box.height,
+      label: box.label ?? '',
+      ...(box.shape ? { shape: box.shape } : {}),
+      ...(Array.isArray(box.points) ? { points: box.points } : {}),
+    }))
 
     try {
       const res = await fetch(`/api/imaging/xray/${transactionId}/annotate/`, {
@@ -77,7 +99,7 @@ export default function AnnotationPanel({
           'X-CSRFToken': getCsrfToken(),
         },
         body: JSON.stringify({
-          bounding_boxes: boxes,
+          bounding_boxes: sanitizedBoxes,
           notes: notes.trim(),
         }),
       })
@@ -98,7 +120,7 @@ export default function AnnotationPanel({
     }
   }
 
-  const displayBoxes = isCompleted
+  const displayBoxes = (isCompleted || readOnly)
     ? (existingAnnotation?.bounding_boxes ?? [])
     : boxes
 
@@ -122,10 +144,10 @@ export default function AnnotationPanel({
           {displayBoxes.length > 0 ? (
             displayBoxes.map((box, i) => (
               <BoxItem
-                key={i}
+                key={box.id ?? i}
                 box={box}
-                index={i}
-                onDelete={isCompleted ? () => {} : onDeleteBox}  // no-op when completed
+                canDelete={!(isCompleted || readOnly)}
+                onDelete={isCompleted || readOnly ? () => {} : onDeleteBox}
               />
             ))
           ) : (
@@ -146,13 +168,31 @@ export default function AnnotationPanel({
           <h3 className="text-sm font-bold text-[var(--deep-navy)]">Diagnostic Notes</h3>
         </div>
 
+        <div className="px-4 pt-3 pb-0">
+          <div className="flex items-center justify-between gap-2 rounded-lg border border-[var(--border)] bg-[var(--surface-soft)] px-2.5 py-1.5 text-[11px] text-[var(--text-muted)]">
+            <span>
+              {draftStatus.state === 'saving' && 'Saving draft…'}
+              {draftStatus.state === 'saved' && draftStatus.lastSavedAt && `Draft saved ${new Date(draftStatus.lastSavedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`}
+              {draftStatus.state === 'idle' && 'Draft not yet saved'}
+              {draftStatus.state === 'error' && (draftStatus.error || 'Draft save failed')}
+            </span>
+            {draftStatus.state === 'saved' && <span className="h-2 w-2 rounded-full bg-emerald-500" title="Draft saved" />}
+            {draftStatus.state === 'saving' && <span className="h-2 w-2 rounded-full bg-amber-500 animate-pulse" title="Saving draft" />}
+            {draftStatus.state === 'error' && <span className="h-2 w-2 rounded-full bg-red-500" title="Draft save failed" />}
+          </div>
+        </div>
+
         <div className="p-4">
           <textarea
             value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            placeholder="Enter your findings, observations, and recommendations…"
+            onChange={(e) => {
+              const nextValue = e.target.value
+              setNotes(nextValue)
+              onDraftNotesChange?.(nextValue)
+            }}
+            placeholder={readOnly ? 'This case is locked by another reviewer.' : 'Enter your findings, observations, and recommendations…'}
             rows={6}
-            disabled={loading || success || isCompleted}
+            disabled={editingDisabled}
             className="w-full text-sm text-[var(--text)] placeholder:text-[var(--text-muted)] bg-[var(--surface-soft)] border border-[var(--border)] rounded-xl px-4 py-3 resize-none outline-none focus:border-[var(--accent)] transition-colors disabled:opacity-60"
           />
         </div>
@@ -178,23 +218,35 @@ export default function AnnotationPanel({
       <Button
         variant="primary"
         fullWidth
-        disabled={loading || success || isCompleted}
+        disabled={editingDisabled}
         onClick={handleSubmit}
       >
-        {loading ? 'Submitting…' : success ? 'Submitted ✓' : 'Submit Findings'}
+        {readOnly ? 'Locked by another reviewer' : loading ? 'Submitting…' : success ? 'Submitted ✓' : 'Submit Findings'}
       </Button>
-      
-      {/* Generate Report */}
+
+      {/* Report actions */}
       {canDownload && (
-      <Button
-        variant="secondary"
-        fullWidth
-        onClick={() => window.open(`/api/imaging/xray/${transactionId}/report/`, '_blank')}
-      >
-        <FileDown size={15} />
-        Generate Report
-      </Button>
-    )}
+        <>
+          <Button
+            variant="secondary"
+            fullWidth
+            disabled={readOnly}
+            onClick={() => navigate(`/radiologist/report/${transactionId}`)}
+          >
+            <FileText size={15} />
+            Write Report
+          </Button>
+
+          <Button
+            variant="secondary"
+            fullWidth
+            onClick={() => window.open(`/api/imaging/xray/${transactionId}/report/generate/`, '_blank')}
+          >
+            <FileDown size={15} />
+            Generate Report
+          </Button>
+        </>
+      )}
 
     </div>
   )

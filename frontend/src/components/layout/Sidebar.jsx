@@ -1,25 +1,20 @@
 import { useAuth } from '../../context/AuthContext'
 import {
   LayoutDashboard,
-  CalendarDays,
-  UserRound,
+  BarChart3,
   Users,
-  MessageSquare,
-  Settings,
 } from 'lucide-react';
 import SidebarItem from './SidebarItem';
 
 export default function Sidebar() {
   const { user, ROLE_DASHBOARD } = useAuth()
+  const canViewAnalytics = user?.role === 'RADIOLOGIST' || user?.role === 'PHYSICIAN'
 
   // ✏️ Add, remove, or reorder items here, nothing else needs to change
   const NAV_ITEMS = [
     { label: 'Dashboard', icon: LayoutDashboard, to: ROLE_DASHBOARD[user?.role] ?? '/dashboard' },
-    { label: 'Appointments', icon: CalendarDays,    to: '/appointments' },
-    { label: 'Doctor',       icon: UserRound,       to: '/doctors' },
+    ...(canViewAnalytics ? [{ label: 'Analytics', icon: BarChart3, to: '/dashboard/analytics' }] : []),
     { label: 'Patients',     icon: Users,           to: '/patients' },
-    { label: 'Messages',     icon: MessageSquare,   to: '/messages' },
-    { label: 'Settings',     icon: Settings,        to: '/settings' },
   ];
 
   return (

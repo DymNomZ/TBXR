@@ -1,79 +1,82 @@
 # TB-XR
-**A collaborative, AI-integrated teleradiology platform for Pulmonary Tuberculosis screening.**
 
-Team: `2526-sem2-cs342-06`
-Members: Borgonia, J.D. · Emia, S.N. · Enario, L.J.L. · Epan, R.S. · Tolentino, B.M.
-
----
+## Project Description
+TB-XR is a collaborative, AI-integrated teleradiology platform for pulmonary tuberculosis screening. It combines a Django backend, React frontend, and an AI inference pipeline to support chest X-ray upload, analysis, and report workflows for clinical users.
 
 ## Tech Stack
-
 | Layer | Technology |
 |-------|-----------|
 | Backend | Django 5.x + Django REST Framework |
 | Frontend | React 18+ (via Vite) |
-| Database | PostgreSQL |
+| Database | PostgreSQL (production), SQLite (local fallback) |
 | AI/ML | PyTorch + MobileNetV3 |
 | Image Processing | Pillow, pydicom, opencv-python |
-| Auth | Django Session Auth (MVP) |
+| Authentication | Django Session Authentication |
 
----
-
-## Branch Naming Convention
-
-| Branch | Purpose |
-|--------|---------|
-| `main` | Stable, demo-ready code only. Never commit directly here. |
-| `develop` | Integration branch. All feature branches merge here first. |
-| `feature/<initials>/<short-description>` | New feature work |
-| `fix/<short-description>` | Bug fixes |
-| `hotfix/<short-description>` | Urgent fixes on `main` |
-
-**Examples:**
-```
-feature/jd/database-schema
-feature/sn/mobilenetv3-training
-feature/ljl/patient-profile-ui
-feature/rs/image-validation
-feature/bm/auth-login
-fix/upload-form-validation
+## Setup / Installation
+### 1. Clone Repository
+```bash
+git clone <repo-url>
+cd TBXR
 ```
 
-**Workflow:**
-1. Always branch off `develop`, never off `main`
-2. Keep branches focused — one feature per branch
-3. Open a Pull Request into `develop` when done
-4. Tag the relevant person to review before merging
-5. `main` only gets merged into at the end of each week's increment when everything is working
+### 2. Backend Setup
+```bash
+cd backend
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+cp .env.example .env
+python manage.py migrate
+python manage.py runserver
+```
 
----
+Backend runs at `http://localhost:8000`.
 
-## Commit Message Convention
- 
+### 3. Frontend Setup
+```bash
+cd frontend
+npm install
+npm run dev
 ```
-<type>(<scope>): <short description> #<issue-number>
+
+Frontend runs at `http://localhost:5173`.
+
+### 4. AI Environment Setup (Optional for model scripts)
+```bash
+cd ai
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
 ```
- 
-| Type | When to use |
-|------|------------|
-| `feat` | Adding new functionality |
-| `fix` | Fixing a bug |
-| `chore` | Setup, config, dependencies — no production code change |
-| `refactor` | Restructuring existing code without changing behavior |
-| `docs` | Documentation changes only |
-| `test` | Adding or updating tests |
- 
-**Scope** is the app or area of the codebase being touched: `accounts`, `patients`, `imaging`, `frontend`, `ai`, `db`, `auth`.
- 
-**Examples:**
-```
-feat(imaging): add file type validation on upload #7
-feat(patients): implement patient search by name and ID #10
-fix(auth): redirect loop on radiologist login #5
-chore(db): add ProcessedImage model and run migrations #3
-refactor(imaging): extract DICOM conversion into utility function #12
-docs(ai): add preprocessing spec document #14
-feat(frontend): build static upload confirmation page #17
-```
- 
-> **Note:** The `#issue-number` at the end automatically links the commit to its GitHub issue. The commit will appear in the issue's timeline, making it easy to trace exactly which commits closed which issue.
+
+## Environment Variables (Names Only)
+- DJANGO_ENV
+- DEBUG
+- SECRET_KEY
+- ALLOWED_HOSTS
+- CSRF_TRUSTED_ORIGINS
+- SESSION_COOKIE_SECURE
+- CSRF_COOKIE_SECURE
+- SECURE_SSL_REDIRECT
+- USE_X_FORWARDED_PROTO
+- DB_NAME
+- DB_USER
+- DB_PASSWORD
+- DB_HOST
+- DB_PORT
+- PROGRESSION_STABLE_THRESHOLD
+- REVIEW_LOCK_TIMEOUT_MINUTES
+- SESSION_COOKIE_SAMESITE
+- CSRF_COOKIE_SAMESITE
+- SECURE_REFERRER_POLICY
+- X_FRAME_OPTIONS
+- SECURE_HSTS_SECONDS
+- SECURE_HSTS_INCLUDE_SUBDOMAINS
+- SECURE_HSTS_PRELOAD
+- BACKUP_DIR
+- BACKUP_RETENTION_COUNT
+- SEED_DEFAULT_PASSWORD
+
+## Deployed URL
+https://tbxrdev.dymierborgonia.com

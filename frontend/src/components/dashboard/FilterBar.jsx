@@ -1,5 +1,5 @@
 import { Search } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 export default function FilterBar({ filterableCols = [], onFilterChange, initialFilters = {} }) {
   const [search, setSearch] = useState(initialFilters.search ?? '')
@@ -8,6 +8,16 @@ export default function FilterBar({ filterableCols = [], onFilterChange, initial
   const [filters, setFilters] = useState(
     () => Object.fromEntries(filterableCols.map((c) => [c.key, initialFilters[c.key] ?? '']))
   )
+
+  useEffect(() => {
+    const nextSearch = initialFilters.search ?? ''
+    const nextFilters = Object.fromEntries(
+      filterableCols.map((c) => [c.key, initialFilters[c.key] ?? ''])
+    )
+
+    setSearch(nextSearch)
+    setFilters(nextFilters)
+  }, [filterableCols, initialFilters])
 
   const handleSearchSubmit = (e) => {
     e.preventDefault()

@@ -6,6 +6,8 @@ export default function StaticAnnotationOverlay({ annotations = [], scale = 1, t
   const selfRef = useRef(null)
   const [dims, setDims] = useState({ w: 1, h: 1 })
 
+  const isNormalized = (value) => Number.isFinite(value) && value >= 0 && value <= 1
+
   // Track container size — updates whenever modal/layout resizes
   useEffect(() => {
     const el = selfRef.current
@@ -24,7 +26,6 @@ export default function StaticAnnotationOverlay({ annotations = [], scale = 1, t
 
   // Re-measure when annotations first populate (race condition guard)
   useEffect(() => {
-    console.log('[Overlay]', { annotationsCount: annotations.length, dims, allBoxesPreview: annotations.flatMap(a => a.bounding_boxes ?? []).slice(0,2) })
     if (!annotations.length) return
     const el = selfRef.current
     if (!el) return
@@ -34,13 +35,31 @@ export default function StaticAnnotationOverlay({ annotations = [], scale = 1, t
 
   if (!annotations.length) return <div ref={selfRef} className="absolute inset-0 pointer-events-none" />
 
-  // Convert normalized (0-1) box back to pixel coords for the current container
-  const px = (box) => ({
-    x:      box.x      * dims.w,
-    y:      box.y      * dims.h,
-    width:  box.width  * dims.w,
-    height: box.height * dims.h,
-  })
+  // Convert both normalized and legacy pixel coordinates to canvas pixels.
+  const px = (box) => {
+    const useNormalizedRect = (
+      isNormalized(box.x) &&
+      isNormalized(box.y) &&
+      isNormalized(box.width) &&
+      isNormalized(box.height)
+    )
+
+    return {
+      x: useNormalizedRect ? box.x * dims.w : box.x,
+      y: useNormalizedRect ? box.y * dims.h : box.y,
+      width: useNormalizedRect ? box.width * dims.w : box.width,
+      height: useNormalizedRect ? box.height * dims.h : box.height,
+    }
+  }
+
+  const pxPoint = (pt) => {
+    if (!pt || !Number.isFinite(pt.x) || !Number.isFinite(pt.y)) return null
+    const useNormalizedPoint = isNormalized(pt.x) && isNormalized(pt.y)
+    return {
+      x: useNormalizedPoint ? pt.x * dims.w : pt.x,
+      y: useNormalizedPoint ? pt.y * dims.h : pt.y,
+    }
+  }
 
   const sw    = 2 / scale
   const dash  = `${6 / scale} ${3 / scale}`
@@ -56,6 +75,59 @@ export default function StaticAnnotationOverlay({ annotations = [], scale = 1, t
     (ann.bounding_boxes ?? []).map((box, bi) => ({ ...box, key: `${ai}-${bi}` }))
   )
 
+  const renderShape = (box, p) => {
+    const shape = box.shape === 'circle' || box.shape === 'freehand' ? box.shape : 'rectangle'
+
+    if (shape === 'circle') {
+      const cx = p.x + p.width / 2
+      const cy = p.y + p.height / 2
+      const rx = p.width / 2
+      const ry = p.height / 2
+      return (
+        <ellipse
+          cx={cx}
+          cy={cy}
+          rx={rx}
+          ry={ry}
+          fill="rgba(91,101,220,0.12)"
+          stroke="#5b65dc"
+          strokeWidth={sw}
+        />
+      )
+    }
+
+    if (shape === 'freehand' && Array.isArray(box.points)) {
+      const points = box.points
+        .map((pt) => pxPoint(pt))
+        .filter(Boolean)
+      if (points.length >= 2) {
+        return (
+          <polyline
+            points={points.map((pt) => `${pt.x},${pt.y}`).join(' ')}
+            fill="none"
+            stroke="#5b65dc"
+            strokeWidth={sw}
+            strokeLinejoin="round"
+            strokeLinecap="round"
+          />
+        )
+      }
+    }
+
+    return (
+      <rect
+        x={p.x}
+        y={p.y}
+        width={p.width}
+        height={p.height}
+        fill="rgba(91,101,220,0.12)"
+        stroke="#5b65dc"
+        strokeWidth={sw}
+        strokeDasharray={dash}
+      />
+    )
+  }
+
   return (
     <div ref={selfRef} className="absolute inset-0 pointer-events-none">
       <svg
@@ -66,14 +138,7 @@ export default function StaticAnnotationOverlay({ annotations = [], scale = 1, t
           const p = px(box)
           return (
             <g key={box.key}>
-              <rect
-                x={p.x} y={p.y}
-                width={p.width} height={p.height}
-                fill="rgba(91,101,220,0.12)"
-                stroke="#5b65dc"
-                strokeWidth={sw}
-                strokeDasharray={dash}
-              />
+              {renderShape(box, p)}
               {box.label && (
                 <text
                   x={p.x + 4 / scale}

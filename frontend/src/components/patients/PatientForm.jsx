@@ -12,6 +12,17 @@ const SEX_OPTIONS = [
   { value: 'O', label: 'Other' },
 ]
 
+const COUNTRY_OPTIONS = [
+  { value: 'PH', label: 'Philippines (PH)' },
+  { value: 'US', label: 'United States (US)' },
+  { value: 'CA', label: 'Canada (CA)' },
+  { value: 'GB', label: 'United Kingdom (GB)' },
+  { value: 'AU', label: 'Australia (AU)' },
+  { value: 'SG', label: 'Singapore (SG)' },
+  { value: 'JP', label: 'Japan (JP)' },
+  { value: 'AE', label: 'United Arab Emirates (AE)' },
+]
+
 function getCsrfToken() {
   return document.cookie
     .split('; ')
@@ -25,6 +36,7 @@ function PatientForm({ onSuccess }) {
     last_name: '',
     date_of_birth: '',
     sex: '',
+    country_code: 'PH',
     contact_number: '',
   })
   const [fieldErrors, setFieldErrors] = useState({})
@@ -58,19 +70,37 @@ function PatientForm({ onSuccess }) {
         return
       }
 
-      const data = await response.json()
+      const data = await response.json().catch(() => ({}))
 
-      // assumes Django returns { "first_name": ["This field is required."], ... }. 
-      // It grabs the first message per field.
-      if (data && typeof data === 'object' && !data.detail && !data.error) {
-        const normalized = {}
-        for (const [key, val] of Object.entries(data)) {
+      // The register endpoint reports validation errors nested as
+      // { "errors": { "first_name": ["This field is required."] } }.
+      // Tolerate a top-level field map too, and surface non-field errors
+      // (or a plain detail/error message) in the banner.
+      const embedded = data && typeof data.errors === 'object' ? data.errors : null
+      const fieldSource =
+        embedded ?? (data?.detail || data?.error || typeof data?.errors === 'string' ? null : data)
+
+      const normalized = {}
+      if (fieldSource && typeof fieldSource === 'object') {
+        for (const [key, val] of Object.entries(fieldSource)) {
+          if (key === 'detail' || key === 'error' || key === 'non_field_errors') continue
           normalized[key] = Array.isArray(val) ? val[0] : val
         }
-        setFieldErrors(normalized)
-      } else {
-        setError(data.detail || data.error || 'Failed to create patient.')
       }
+
+      if (Object.keys(normalized).length > 0) {
+        setFieldErrors(normalized)
+        return
+      }
+
+      const nonField = embedded?.non_field_errors
+      setError(
+        data?.detail ||
+          data?.error ||
+          (typeof data?.errors === 'string' ? data.errors : null) ||
+          (Array.isArray(nonField) ? nonField[0] : nonField) ||
+          'Failed to create patient.'
+      )
     } catch {
       setError('Unable to reach the server. Please try again.')
     } finally {
@@ -122,13 +152,25 @@ function PatientForm({ onSuccess }) {
         error={fieldErrors.sex}
       />
 
+      <SelectField
+        id="country_code"
+        label="Country"
+        value={fields.country_code}
+        onChange={handleChange('country_code')}
+        options={COUNTRY_OPTIONS}
+        error={fieldErrors.country_code}
+      />
+      <p className="-mt-2 px-1 text-xs text-slate-500">
+        If your country is not listed, enter the number in international format (for example: +49 151 23456789).
+      </p>
+
       <InputField
         id="contact_number"
         label="Contact Number"
         type="tel"
         value={fields.contact_number}
         onChange={handleChange('contact_number')}
-        placeholder="+63 912 345 6789"
+        placeholder="Type local or international number"
         autoComplete="tel"
         error={fieldErrors.contact_number}
       />

@@ -10,6 +10,7 @@ const STATUS_STYLES = {
   'PENDING':             'bg-blue-100 text-blue-700',
   'IN_REVIEW':           'bg-orange-100 text-orange-700',
   'AI_REVIEWED':         'bg-purple-100 text-purple-700',
+  'MANUAL_REVIEW':       'bg-amber-100 text-amber-800',
   'COMPLETED':           'bg-green-100 text-green-700',
   'Reviewed - Normal':   'bg-green-100 text-green-700',
   'Reviewed - Abnormal': 'bg-red-100 text-red-700',
@@ -18,11 +19,20 @@ const STATUS_STYLES = {
 
 const DEFAULT_STYLE = 'bg-gray-100 text-gray-500';
 
+const STATUS_LABELS = {
+  PENDING: 'Pending',
+  IN_REVIEW: 'In Review',
+  AI_REVIEWED: 'AI Reviewed',
+  MANUAL_REVIEW: 'Manual Review Required',
+  COMPLETED: 'Completed',
+}
+
 export default function StatusBadge({ status }) {
   const style = STATUS_STYLES[status] ?? DEFAULT_STYLE;
+  const label = STATUS_LABELS[status] ?? status;
   return (
     <span className={`inline-block px-3 py-1 rounded-full text-xs font-semibold ${style}`}>
-      {status}
+      {label}
     </span>
   );
 }

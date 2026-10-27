@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
-import { useNavigate } from 'react-router-dom'
 import AppLayout from '../../components/layout/AppLayout'
 import StatCard from '../../components/ui/StatCard'
 import FilterBar from '../../components/dashboard/FilterBar'
@@ -11,13 +10,12 @@ const FILTERABLE_COLS = QUEUE_COLUMNS.filter((c) => c.filterable)
 const PAGE_SIZE = 20
 
 export default function RadiologistDashboardPage() {
-  const navigate = useNavigate()
   const [page, setPage]             = useState(1)
   const [activeFilters, setFilters] = useState({ search: '', status: '', risk_label: 'HIGH' })
   const [records, setRecords]       = useState([])
   const [count, setCount]           = useState(0)
   const [loading, setLoading]       = useState(false)
-  const [stats, setStats] = useState({ pendingReview: 0, completed: 0, highRisk: 0, total: 0 })
+  const [stats, setStats] = useState({ pendingReview: 0, completed: 0, highRisk: 0, manualReview: 0, total: 0 })
 
   // Fetch just the count for a given status — reads from paginated `count` field
   const fetchCount = (params) =>
@@ -34,9 +32,10 @@ export default function RadiologistDashboardPage() {
       fetchCount({ status: 'AI_REVIEWED' }),
       fetchCount({ status: 'COMPLETED' }),
       fetchCount({ risk_label: 'HIGH' }),
+      fetchCount({ status: 'MANUAL_REVIEW' }),
       fetchCount({}),
-    ]).then(([pendingReview, completed, highRisk, total]) => {
-      setStats({ pendingReview, completed, highRisk, total })
+    ]).then(([pendingReview, completed, highRisk, manualReview, total]) => {
+      setStats({ pendingReview, completed, highRisk, manualReview, total })
     })
   }, [])  // once on mount — rerun after submit if needed
 
@@ -76,8 +75,9 @@ export default function RadiologistDashboardPage() {
         </div>
 
         {/* Stat cards */}
-        <div className="flex gap-4">
+        <div className="flex gap-4 flex-wrap">
           <StatCard label="Pending Specialist Review" value={stats.pendingReview} />
+          <StatCard label="Manual Review Required" value={stats.manualReview} highlight />
           <StatCard label="Completed" value={stats.completed} />
           <StatCard label="High Risk" value={stats.highRisk} highlight />
           <StatCard label="Total Records" value={stats.total} />
@@ -87,7 +87,7 @@ export default function RadiologistDashboardPage() {
         <FilterBar
           filterableCols={FILTERABLE_COLS}
           onFilterChange={handleFilterChange}
-          initialFilters={{ risk_label: 'HIGH' }}
+          initialFilters={activeFilters}
         />
 
         {loading ? (

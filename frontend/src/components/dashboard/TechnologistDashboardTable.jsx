@@ -4,6 +4,14 @@ import StatusBadge from '../ui/StatusBadge'
 import Button from '../ui/Button'
 import AIRiskBadge from '../ui/AIRiskBadge'
 
+const STATUS_GUIDE = [
+  { key: 'PENDING', description: 'Uploaded and waiting for a radiologist to open the case.' },
+  { key: 'IN_REVIEW', description: 'Currently locked and actively being reviewed by a radiologist.' },
+  { key: 'AI_REVIEWED', description: 'AI score and heatmap were generated; awaiting radiologist finalization.' },
+  { key: 'MANUAL_REVIEW', description: 'AI processing was unavailable or failed; proceed with radiologist-only review.' },
+  { key: 'COMPLETED', description: 'Radiologist has submitted findings for the case.' },
+]
+
 // ✏️ Tag a column as filterable to automatically add it to the filter bar
 // filterable: true  →  FilterBar generates a dropdown for this column
 // filterOptions     →  the options in that dropdown
@@ -61,7 +69,7 @@ export const DASHBOARD_COLUMNS = [
     label: 'Statuses',
     filterable: true,
     // ✏️ Keep in sync with backend statuses
-    filterOptions: ['PENDING', 'IN_REVIEW', 'AI_REVIEWED', 'COMPLETED'],
+    filterOptions: ['PENDING', 'IN_REVIEW', 'AI_REVIEWED', 'MANUAL_REVIEW', 'COMPLETED'],
     width: '140px',
     render: (row) => <StatusBadge status={row.status} />,
   },
@@ -70,7 +78,7 @@ export const DASHBOARD_COLUMNS = [
     header: 'AI Risk Score',
     label: 'Scores',
     filterable: true,
-    filterOptions: ['LOW', 'HIGH'],
+    filterOptions: ['LOW', 'MODERATE', 'HIGH'],
     width: '140px',
     render: (row) => row.ai_result
       ? <AIRiskBadge label={row.ai_result.risk_label} score={row.ai_result.risk_score} />
@@ -90,6 +98,7 @@ const ACTION_MAP = {
   'PENDING': 'primary',
   'IN_REVIEW': 'accent',
   'AI_REVIEWED': 'ai_reviewed',
+  'MANUAL_REVIEW': 'accent',
   'COMPLETED': 'secondary',
 }
 
@@ -114,8 +123,6 @@ function DashboardActionButton({ record }) {
 }
 
 export default function TechnologistDashboardTable({ data = [] }) {
-  const navigate = useNavigate()
-
   return (
     <div className="bg-white rounded-2xl border border-[var(--border)] shadow-sm overflow-hidden">
       <Table
@@ -123,6 +130,17 @@ export default function TechnologistDashboardTable({ data = [] }) {
         data={data}
         // onRowClick={(row) => navigate(`/transactions/${row.transaction_id}`)}
       />
+
+      <div className="border-t border-[var(--border)] bg-[var(--surface-soft)] px-5 py-4">
+        <p className="text-xs font-semibold uppercase tracking-wide text-[var(--text-muted)]">Status guide</p>
+        <ul className="mt-2 space-y-1 text-xs text-[var(--text-muted)]">
+          {STATUS_GUIDE.map((item) => (
+            <li key={item.key}>
+              <span className="font-semibold text-[var(--text)]">{item.key}</span>: {item.description}
+            </li>
+          ))}
+        </ul>
+      </div>
     </div>
   )
 }

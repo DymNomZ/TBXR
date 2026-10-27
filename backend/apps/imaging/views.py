@@ -1,23 +1,33 @@
 import base64
 import tempfile
 import subprocess
+import math
+import shutil
+import html
 from django.conf import settings
 from datetime import date
+from django.contrib.auth.decorators import login_required
 from django.utils import timezone
+from django.utils.dateparse import parse_date
 from django.template.loader import render_to_string
 from django.http import FileResponse
 
 import json
 import cv2
+import numpy as np
 import importlib.util
+import sys
+import pydicom
 from io import BytesIO
 from pathlib import Path
+from collections import Counter
 
 from PIL import Image
 from django.core.files import File
 from django.core.files.base import ContentFile
-from drf_spectacular.utils import extend_schema
+from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiTypes
 
+from django.contrib.auth import get_user_model
 from django.shortcuts import get_object_or_404
 from rest_framework import status
 from rest_framework.decorators import api_view, parser_classes
@@ -31,7 +41,7 @@ from apps.accounts.enums import UserRole
 from apps.patients.models import Patient
 
 from .preprocessing import preprocess_xray
-from .models import Annotation, XrayRecord, ProcessedImage, AIResult
+from .models import Annotation, AnnotationDraft, XrayRecord, ProcessedImage, AIResult, ProgressionStatus, ProgressionOverrideAuditLog, Report, Notification
 from django.db import models
 from .serializers import (
     XrayRecordUploadSerializer,
@@ -42,9 +52,62 @@ from .serializers import (
     XrayRecordHistorySerializer,
     AIResultSerializer,
     PatientHistorySerializer,
+    ProgressionStatusSerializer,
+    ProgressionOverrideAuditLogSerializer,
+    ReportSerializer,
+    ReportCreateSerializer,
 )
+from .services import ProgressionService
 
 _INFERENCE_MODULE = None
+
+
+def _trigger_report_submission_notification(report):
+    """Create a one-time notification for the assigned physician after successful final submission."""
+    physician = get_user_model().objects.filter(role=UserRole.PHYSICIAN).order_by('id').first()
+    if physician is None:
+        return None
+
+    patient = report.xray_record.patient
+    patient_name = f"{patient.first_name} {patient.last_name}".strip()
+    message = (
+        f"Report ready for {patient_name} "
+        f"(case {report.xray_record.transaction_id})."
+    )
+
+    if Notification.objects.filter(recipient=physician, message=message).exists():
+        return None
+
+    return Notification.objects.create(
+        recipient=physician,
+        message=message,
+        read_status=False,
+    )
+
+
+def _trigger_manual_review_notification(xray_record, error_message):
+    """Create notifications for all radiologists when AI processing fails and manual review is required."""
+    radiologists = get_user_model().objects.filter(role=UserRole.RADIOLOGIST)
+    if not radiologists.exists():
+        return []
+
+    patient = xray_record.patient
+    patient_name = f"{patient.first_name} {patient.last_name}".strip()
+    message = (
+        f"Manual review required for {patient_name} "
+        f"(case {xray_record.transaction_id}). AI processing failed: {error_message}"
+    )
+
+    notifications = []
+    for radiologist in radiologists:
+        if not Notification.objects.filter(recipient=radiologist, message=message).exists():
+            notifications.append(Notification(
+                recipient=radiologist,
+                message=message,
+                read_status=False,
+            ))
+
+    return Notification.objects.bulk_create(notifications)
 
 
 def _get_inference_module():
@@ -63,24 +126,306 @@ def _get_inference_module():
         raise ImportError("Unable to load inference module.")
 
     module = importlib.util.module_from_spec(spec)
+    inference_dir = str(inference_path.parent)
+    if inference_dir not in sys.path:
+        sys.path.insert(0, inference_dir)
     spec.loader.exec_module(module)
     _INFERENCE_MODULE = module
     return module
 
 
-def _run_ai_inference(xray_record, processed_img):
-    inference = _get_inference_module()
+import time
+import logging
+
+logger = logging.getLogger(__name__)
+
+LEGACY_SHARED_FINDINGS_PLACEHOLDER = "Report not yet structured. See diagnostic notes below."
+
+
+def _decode_process_output(output):
+    if not output:
+        return ""
+    if isinstance(output, bytes):
+        return output.decode("utf-8", errors="replace")
+    return str(output)
+
+
+def _build_pdf_process_error_payload(error, failed_html_path=None):
+    stderr_text = _decode_process_output(error.stderr).strip()
+    stdout_text = _decode_process_output(error.stdout).strip()
+    fallback = f"Node process exited with code {error.returncode} and produced no stderr output."
+
+    payload = {
+        "error": "Failed to generate PDF via Node script.",
+        "details": stderr_text or fallback,
+        "returncode": error.returncode,
+        "stdout_tail": stdout_text[-1200:] if stdout_text else "",
+    }
+
+    if failed_html_path:
+        payload["failed_html_path"] = str(failed_html_path)
+
+    return payload
+
+
+def _preserve_failed_html(temp_html_path, prefix):
+    if not temp_html_path:
+        return None
+
+    source = Path(temp_html_path)
+    if not source.exists():
+        return None
+
+    debug_dir = settings.BASE_DIR / "media" / "debug_failed_reports"
+    debug_dir.mkdir(parents=True, exist_ok=True)
+    timestamp = timezone.now().strftime("%Y%m%dT%H%M%S")
+    target = debug_dir / f"{prefix}_{timestamp}_{source.name}"
+    shutil.copy2(source, target)
+    return target
+
+
+def _extract_pdf_bytes_from_output(output):
+    if not output:
+        return None
+
+    if isinstance(output, str):
+        raw = output.encode("utf-8", errors="replace")
+    else:
+        raw = bytes(output)
+
+    if raw.startswith(b"%PDF-") and b"%%EOF" in raw[-2048:]:
+        return raw
+
+    return None
+
+
+def _to_svg_coord(value, fallback=0):
+    if value is None:
+        return fallback
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError):
+        return fallback
+    if 0 <= numeric <= 1:
+        return numeric * 100
+    return numeric
+
+
+def _annotation_box_to_svg(box, marker=None):
+    if not isinstance(box, dict):
+        return ""
+
+    shape = str(box.get("shape") or "rectangle")
+    x = _to_svg_coord(box.get("x"), 0)
+    y = _to_svg_coord(box.get("y"), 0)
+    width = _to_svg_coord(box.get("width"), 0)
+    height = _to_svg_coord(box.get("height"), 0)
+    label = box.get("label", "")
+    safe_label = html.escape(str(label), quote=True)
+    display_label = str(marker) if marker is not None else safe_label
+
+    if shape == "circle":
+        cx = x + (width / 2)
+        cy = y + (height / 2)
+        rx = width / 2
+        ry = height / 2
+        markup = (
+            f'<ellipse cx="{cx}" cy="{cy}" rx="{rx}" ry="{ry}" '
+            'fill="rgba(91,101,220,0.12)" stroke="#5b65dc" stroke-width="0.45" />'
+        )
+    elif shape == "freehand":
+        points = []
+        for point in box.get("points", []) or []:
+            px = _to_svg_coord(point.get("x"), 0)
+            py = _to_svg_coord(point.get("y"), 0)
+            points.append(f"{px},{py}")
+        if not points:
+            return ""
+        markup = (
+            f'<polyline points="{" ".join(points)}" fill="none" stroke="#5b65dc" '
+            'stroke-width="0.45" stroke-linejoin="round" stroke-linecap="round" />'
+        )
+    else:
+        markup = (
+            f'<rect x="{x}" y="{y}" width="{width}" height="{height}" '
+            'fill="rgba(91,101,220,0.12)" stroke="#5b65dc" stroke-width="0.45" stroke-dasharray="4 3" />'
+        )
+
+    if display_label:
+        markup += (
+            f'<text x="{x + 0.5}" y="{y - 1}" fill="#5b65dc" font-size="2.6" '
+            'font-family="Segoe UI, Arial, sans-serif" font-weight="600">'
+            f'{html.escape(display_label, quote=True)}</text>'
+        )
+
+    return markup
+
+
+class ProgressionHistoryPagination(PageNumberPagination):
+    page_size = 25
+    page_size_query_param = 'page_size'
+    max_page_size = 100
+
+
+def _serialize_physician_report(report):
+    patient = report.xray_record.patient
+    ai_result = getattr(report.xray_record, "ai_result", None)
+    radiologist = report.created_by
+
+    return {
+        "report_id": report.id,
+        "transaction_id": str(report.xray_record.transaction_id),
+        "reported_at": report.updated_at.isoformat(),
+        "severity": report.severity,
+        "patient": {
+            "patient_id": patient.patient_id,
+            "first_name": patient.first_name,
+            "last_name": patient.last_name,
+        },
+        "radiologist": {
+            "id": radiologist.id if radiologist else None,
+            "username": radiologist.username if radiologist else None,
+            "first_name": radiologist.first_name if radiologist else None,
+            "last_name": radiologist.last_name if radiologist else None,
+        },
+        "ai_result": {
+            "risk_label": ai_result.risk_label if ai_result else None,
+            "risk_score": ai_result.risk_score if ai_result else None,
+        },
+        "status": report.xray_record.status,
+    }
+
+
+def _serialize_physician_alert(alert):
+    return {
+        "id": alert.id,
+        "message": alert.message,
+        "read_status": alert.read_status,
+        "created_at": alert.created_at.isoformat(),
+        "updated_at": alert.updated_at.isoformat(),
+    }
+
+
+def _apply_physician_dashboard_filters(request, queryset):
+    severity = request.query_params.get("severity", "").strip().upper()
+    date_from_raw = request.query_params.get("date_from", "").strip()
+    date_to_raw = request.query_params.get("date_to", "").strip()
+
+    if severity:
+        if severity not in Report.SeverityChoices.values:
+            return None, Response(
+                {
+                    "detail": (
+                        f"Invalid severity '{severity}'. Allowed values: "
+                        f"{', '.join(Report.SeverityChoices.values)}."
+                    )
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            ), None
+        queryset = queryset.filter(severity=severity)
+
+    date_from = None
+    date_to = None
+
+    if date_from_raw:
+        date_from = parse_date(date_from_raw)
+        if date_from is None:
+            return None, Response(
+                {"detail": "Invalid date_from format. Use YYYY-MM-DD."},
+                status=status.HTTP_400_BAD_REQUEST,
+            ), None
+        queryset = queryset.filter(updated_at__date__gte=date_from)
+
+    if date_to_raw:
+        date_to = parse_date(date_to_raw)
+        if date_to is None:
+            return None, Response(
+                {"detail": "Invalid date_to format. Use YYYY-MM-DD."},
+                status=status.HTTP_400_BAD_REQUEST,
+            ), None
+        queryset = queryset.filter(updated_at__date__lte=date_to)
+
+    if date_from and date_to and date_from > date_to:
+        return None, Response(
+            {"detail": "date_from cannot be later than date_to."},
+            status=status.HTTP_400_BAD_REQUEST,
+        ), None
+
+    return queryset, None, {
+        "severity": severity or None,
+        "date_from": date_from.isoformat() if date_from else None,
+        "date_to": date_to.isoformat() if date_to else None,
+    }
+
+
+def _run_ai_inference(xray_record, processed_img, force_proceed=False):
+    """
+    Run AI inference on the processed image.
+    Returns (ai_result, created, error_message) where error_message is None on success.
+    """
+    try:
+        inference = _get_inference_module()
+    except (FileNotFoundError, ImportError) as exc:
+        error_msg = f"AI inference module unavailable: {exc}"
+        xray_record.status = "MANUAL_REVIEW"
+        xray_record.save(update_fields=["status"])
+        _trigger_manual_review_notification(xray_record, error_msg)
+        return None, False, error_msg, None
+
     image_path = processed_img.processed_image.path
-    prediction = inference.predict(image_path)
-    heatmap_path = inference.generate_heatmap(image_path)
+
+    try:
+        prediction = inference.predict(image_path)
+    except Exception as exc:
+        error_msg = f"AI prediction failed: {exc}"
+        xray_record.status = "MANUAL_REVIEW"
+        xray_record.save(update_fields=["status"])
+        _trigger_manual_review_notification(xray_record, error_msg)
+        return None, False, error_msg, None
+
+    if isinstance(prediction, dict) and "error" in prediction:
+        error_msg = f"AI prediction error: {prediction['error'].get('message', 'Unknown error')}"
+        xray_record.status = "MANUAL_REVIEW"
+        xray_record.save(update_fields=["status"])
+        _trigger_manual_review_notification(xray_record, error_msg)
+        return None, False, error_msg, None
+
+    quality_check = prediction.get("quality_check")
+    if quality_check and quality_check.get("status") == "LOW_QUALITY":
+        if not force_proceed:
+            return None, False, None, quality_check
+        else:
+            # Persist the override
+            metadata = processed_img.preprocessing_metadata
+            metadata["low_quality_proceed"] = True
+            metadata["low_quality_score"] = quality_check.get("score")
+            processed_img.preprocessing_metadata = metadata
+            processed_img.save(update_fields=["preprocessing_metadata"])
+
+    try:
+        heatmap_path = inference.generate_heatmap(image_path)
+    except Exception as exc:
+        error_msg = f"AI heatmap generation failed: {exc}"
+        xray_record.status = "MANUAL_REVIEW"
+        xray_record.save(update_fields=["status"])
+        _trigger_manual_review_notification(xray_record, error_msg)
+        return None, False, error_msg, None
 
     try:
         risk_score = float(prediction.get("risk_score"))
     except (TypeError, ValueError) as exc:
-        raise ValueError("Invalid risk score from inference.") from exc
+        error_msg = "Invalid risk score from inference."
+        xray_record.status = "MANUAL_REVIEW"
+        xray_record.save(update_fields=["status"])
+        _trigger_manual_review_notification(xray_record, error_msg)
+        return None, False, error_msg, None
 
     if not 0.0 <= risk_score <= 1.0:
-        raise ValueError("Risk score must be between 0.0 and 1.0.")
+        error_msg = "Risk score must be between 0.0 and 1.0."
+        xray_record.status = "MANUAL_REVIEW"
+        xray_record.save(update_fields=["status"])
+        _trigger_manual_review_notification(xray_record, error_msg)
+        return None, False, error_msg, None
 
     raw_label = str(prediction.get("risk_label", "")).strip().lower()
     if not raw_label:
@@ -120,7 +465,8 @@ def _run_ai_inference(xray_record, processed_img):
     xray_record.status = "AI_REVIEWED"
     xray_record.save(update_fields=["status"])
 
-    return ai_result, created
+    return ai_result, created, None, None
+
 
 @extend_schema(
     request={
@@ -148,12 +494,41 @@ def upload_xray(request, patient_id):
     file_suffix = Path(raw_image.name).suffix.lower().lstrip(".")
     file_format = file_suffix if file_suffix else "unknown"
 
-    xray_record = serializer.save(
-        patient=patient,
-        uploader=request.user,
-        status="PENDING",
-        file_format=file_format,
-    )
+    save_kwargs = {
+        "patient": patient,
+        "uploader": request.user,
+        "status": "PENDING",
+        "file_format": file_format,
+    }
+
+    if file_format == "dcm":
+        try:
+            raw_image.seek(0)
+            ds = pydicom.dcmread(raw_image)
+
+            tags_to_strip = [
+                "PatientName", "PatientID", "PatientBirthDate",
+                "PatientSex", "PatientAge", "InstitutionName",
+                "ReferringPhysicianName", "StudyDate", "AccessionNumber"
+            ]
+
+            for tag in tags_to_strip:
+                if hasattr(ds, tag):
+                    delattr(ds, tag)
+
+            buffer = BytesIO()
+            ds.save_as(buffer)
+            buffer.seek(0)
+
+            save_kwargs["raw_image"] = ContentFile(buffer.read(), name=raw_image.name)
+
+        except Exception as e:
+            return Response(
+                {"errors": {"raw_image": [f"Invalid DICOM file or failed to anonymize: {str(e)}"]}},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+    xray_record = serializer.save(**save_kwargs)
 
     try:
         processed_img = ProcessedImage.objects.filter(xray_record=xray_record).first()
@@ -163,7 +538,13 @@ def upload_xray(request, patient_id):
         else:
             source_path = xray_record.raw_image.path
 
-        img_cv = cv2.imread(source_path, cv2.IMREAD_GRAYSCALE)
+        if source_path.lower().endswith(".dcm"):
+            ds = pydicom.dcmread(source_path)
+            pixel_array = ds.pixel_array
+            img_cv = cv2.normalize(pixel_array, None, 0, 255, cv2.NORM_MINMAX, dtype=cv2.CV_8U)
+        else:
+            img_cv = cv2.imread(source_path, cv2.IMREAD_GRAYSCALE)
+
         clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
         enhanced_img_cv = clahe.apply(img_cv)
         enhanced_pil = Image.fromarray(enhanced_img_cv)
@@ -202,20 +583,31 @@ def upload_xray(request, patient_id):
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
 
-    try:
-        _run_ai_inference(xray_record, processed_img)
-    except ValueError as e:
-        xray_record.delete()
+    force_proceed = str(request.data.get("force_proceed", "false")).lower() == "true"
+    ai_result, created, error_msg, quality_info = _run_ai_inference(xray_record, processed_img, force_proceed=force_proceed)
+    
+    if quality_info:
+        return Response({
+            "status": "quality_check_failed",
+            "message": "Uploaded image may be too low quality for reliable AI interpretation.",
+            "quality_score": quality_info.get("score"),
+            "requires_confirmation": True,
+            "can_proceed": True,
+            "transaction_id": str(xray_record.transaction_id)
+        }, status=status.HTTP_200_OK)
+
+    if error_msg:
+        xray_record.refresh_from_db()
+        serializer = XrayRecordSerializer(xray_record, context={'request': request})
         return Response(
-            {"errors": {"risk_score": [str(e)]}},
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            {
+                "status": "MANUAL_REVIEW",
+                "message": f"AI processing failed; case flagged for manual review: {error_msg}",
+                "record": serializer.data
+            },
+            status=status.HTTP_202_ACCEPTED,
         )
-    except Exception as e:
-        xray_record.delete()
-        return Response(
-            {"errors": {"inference": [f"Inference failed: {str(e)}"]}},
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        )
+
     xray_record.refresh_from_db()
     serializer = XrayRecordSerializer(xray_record, context={'request': request})
     return Response(serializer.data, status=status.HTTP_200_OK)
@@ -246,16 +638,28 @@ def analyse_xray(request, transaction_id):
         )
 
     try:
-        ai_result, created = _run_ai_inference(xray_record, processed_img)
-    except ValueError as exc:
-        return Response(
-            {"errors": {"risk_score": [str(exc)]}},
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        )
+        force_proceed = str(request.data.get("force_proceed", "false")).lower() == "true"
+        ai_result, created, error_msg, quality_info = _run_ai_inference(xray_record, processed_img, force_proceed=force_proceed)
     except Exception as exc:
         return Response(
             {"errors": {"inference": [f"Inference failed: {exc}"]}},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+    if quality_info:
+        return Response({
+            "status": "quality_check_failed",
+            "message": "Uploaded image may be too low quality for reliable AI interpretation.",
+            "quality_score": quality_info.get("score"),
+            "requires_confirmation": True,
+            "can_proceed": True,
+            "transaction_id": str(xray_record.transaction_id)
+        }, status=status.HTTP_200_OK)
+
+    if error_msg:
+        return Response(
+            {"errors": {"inference": [error_msg]}, "status": "MANUAL_REVIEW"},
+            status=status.HTTP_202_ACCEPTED,
         )
 
     serializer = AIResultSerializer(ai_result, context={"request": request})
@@ -264,10 +668,113 @@ def analyse_xray(request, transaction_id):
         status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
     )
 
+@api_view(["GET", "POST"])
+@role_required(UserRole.RADIOLOGIST)
+def annotation_draft(request, transaction_id):
+    xray_record = get_object_or_404(XrayRecord, transaction_id=transaction_id)
+
+    xray_record.clear_if_expired()
+    if _lock_blocks_user(xray_record, request.user):
+        return _lock_conflict_response(xray_record)
+
+    if xray_record.active_reviewer_id != request.user.id:
+        if not xray_record.acquire_lock(request.user):
+            return _lock_conflict_response(xray_record)
+
+    if request.method == "GET":
+        draft = AnnotationDraft.objects.filter(
+            xray_record=xray_record,
+            radiologist=request.user,
+        ).order_by("-updated_at").first()
+
+        if draft is None:
+            return Response({"detail": "No draft found."}, status=status.HTTP_404_NOT_FOUND)
+
+        return Response({
+            "bounding_boxes": draft.bounding_boxes,
+            "notes": draft.notes,
+            "updated_at": draft.updated_at.isoformat(),
+        })
+
+    bounding_boxes = request.data.get("bounding_boxes", [])
+    notes = request.data.get("notes", "")
+
+    if isinstance(bounding_boxes, str):
+        try:
+            bounding_boxes = json.loads(bounding_boxes)
+        except json.JSONDecodeError:
+            return Response(
+                {"errors": {"bounding_boxes": "Must be a JSON array."}},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+    if bounding_boxes is None:
+        bounding_boxes = []
+
+    if not isinstance(bounding_boxes, list):
+        return Response(
+            {"errors": {"bounding_boxes": "Must be a JSON array."}},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    if notes is None:
+        notes = ""
+
+    if not isinstance(notes, str):
+        return Response(
+            {"errors": {"notes": "Must be a string."}},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    normalized_boxes = []
+    for box in bounding_boxes:
+        if not isinstance(box, dict):
+            continue
+        normalized_box = {
+            "x": box.get("x"),
+            "y": box.get("y"),
+            "width": box.get("width"),
+            "height": box.get("height"),
+            "label": box.get("label", ""),
+        }
+        if "shape" in box:
+            normalized_box["shape"] = box.get("shape")
+        if "points" in box:
+            normalized_box["points"] = box.get("points")
+        normalized_boxes.append(normalized_box)
+
+    draft, created = AnnotationDraft.objects.update_or_create(
+        xray_record=xray_record,
+        radiologist=request.user,
+        defaults={
+            "bounding_boxes": normalized_boxes,
+            "notes": notes,
+        },
+    )
+
+    return Response(
+        {
+            "transaction_id": str(xray_record.transaction_id),
+            "draft_id": draft.id,
+            "saved": True,
+            "updated_at": draft.updated_at.isoformat(),
+        },
+        status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
+    )
+
+
 @api_view(["POST"])
 @role_required(UserRole.RADIOLOGIST)
 def annotate_xray(request, transaction_id):
     xray_record = get_object_or_404(XrayRecord, transaction_id=transaction_id)
+
+    xray_record.clear_if_expired()
+    if _lock_blocks_user(xray_record, request.user):
+        return _lock_conflict_response(xray_record)
+
+    if xray_record.active_reviewer_id != request.user.id:
+        if not xray_record.acquire_lock(request.user):
+            return _lock_conflict_response(xray_record)
 
     bounding_boxes = request.data.get("bounding_boxes")
     notes = request.data.get("notes", "")
@@ -293,12 +800,107 @@ def annotate_xray(request, transaction_id):
             status=status.HTTP_400_BAD_REQUEST,
         )
 
+    if not bounding_boxes:
+        return Response(
+            {"errors": {"bounding_boxes": "At least one annotation is required."}},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
     if notes is None:
         notes = ""
 
     if not isinstance(notes, str):
         return Response(
             {"errors": {"notes": "Must be a string."}},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    allowed_keys = {"x", "y", "width", "height", "label", "shape", "points"}
+    normalized_boxes = []
+    box_errors = {}
+
+    def _is_valid_number(value):
+        return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
+
+    for index, box in enumerate(bounding_boxes):
+        path = f"bounding_boxes[{index}]"
+        current_errors = []
+
+        if not isinstance(box, dict):
+            box_errors[path] = ["Each annotation must be an object."]
+            continue
+
+        unexpected_keys = sorted(set(box.keys()) - allowed_keys)
+        if unexpected_keys:
+            current_errors.append(f"Unexpected keys: {', '.join(unexpected_keys)}")
+
+        shape = box.get("shape", "rectangle")
+        if shape not in {"rectangle", "circle", "freehand"}:
+            current_errors.append("shape must be one of: rectangle, circle, freehand.")
+
+        for field in ("x", "y", "width", "height"):
+            value = box.get(field)
+            if not _is_valid_number(value):
+                current_errors.append(f"{field} must be a finite number.")
+
+        if _is_valid_number(box.get("width")) and box["width"] <= 0:
+            current_errors.append("width must be greater than 0.")
+        if _is_valid_number(box.get("height")) and box["height"] <= 0:
+            current_errors.append("height must be greater than 0.")
+
+        label = box.get("label", "")
+        if label is None:
+            label = ""
+        if not isinstance(label, str):
+            current_errors.append("label must be a string.")
+
+        points = box.get("points")
+        normalized_points = None
+
+        if shape == "freehand":
+            if not isinstance(points, list) or len(points) < 2:
+                current_errors.append("freehand annotations require at least two points.")
+            else:
+                normalized_points = []
+                for point_index, point in enumerate(points):
+                    if not isinstance(point, dict):
+                        current_errors.append(f"points[{point_index}] must be an object with x and y.")
+                        continue
+                    point_keys = sorted(set(point.keys()) - {"x", "y"})
+                    if point_keys:
+                        current_errors.append(
+                            f"points[{point_index}] has unexpected keys: {', '.join(point_keys)}"
+                        )
+                    px = point.get("x")
+                    py = point.get("y")
+                    if not _is_valid_number(px) or not _is_valid_number(py):
+                        current_errors.append(f"points[{point_index}] requires finite numeric x and y.")
+                        continue
+                    normalized_points.append({"x": float(px), "y": float(py)})
+        elif points is not None:
+            current_errors.append("points is only allowed when shape is freehand.")
+
+        if current_errors:
+            box_errors[path] = current_errors
+            continue
+
+        normalized_box = {
+            "x": float(box["x"]),
+            "y": float(box["y"]),
+            "width": float(box["width"]),
+            "height": float(box["height"]),
+            "label": label,
+            "shape": shape,
+        }
+
+        if shape == "freehand":
+            normalized_box["points"] = normalized_points
+
+        normalized_boxes.append(normalized_box)
+
+    if box_errors:
+        return Response(
+            {"errors": {"bounding_boxes": box_errors}},
             status=status.HTTP_400_BAD_REQUEST,
         )
 
@@ -312,7 +914,7 @@ def annotate_xray(request, transaction_id):
     )
 
     if annotation:
-        annotation.bounding_boxes = bounding_boxes
+        annotation.bounding_boxes = normalized_boxes
         annotation.notes = notes
         annotation.save(update_fields=["bounding_boxes", "notes"])
         created = False
@@ -320,13 +922,17 @@ def annotate_xray(request, transaction_id):
         annotation = Annotation.objects.create(
             xray_record=xray_record,
             radiologist=request.user,
-            bounding_boxes=bounding_boxes,
+            bounding_boxes=normalized_boxes,
             notes=notes,
         )
         created = True
 
     xray_record.status = "COMPLETED"
     xray_record.save(update_fields=["status"])
+    AnnotationDraft.objects.filter(xray_record=xray_record, radiologist=request.user).delete()
+
+    # Case finalized — the review lock is no longer needed.
+    xray_record.release_lock()
 
     return Response(
         {
@@ -338,7 +944,7 @@ def annotate_xray(request, transaction_id):
     )
 
 @api_view(["GET"])
-@role_required(UserRole.RADIOLOGIC_TECH, UserRole.RADIOLOGIST)
+@role_required(UserRole.RADIOLOGIC_TECH, UserRole.RADIOLOGIST, UserRole.PHYSICIAN)
 def patient_xrays(request, patient_id):
     patient = get_object_or_404(Patient, patient_id=patient_id)
     records = XrayRecord.objects.filter(
@@ -382,6 +988,9 @@ def technologist_dashboard(request):
 @api_view(["GET"])
 @role_required(UserRole.RADIOLOGIST)
 def radiologist_queue(request):
+    # Self-heal: release abandoned locks so the queue does not show stale IN_REVIEW rows.
+    XrayRecord.clear_expired_locks()
+
     records = XrayRecord.objects.all().order_by('upload_timestamp')
 
     search = request.query_params.get('search', '').strip()
@@ -407,15 +1016,157 @@ def radiologist_queue(request):
     serializer = RadiologistQueueSerializer(page, many=True)
     return paginator.get_paginated_response(serializer.data)
 
+
 @api_view(["GET"])
-@role_required(UserRole.RADIOLOGIC_TECH, UserRole.RADIOLOGIST)
+@role_required(UserRole.PHYSICIAN, UserRole.PATIENT)
+def physician_dashboard(request):
+    finalized_reports = (
+        Report.objects.filter(status="SUBMITTED")
+        .select_related("xray_record__patient", "xray_record__ai_result", "created_by")
+        .order_by("-updated_at")
+    )
+
+    finalized_reports, filter_error, filter_meta = _apply_physician_dashboard_filters(
+        request,
+        finalized_reports,
+    )
+    if filter_error is not None:
+        return filter_error
+
+    finalized_report_count = finalized_reports.count()
+
+    recent_reports = list(finalized_reports[:5])
+    report_ready_items = list(finalized_reports[:10])
+    finalized_cases = list(finalized_reports[:20])
+
+    unread_alerts = (
+        Notification.objects.filter(recipient=request.user, read_status=False)
+        .order_by("-created_at")
+    )
+
+    patient_progress = []
+    grouped_by_patient = {}
+    for report in finalized_reports:
+        patient_id = report.xray_record.patient.patient_id
+        if patient_id not in grouped_by_patient:
+            grouped_by_patient[patient_id] = {
+                "patient": {
+                    "patient_id": patient_id,
+                    "first_name": report.xray_record.patient.first_name,
+                    "last_name": report.xray_record.patient.last_name,
+                },
+                "total_finalized_reports": 0,
+                "latest_transaction_id": str(report.xray_record.transaction_id),
+                "latest_reported_at": report.updated_at.isoformat(),
+                "latest_severity": report.severity,
+                "latest_status": report.xray_record.status,
+            }
+        grouped_by_patient[patient_id]["total_finalized_reports"] += 1
+
+    patient_progress = sorted(
+        grouped_by_patient.values(),
+        key=lambda item: item["latest_reported_at"],
+        reverse=True,
+    )[:10]
+
+    return Response(
+        {
+            "filters": filter_meta,
+            "summary": {
+                "finalized_report_count": finalized_report_count,
+                "recent_report_count": len(recent_reports),
+                "pending_alert_count": unread_alerts.count(),
+                "report_ready_count": len(report_ready_items),
+                "patient_progress_count": len(patient_progress),
+            },
+            "finalized_cases": [_serialize_physician_report(report) for report in finalized_cases],
+            "recent_reports": [_serialize_physician_report(report) for report in recent_reports],
+            "report_ready_items": [_serialize_physician_report(report) for report in report_ready_items],
+            "pending_alerts": [_serialize_physician_alert(alert) for alert in unread_alerts[:20]],
+            "patient_progress": patient_progress,
+        }
+    )
+
+@api_view(["GET"])
+@role_required(UserRole.RADIOLOGIC_TECH, UserRole.RADIOLOGIST, UserRole.PHYSICIAN, UserRole.PATIENT)
 def xray_detail(request, transaction_id):
     xray_record = get_object_or_404(XrayRecord, transaction_id=transaction_id)
+
+    if request.user.role == UserRole.RADIOLOGIST:
+        # Drop a stale lock before deciding ownership so status/fields stay truthful.
+        xray_record.clear_if_expired()
+
+        if xray_record.active_reviewer_id and xray_record.active_reviewer_id != request.user.id and not xray_record.lock_has_expired():
+            serializer = XrayRecordDetailSerializer(xray_record, context={'request': request})
+            return Response(
+                {
+                    **serializer.data,
+                    "detail": "This case is currently locked by another radiologist.",
+                    "active_reviewer": xray_record.active_reviewer.username,
+                    "lock_timestamp": xray_record.lock_timestamp.isoformat() if xray_record.lock_timestamp else None,
+                },
+                status=status.HTTP_409_CONFLICT,
+            )
+
+        # Acquire/renew the lock and enter the active review state.
+        xray_record.start_review(request.user)
+
     serializer = XrayRecordDetailSerializer(xray_record, context={'request': request})
     return Response(serializer.data)
 
+
+def _lock_blocks_user(xray_record, user):
+    """True when a *fresh* lock is held by someone other than ``user``."""
+    return bool(
+        xray_record.active_reviewer_id
+        and xray_record.active_reviewer_id != user.id
+        and not xray_record.lock_has_expired()
+    )
+
+
+def _lock_conflict_response(xray_record):
+    return Response(
+        {
+            "detail": "This case is currently locked by another radiologist.",
+            "active_reviewer": xray_record.active_reviewer.username,
+            "lock_timestamp": xray_record.lock_timestamp.isoformat() if xray_record.lock_timestamp else None,
+        },
+        status=status.HTTP_409_CONFLICT,
+    )
+
+
+@api_view(["POST"])
+@role_required(UserRole.RADIOLOGIST)
+def release_review_lock(request, transaction_id):
+    """Release the caller's own review lock. Idempotent; never touches others' locks."""
+    xray_record = get_object_or_404(XrayRecord, transaction_id=transaction_id)
+    if xray_record.active_reviewer_id == request.user.id:
+        xray_record.release_lock()
+    return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+@api_view(["POST"])
+@role_required(UserRole.RADIOLOGIST)
+def renew_review_lock(request, transaction_id):
+    """Heartbeat: renew the caller's lock, or acquire it if free/expired."""
+    xray_record = get_object_or_404(XrayRecord, transaction_id=transaction_id)
+    xray_record.clear_if_expired()
+
+    if _lock_blocks_user(xray_record, request.user):
+        return _lock_conflict_response(xray_record)
+
+    xray_record.start_review(request.user)
+    return Response(
+        {
+            "transaction_id": str(xray_record.transaction_id),
+            "active_reviewer": request.user.username,
+            "lock_timestamp": xray_record.lock_timestamp.isoformat() if xray_record.lock_timestamp else None,
+            "status": xray_record.status,
+        }
+    )
+
 @api_view(["GET"])
-@role_required(UserRole.RADIOLOGIC_TECH, UserRole.RADIOLOGIST)
+@role_required(UserRole.RADIOLOGIC_TECH, UserRole.RADIOLOGIST, UserRole.PHYSICIAN, UserRole.PATIENT)
 def patient_history(request, patient_id):
     patient = get_object_or_404(Patient, patient_id=patient_id)
     records = (
@@ -429,6 +1180,268 @@ def patient_history(request, patient_id):
     )
     return Response(serializer.data)
 
+
+def _resolve_case_record(case_id):
+    try:
+        return XrayRecord.objects.select_related("patient").get(pk=case_id)
+    except (TypeError, ValueError, XrayRecord.DoesNotExist):
+        try:
+            return XrayRecord.objects.select_related("patient").get(transaction_id=case_id)
+        except XrayRecord.DoesNotExist:
+            return None
+
+
+def _refresh_patient_progression_snapshots(patient):
+    """Recompute persisted progression snapshots for all of a patient's records."""
+    records = XrayRecord.objects.filter(patient=patient).order_by("upload_timestamp", "pk")
+    for record in records:
+        ProgressionService.persist_for_record(record)
+
+
+@api_view(["GET"])
+@login_required
+def case_progression_history(request, case_id):
+    case_record = _resolve_case_record(case_id)
+    if case_record is None:
+        return Response({"detail": "Case not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    _refresh_patient_progression_snapshots(case_record.patient)
+
+    queryset = ProgressionStatus.objects.filter(
+        patient=case_record.patient
+    ).select_related(
+        "xray_record",
+        "previous_record",
+    ).order_by("xray_record__upload_timestamp", "xray_record__pk")
+
+    paginator = ProgressionHistoryPagination()
+    page = paginator.paginate_queryset(queryset, request)
+    serializer = ProgressionStatusSerializer(page, many=True, context={"request": request}) if page is not None else ProgressionStatusSerializer(queryset, many=True, context={"request": request})
+    if page is not None:
+        return paginator.get_paginated_response(serializer.data)
+    return Response(serializer.data)
+
+
+@api_view(["POST"])
+@role_required(UserRole.RADIOLOGIST)
+def case_progression_override(request, case_id):
+    case_record = _resolve_case_record(case_id)
+    if case_record is None:
+        return Response({"detail": "Case not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    status_value = request.data.get("status")
+    clinical_note = request.data.get("clinical_note")
+    if clinical_note is None or not str(clinical_note).strip():
+        return Response({"clinical_note": ["This field is required."]}, status=status.HTTP_400_BAD_REQUEST)
+
+    valid_statuses = {
+        ProgressionService.NO_PRIOR,
+        ProgressionService.STABLE,
+        ProgressionService.DECREASED_RISK,
+        ProgressionService.INCREASED_RISK,
+    }
+    if status_value not in valid_statuses:
+        return Response({"status": ["Invalid progression status."]}, status=status.HTTP_400_BAD_REQUEST)
+
+    progression = ProgressionStatus.objects.filter(
+        patient=case_record.patient,
+        xray_record=case_record,
+    ).first()
+    if progression is None:
+        ProgressionService.persist_for_record(case_record)
+        progression = ProgressionStatus.objects.get(
+            patient=case_record.patient,
+            xray_record=case_record,
+        )
+
+    previous_status = progression.status
+    progression.status = status_value
+    progression.source = "manual_override"
+    progression.is_overridden = True
+    progression.clinical_note = str(clinical_note).strip()
+    progression.overridden_by = request.user
+    progression.override_timestamp = timezone.now()
+    progression.reason = "Manual override"
+    progression.save(update_fields=[
+        "status",
+        "source",
+        "clinical_note",
+        "is_overridden",
+        "overridden_by",
+        "override_timestamp",
+        "reason",
+    ])
+
+    audit_log = ProgressionOverrideAuditLog.objects.create(
+        patient=case_record.patient,
+        xray_record=case_record,
+        radiologist=request.user,
+        previous_status=previous_status,
+        new_status=status_value,
+        clinical_note=progression.clinical_note,
+    )
+
+    payload = ProgressionStatusSerializer(progression, context={"request": request}).data
+    payload["audit_log_id"] = audit_log.id
+    return Response(payload, status=status.HTTP_201_CREATED)
+
+
+@api_view(["GET"])
+@login_required
+def patient_progression_history(request, patient_id):
+    patient = get_object_or_404(Patient, patient_id=patient_id)
+    _refresh_patient_progression_snapshots(patient)
+
+    queryset = ProgressionStatus.objects.filter(patient=patient).select_related(
+        "xray_record",
+        "previous_record",
+    ).order_by("xray_record__upload_timestamp", "xray_record__pk")
+
+    paginator = ProgressionHistoryPagination()
+    page = paginator.paginate_queryset(queryset, request)
+    serializer = ProgressionStatusSerializer(page, many=True, context={"request": request}) if page is not None else ProgressionStatusSerializer(queryset, many=True, context={"request": request})
+    if page is not None:
+        return paginator.get_paginated_response(serializer.data)
+    return Response(serializer.data)
+
+
+@api_view(["GET"])
+@login_required
+def patient_progression_override_history(request, patient_id):
+    patient = get_object_or_404(Patient, patient_id=patient_id)
+
+    queryset = ProgressionOverrideAuditLog.objects.filter(
+        patient=patient,
+    ).select_related(
+        "xray_record",
+        "radiologist",
+    ).order_by("-created_at", "-id")
+
+    serializer = ProgressionOverrideAuditLogSerializer(
+        queryset,
+        many=True,
+        context={"request": request},
+    )
+    return Response(serializer.data)
+
+
+@api_view(["GET"])
+@login_required
+def notifications(request):
+    items = Notification.objects.filter(recipient=request.user).order_by('-created_at')
+    data = [{
+        'id': item.id,
+        'recipient': item.recipient_id,
+        'message': item.message,
+        'read_status': item.read_status,
+        'created_at': item.created_at.isoformat(),
+        'updated_at': item.updated_at.isoformat(),
+    } for item in items]
+    return Response(data)
+
+
+@api_view(["POST"])
+@login_required
+def notification_mark_read(request, notification_id):
+    notification = get_object_or_404(
+        Notification,
+        id=notification_id,
+        recipient=request.user,
+    )
+    notification.read_status = True
+    notification.save(update_fields=['read_status', 'updated_at'])
+    return Response({
+        'id': notification.id,
+        'recipient': notification.recipient_id,
+        'message': notification.message,
+        'read_status': notification.read_status,
+        'created_at': notification.created_at.isoformat(),
+        'updated_at': notification.updated_at.isoformat(),
+    })
+
+
+@api_view(["GET", "POST", "PATCH"])
+@role_required(UserRole.RADIOLOGIST, UserRole.PHYSICIAN, UserRole.PATIENT)
+def report_detail(request, transaction_id):
+    xray_record = get_object_or_404(XrayRecord, transaction_id=transaction_id)
+
+    if request.method in {"POST", "PATCH"}:
+        if request.user.role != UserRole.RADIOLOGIST:
+            return Response(
+                {"detail": "Only radiologists can edit or submit reports."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        xray_record.clear_if_expired()
+        if _lock_blocks_user(xray_record, request.user):
+            return _lock_conflict_response(xray_record)
+
+    if request.method == "GET":
+        try:
+            report = xray_record.report
+        except Report.DoesNotExist:
+            return Response(
+                {"detail": "Report not found for this X-ray."},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        serializer = ReportSerializer(report, context={'request': request})
+        return Response(serializer.data)
+
+    elif request.method == "POST":
+        report, created = Report.objects.get_or_create(
+            xray_record=xray_record,
+            defaults={
+                'findings': '',
+                'impression': '',
+                'recommendation': '',
+                'severity': Report.SeverityChoices.NORMAL,
+                'status': 'DRAFT',
+            }
+        )
+        # For draft creation, always pass status='DRAFT'
+        data = {**request.data, 'status': 'DRAFT'}
+        serializer = ReportCreateSerializer(report, data=data, partial=False)
+
+        if serializer.is_valid():
+            serializer.save()
+            if report.status == 'SUBMITTED':
+                _trigger_report_submission_notification(report)
+            return Response(
+                ReportSerializer(report, context={'request': request}).data,
+                status=status.HTTP_201_CREATED if created else status.HTTP_200_OK
+            )
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    elif request.method == "PATCH":
+        try:
+            report = xray_record.report
+        except Report.DoesNotExist:
+            return Response(
+                {"detail": "Report not found for this X-ray."},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        if report.status == 'SUBMITTED':
+            return Response(
+                {"detail": "Cannot modify a finalized report."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Allow client to pass status='SUBMITTED' to submit
+        serializer = ReportCreateSerializer(report, data=request.data, partial=True, context={'request': request})
+        if serializer.is_valid():
+            previous_status = report.status
+            report = serializer.save()
+            if previous_status != 'SUBMITTED' and report.status == 'SUBMITTED':
+                _trigger_report_submission_notification(report)
+                # Report finalized — release the review lock on the case.
+                xray_record.release_lock()
+            return Response(
+                ReportSerializer(report, context={'request': request}).data
+            )
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
 @api_view(["GET"])
 @role_required(UserRole.RADIOLOGIST)
 def generate_report(request, transaction_id):
@@ -436,9 +1449,24 @@ def generate_report(request, transaction_id):
 
     if xray_record.status != "COMPLETED":
         return Response(
-            {"detail": "PDF report can only be generaated for COMPLETED X-rays."},
+            {"detail": "PDF report can only be generated for COMPLETED X-rays."},
             status=status.HTTP_400_BAD_REQUEST
         )
+
+    # Get or create report (allow PDF generation even if not finalized)
+    try:
+        report = xray_record.report
+    except Report.DoesNotExist:
+        # Auto-create minimal report for PDF generation
+        report = Report.objects.create(
+            xray_record=xray_record,
+            findings="",
+            impression="Pending radiologist finalization.",
+            recommendation="Clinical correlation recommended.",
+            severity=Report.SeverityChoices.NORMAL,
+            status='DRAFT',
+        )
+
     patient = xray_record.patient
     ai_result = getattr(xray_record, "ai_result", None)
     annotations = xray_record.annotations.all()
@@ -450,11 +1478,26 @@ def generate_report(request, transaction_id):
                 heatmap_base64 = base64.b64encode(img_file.read()).decode("utf-8")
 
     radiologist_notes = []
+    numbered_annotations = []
+    annotation_svg_markup = []
+    shape_number = 1
     for ann in annotations:
         if ann.notes:
             radiologist_notes.append(ann.notes)
+        for box in ann.bounding_boxes or []:
+            label = str(box.get("label", "") or "").strip()
+            numbered_annotations.append(label or f"Shape {shape_number}")
+            svg = _annotation_box_to_svg(box, marker=shape_number)
+            if svg:
+                annotation_svg_markup.append(svg)
+            shape_number += 1
 
-    diagnostic_notes_text = "\n".join(radiologist_notes) if radiologist_notes else "No diagnostic notes provided."
+    annotation_notes_text = "\n".join(radiologist_notes) if radiologist_notes else "No diagnostic notes provided."
+    report_findings_text = (report.findings or "").strip() if report else ""
+    if report_findings_text == LEGACY_SHARED_FINDINGS_PLACEHOLDER:
+        report_findings_text = ""
+    diagnostic_notes_text = report_findings_text or annotation_notes_text
+    summary_findings_text = report_findings_text or "No summary of findings provided."
 
     def calculate_age(dob):
         if not dob: return "N/A"
@@ -467,20 +1510,22 @@ def generate_report(request, transaction_id):
         "generated_at": timezone.now().strftime("%Y-%m-%d %H:%M"),
         "patient_name": f"{patient.first_name} {patient.last_name}",
         "patient_age": calculate_age(getattr(patient, 'date_of_birth', None)),
-        "patient_sex": getattr(patient, 'gender', 'N/A'),
+        "patient_sex": getattr(patient, 'sex', 'N/A'),
         "facility_name": "",
         "ai_risk_score": f"{ai_result.risk_score:.2f}" if ai_result else "N/A",
         "ai_risk_label": ai_result.risk_label if ai_result else "N/A",
         "heatmap_base64": heatmap_base64,
-        "radiologist_annotations": radiologist_notes,
+        "radiologist_annotations": numbered_annotations,
+        "annotation_svg_markup": "\n".join(annotation_svg_markup),
         "diagnostic_notes": diagnostic_notes_text,
-        "clinical_impression": "",
-        "recommendations": "",
-        "ai_summary": f"AI model flagged as {ai_result.risk_label if ai_result else 'N/A'} risk."
-
+        "report_findings": summary_findings_text,
+        "clinical_impression": report.impression if report else "",
+        "recommendations": report.recommendation if report else "",
+        "ai_summary": report_findings_text or f"AI model flagged as {ai_result.risk_label if ai_result else 'N/A'} risk."
     }
     html_content = render_to_string("reports/xray_report.html", context)
     temp_html_path = None
+    preserve_temp_html = False
 
     try:
         with tempfile.NamedTemporaryFile(suffix=".html", delete=False, mode="w", encoding="utf-8") as temp_html:
@@ -500,15 +1545,356 @@ def generate_report(request, transaction_id):
         return response
 
     except subprocess.CalledProcessError as e:
+        recovered_pdf = _extract_pdf_bytes_from_output(e.stdout)
+        if recovered_pdf:
+            logger.warning(
+                "Recovered PDF output for transaction %s despite node exit code %s",
+                transaction_id,
+                e.returncode,
+            )
+            response = FileResponse(BytesIO(recovered_pdf), content_type='application/pdf')
+            response['Content-Disposition'] = f'attachment; filename="tbxr_report_{transaction_id}.pdf"'
+            return response
+
+        preserve_temp_html = True
+        failed_html_path = _preserve_failed_html(temp_html_path, f"xray_report_{transaction_id}")
+        logger.exception("PDF generation failed for transaction %s", transaction_id)
         return Response(
-            {"error": "Failed to generate PDF via Node script.", "details": e.stderr.decode()},
+            _build_pdf_process_error_payload(e, failed_html_path),
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
     except Exception as e:
+        preserve_temp_html = True
+        failed_html_path = _preserve_failed_html(temp_html_path, f"xray_report_{transaction_id}")
+        logger.exception("Unexpected report generation error for transaction %s", transaction_id)
         return Response(
-            {"error": str(e)},
+            {
+                "error": str(e),
+                "failed_html_path": str(failed_html_path) if failed_html_path else "",
+            },
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
     finally:
-        if temp_html_path:
+        if temp_html_path and not preserve_temp_html:
             Path(temp_html_path).unlink(missing_ok=True)
+
+
+def _parse_date_param(value: str, param_name: str):
+    """Parse a date string in YYYY-MM-DD format. Returns (date, error_response)."""
+    parsed = parse_date(value)
+    if parsed is None:
+        return None, Response(
+            {"detail": f"Invalid {param_name} format. Use YYYY-MM-DD."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    return parsed, None
+
+
+def _apply_date_filter(queryset, date_from, date_to, date_field: str):
+    """Apply date range filter to queryset using the specified date field."""
+    if date_from:
+        queryset = queryset.filter(**{f"{date_field}__date__gte": date_from})
+    if date_to:
+        queryset = queryset.filter(**{f"{date_field}__date__lte": date_to})
+    return queryset
+
+
+def _get_analytics_data(date_from, date_to, severity):
+    # Base querysets
+    xray_qs = XrayRecord.objects.all()
+    report_qs = Report.objects.select_related("xray_record").all()
+
+    # Apply date filters (on X-ray upload_timestamp for cases, report created_at for reports)
+    xray_qs = _apply_date_filter(xray_qs, date_from, date_to, "upload_timestamp")
+    report_qs = _apply_date_filter(report_qs, date_from, date_to, "created_at")
+
+    # Apply severity filter to reports
+    if severity:
+        report_qs = report_qs.filter(severity=severity)
+
+    # Aggregate cases
+    total_cases = xray_qs.count()
+    status_counts = dict(
+        xray_qs.values_list("status").order_by().annotate(count=models.Count("status"))
+    )
+
+    # AI risk label breakdown (only for records with AI results)
+    ai_qs = AIResult.objects.filter(xray_record__in=xray_qs)
+    ai_risk_counts = dict(
+        ai_qs.values_list("risk_label").order_by().annotate(count=models.Count("risk_label"))
+    )
+
+    # Aggregate reports
+    total_reports = report_qs.count()
+    severity_counts = dict(
+        report_qs.values_list("severity").order_by().annotate(count=models.Count("severity"))
+    )
+    report_status_counts = dict(
+        report_qs.values_list("status").order_by().annotate(count=models.Count("status"))
+    )
+
+    return {
+        "filters": {
+            "date_from": date_from.isoformat() if date_from else None,
+            "date_to": date_to.isoformat() if date_to else None,
+            "severity": severity or None,
+        },
+        "cases": {
+            "total": total_cases,
+            "by_status": status_counts,
+            "by_ai_risk_label": ai_risk_counts,
+        },
+        "reports": {
+            "total": total_reports,
+            "by_severity": severity_counts,
+            "by_status": report_status_counts,
+        }
+    }
+
+
+@extend_schema(
+    parameters=[
+        OpenApiParameter(
+            name="date_from",
+            type=OpenApiTypes.DATE,
+            description="Start date (inclusive) in YYYY-MM-DD format. Filters by X-ray upload date.",
+        ),
+        OpenApiParameter(
+            name="date_to",
+            type=OpenApiTypes.DATE,
+            description="End date (inclusive) in YYYY-MM-DD format. Filters by X-ray upload date.",
+        ),
+        OpenApiParameter(
+            name="severity",
+            type=OpenApiTypes.STR,
+            enum=Report.SeverityChoices.values,
+            description="Filter reports by severity level.",
+        ),
+    ],
+    responses={200: {
+        "type": "object",
+        "properties": {
+            "filters": {
+                "type": "object",
+                "properties": {
+                    "date_from": {"type": "string", "format": "date", "nullable": True},
+                    "date_to": {"type": "string", "format": "date", "nullable": True},
+                    "severity": {"type": "string", "nullable": True},
+                },
+            },
+            "cases": {
+                "type": "object",
+                "properties": {
+                    "total": {"type": "integer"},
+                    "by_status": {"type": "object", "additionalProperties": {"type": "integer"}},
+                    "by_ai_risk_label": {"type": "object", "additionalProperties": {"type": "integer"}},
+                },
+            },
+            "reports": {
+                "type": "object",
+                "properties": {
+                    "total": {"type": "integer"},
+                    "by_severity": {"type": "object", "additionalProperties": {"type": "integer"}},
+                    "by_status": {"type": "object", "additionalProperties": {"type": "integer"}},
+                },
+            },
+        },
+    }},
+)
+@api_view(["GET"])
+@role_required(UserRole.RADIOLOGIST, UserRole.PHYSICIAN)
+def analytics_summary(request):
+    """
+    Returns aggregate case metrics for a selected date range and severity set.
+    Supports filtering by upload date range and report severity.
+    """
+    date_from_raw = request.query_params.get("date_from", "").strip()
+    date_to_raw = request.query_params.get("date_to", "").strip()
+    severity = request.query_params.get("severity", "").strip().upper()
+
+    date_from, error = _parse_date_param(date_from_raw, "date_from") if date_from_raw else (None, None)
+    if error:
+        return error
+
+    date_to, error = _parse_date_param(date_to_raw, "date_to") if date_to_raw else (None, None)
+    if error:
+        return error
+
+    if date_from and date_to and date_from > date_to:
+        return Response(
+            {"detail": "date_from cannot be later than date_to."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    if severity and severity not in Report.SeverityChoices.values:
+        return Response(
+            {
+                "detail": (
+                    f"Invalid severity '{severity}'. Allowed values: "
+                    f"{', '.join(Report.SeverityChoices.values)}."
+                )
+            },
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    data = _get_analytics_data(date_from, date_to, severity)
+    return Response(data)
+
+
+import csv
+from django.http import HttpResponse
+
+@extend_schema(
+    request={
+        "application/json": {
+            "type": "object",
+            "properties": {
+                "format": {"type": "string", "enum": ["csv", "pdf"]},
+                "filters": {
+                    "type": "object",
+                    "properties": {
+                        "date_from": {"type": "string", "format": "date"},
+                        "date_to": {"type": "string", "format": "date"},
+                        "severity": {"type": "string"}
+                    }
+                }
+            },
+            "required": ["format"]
+        }
+    },
+    responses={
+        200: OpenApiTypes.BINARY,
+    }
+)
+@api_view(["POST"])
+@role_required(UserRole.RADIOLOGIST, UserRole.PHYSICIAN)
+def analytics_export(request):
+    """
+    Export analytics data to CSV or PDF based on requested format and filters.
+    """
+    format_type = request.data.get("format")
+    filters = request.data.get("filters", {})
+
+    if format_type not in ["csv", "pdf"]:
+        return Response(
+            {"detail": "Invalid format. Must be 'csv' or 'pdf'."},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    date_from_raw = filters.get("date_from", "")
+    date_to_raw = filters.get("date_to", "")
+    severity = filters.get("severity", "")
+
+    # Ensure these are strings before calling strip()
+    if date_from_raw is None: date_from_raw = ""
+    if date_to_raw is None: date_to_raw = ""
+    if severity is None: severity = ""
+
+    date_from_raw = str(date_from_raw).strip()
+    date_to_raw = str(date_to_raw).strip()
+    severity = str(severity).strip().upper()
+
+    date_from, error = _parse_date_param(date_from_raw, "date_from") if date_from_raw else (None, None)
+    if error: return error
+
+    date_to, error = _parse_date_param(date_to_raw, "date_to") if date_to_raw else (None, None)
+    if error: return error
+
+    if date_from and date_to and date_from > date_to:
+        return Response(
+            {"detail": "date_from cannot be later than date_to."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    if severity and severity not in Report.SeverityChoices.values:
+        return Response(
+            {
+                "detail": (
+                    f"Invalid severity '{severity}'. Allowed values: "
+                    f"{', '.join(Report.SeverityChoices.values)}."
+                )
+            },
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    data = _get_analytics_data(date_from, date_to, severity)
+
+    if format_type == "csv":
+        response = HttpResponse(content_type='text/csv')
+        response['Content-Disposition'] = 'attachment; filename="analytics_export.csv"'
+        
+        writer = csv.writer(response)
+        writer.writerow(["Category", "Metric", "Value"])
+        
+        writer.writerow(["Cases", "Total Cases", data["cases"]["total"]])
+        for s, c in data["cases"]["by_status"].items():
+            writer.writerow(["Cases", f"Status: {s}", c])
+        for r, c in data["cases"]["by_ai_risk_label"].items():
+            writer.writerow(["Cases", f"AI Risk: {r}", c])
+            
+        writer.writerow(["Reports", "Total Reports", data["reports"]["total"]])
+        for s, c in data["reports"]["by_severity"].items():
+            writer.writerow(["Reports", f"Severity: {s}", c])
+        for s, c in data["reports"]["by_status"].items():
+            writer.writerow(["Reports", f"Status: {s}", c])
+            
+        return response
+
+    elif format_type == "pdf":
+        context = {
+            "data": data,
+            "generated_at": timezone.now().strftime("%Y-%m-%d %H:%M:%S")
+        }
+        html_content = render_to_string("reports/analytics_export.html", context)
+        temp_html_path = None
+        preserve_temp_html = False
+        
+        try:
+            with tempfile.NamedTemporaryFile(suffix=".html", delete=False, mode="w", encoding="utf-8") as temp_html:
+                temp_html.write(html_content)
+                temp_html_path = temp_html.name
+
+            script_path = settings.BASE_DIR / "pdf_scripts" / "generate.js"
+            result = subprocess.run(
+                ["node", str(script_path), temp_html_path],
+                capture_output=True,
+                check=True
+            )
+
+            pdf_bytes = result.stdout
+            response = FileResponse(BytesIO(pdf_bytes), content_type='application/pdf')
+            response['Content-Disposition'] = 'attachment; filename="analytics_export.pdf"'
+            return response
+
+        except subprocess.CalledProcessError as e:
+            recovered_pdf = _extract_pdf_bytes_from_output(e.stdout)
+            if recovered_pdf:
+                logger.warning(
+                    "Recovered analytics PDF output despite node exit code %s",
+                    e.returncode,
+                )
+                response = FileResponse(BytesIO(recovered_pdf), content_type='application/pdf')
+                response['Content-Disposition'] = 'attachment; filename="analytics_export.pdf"'
+                return response
+
+            preserve_temp_html = True
+            failed_html_path = _preserve_failed_html(temp_html_path, "analytics_export")
+            logger.exception("Analytics PDF generation failed")
+            return Response(
+                _build_pdf_process_error_payload(e, failed_html_path),
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+        except Exception as e:
+            preserve_temp_html = True
+            failed_html_path = _preserve_failed_html(temp_html_path, "analytics_export")
+            logger.exception("Unexpected analytics export PDF error")
+            return Response(
+                {
+                    "error": str(e),
+                    "failed_html_path": str(failed_html_path) if failed_html_path else "",
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+        finally:
+            if temp_html_path and not preserve_temp_html:
+                Path(temp_html_path).unlink(missing_ok=True)

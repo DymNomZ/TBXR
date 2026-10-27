@@ -2,7 +2,7 @@ from pathlib import Path
 from inference import predict, generate_heatmap
 
 BASE_DIR = Path(__file__).parent.parents[1]
-image_path = BASE_DIR / "ai"/ "scripts" / "media_inference_check" / "others (109).jpg"
+image_path = BASE_DIR / "ai"/ "scripts" / "media_inference_check" / "Tuberculosis-19.png"
 
 # 1. Test prediction
 result = predict(image_path)

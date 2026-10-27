@@ -1,7 +1,7 @@
 ## Setup
 
 ### Prerequisites
-- Python 3.11+
+- Python 3.11.4+
 - Node.js 20+ and npm
 - PostgreSQL 15+
 - Git
@@ -57,10 +57,10 @@ If you want to use SQLite for a local throwaway setup, remove `DB_NAME` from `.e
 Example PostgreSQL `.env` values:
 
 ```env
-SECRET_KEY=replace-me
-DB_NAME=tbxr_db
-DB_USER=postgres
-DB_PASSWORD=replace-me
+SECRET_KEY=<set-a-strong-random-secret>
+DB_NAME=<postgres-db-name>
+DB_USER=<postgres-db-user>
+DB_PASSWORD=<postgres-db-password>
 DB_HOST=localhost
 DB_PORT=5432
 ```
@@ -68,7 +68,7 @@ DB_PORT=5432
 Example SQLite `.env` values:
 
 ```env
-SECRET_KEY=replace-me
+SECRET_KEY=<set-a-strong-random-secret>
 ```
 
 ### Switching Databases For SUS Testing
@@ -82,19 +82,19 @@ sudo -u postgres psql
 ```
 
 ```sql
-CREATE USER postgres_sus WITH PASSWORD 'databasepassword_SUS';
-CREATE DATABASE tbxr_db_sus OWNER postgres_sus;
-GRANT ALL PRIVILEGES ON DATABASE tbxr_db_sus TO postgres_sus;
+CREATE USER <sus_db_user> WITH PASSWORD '<sus_db_password>';
+CREATE DATABASE <sus_db_name> OWNER <sus_db_user>;
+GRANT ALL PRIVILEGES ON DATABASE <sus_db_name> TO <sus_db_user>;
 \q
 ```
 
 2. Update `backend/.env` to point to the SUS database.
 
 ```env
-SECRET_KEY=replace-me
-DB_NAME=tbxr_db_sus
-DB_USER=postgres_sus
-DB_PASSWORD=databasepassword_SUS
+SECRET_KEY=<set-a-strong-random-secret>
+DB_NAME=<sus-db-name>
+DB_USER=<sus-db-user>
+DB_PASSWORD=<sus-db-password>
 DB_HOST=localhost
 DB_PORT=5432
 ```
@@ -135,10 +135,10 @@ To return to the original development database, reverse the same steps:
 1. Restore the old values in `backend/.env`.
 
 ```env
-SECRET_KEY=replace-me
-DB_NAME=tbxr_db
-DB_USER=postgres
-DB_PASSWORD=databasepassword
+SECRET_KEY=<set-a-strong-random-secret>
+DB_NAME=<postgres-db-name>
+DB_USER=<postgres-db-user>
+DB_PASSWORD=<postgres-db-password>
 DB_HOST=localhost
 DB_PORT=5432
 ```
@@ -222,7 +222,13 @@ python manage.py migrate
 python manage.py shell
 ```
 
-To seed account to test login functionality.
+To seed demo accounts for testing login functionality, the quickest path is the seed script (creates `tech1`, `rad1`, `physician1` plus a sample patient, X-ray records, AI result, and report):
+
+```bash
+python scripts/seed_users.py
+```
+
+Manual alternative via the Django shell:
 ``` bash
 from django.contrib.auth import get_user_model
 
@@ -244,9 +250,11 @@ def create_role_user(username, password, role, email=""):
     user.save()
     return user
 
-create_role_user("tech1", "demo123", "RADIOLOGIC_TECH", "tech1@example.com")
-create_role_user("rad1", "demo123", "RADIOLOGIST", "rad1@example.com")
+create_role_user("tech1", "<local-test-password>", "RADIOLOGIC_TECH", "tech1@example.com")
+create_role_user("rad1", "<local-test-password>", "RADIOLOGIST", "rad1@example.com")
 ```
+
+For local demo accounts, choose your own non-production test password and never reuse real credentials.
 ``` bash
 python manage.py runserver
 ```
@@ -261,12 +269,45 @@ npm run dev
 
 **Note**: If you want to check the database structure with GUI you can download DBeaver and connect the PostgreSQL there. Use the .env variables you have set.
 
-For testing Back end automatically.
-``` bash
+### Backup and Restore
+
+Automated database + media backups and the restore procedure are documented in
+[`backup-restore.md`](backup-restore.md) (same directory as this guide).
+
+```bash
 cd backend
-python manage.py test apps.accounts.tests
-python manage.py test apps.patients.tests
-python manage.py test apps.imaging.tests
+python scripts/backup.py                         # create a backup
+python scripts/backup.py --verify backups/2026-09-15T020000Z   # verify integrity
+python scripts/restore.py                        # dry-run latest backup
+python scripts/restore.py backups/2026-09-15T020000Z --apply   # apply a restore
 ```
+
+## Environment Security Rules
+
+- Never commit real secrets or credentials (for example: SECRET_KEY, DB_PASSWORD, API keys).
+- Keep `.env` local-only; commit placeholders in `.env.example` only.
+- Store production secrets in your deployment platform secret manager or protected CI/CD variables.
+- Rotate credentials immediately if a secret is exposed.
+
+For testing the backend automatically (full suite, ~206 tests):
+
+```bash
+cd backend
+DB_NAME= python manage.py test -v 2
+```
+
+> The `DB_NAME=` prefix (bash) forces SQLite so tests never touch your local Postgres — this is how CI runs them too. On PowerShell, set `$env:DB_NAME=''` before the command instead.
+
+Individual suites:
+
+```bash
+python manage.py test apps.accounts.tests apps.patients.tests
+python manage.py test apps.imaging.tests apps.imaging.test_report
+python manage.py test apps.imaging.test_progression apps.imaging.test_physician_dashboard
+python manage.py test apps.accounts.test_smoke apps.imaging.test_smoke   # smoke gate (see documentation/SMOKE_TEST_RUN_STEPS.md)
+python manage.py test scripts.test_backup_restore
+```
+
+A convenience runner for the smoke suites is `python scripts/run_smoke.py` (run from `backend/` with your virtualenv active — `backend/venv` from the setup above or a repo-root `.venv` both work). CI (`.github/workflows/ci.yml`) runs the smoke, report, and backup/restore suites with a coverage gate, plus the frontend tests and lint.
 
 ---

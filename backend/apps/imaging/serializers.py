@@ -6,7 +6,7 @@ from PIL import Image
 from django.core.files.base import ContentFile
 from rest_framework import serializers
 
-from .models import Annotation, XrayRecord, ProcessedImage, AIResult
+from .models import Annotation, XrayRecord, ProcessedImage, AIResult, ProgressionStatus, ProgressionOverrideAuditLog, Report
 from apps.patients.models import Patient
 from django.contrib.auth import get_user_model
 
@@ -94,6 +94,80 @@ class AIResultSerializer(serializers.ModelSerializer):
             "heatmap_url",    # Keeping your teammate's safe URL generator!
             "model_version",  # Your new Step 24 field
             "generated_at",   # Your new Step 24 field
+        ]
+
+
+class ProgressionStatusSerializer(serializers.ModelSerializer):
+    transaction_id = serializers.SerializerMethodField()
+    previous_transaction_id = serializers.SerializerMethodField()
+    timestamp = serializers.SerializerMethodField()
+    previous_timestamp = serializers.SerializerMethodField()
+    overridden_by = serializers.IntegerField(source='overridden_by_id', read_only=True, allow_null=True)
+
+    def get_transaction_id(self, obj):
+        return str(obj.xray_record.transaction_id)
+
+    def get_previous_transaction_id(self, obj):
+        if not obj.previous_record:
+            return None
+        return str(obj.previous_record.transaction_id)
+
+    def get_timestamp(self, obj):
+        return obj.xray_record.upload_timestamp.isoformat() if obj.xray_record.upload_timestamp else None
+
+    def get_previous_timestamp(self, obj):
+        if not obj.previous_record or not obj.previous_record.upload_timestamp:
+            return None
+        return obj.previous_record.upload_timestamp.isoformat()
+
+    class Meta:
+        model = ProgressionStatus
+        fields = [
+            "status",
+            "score",
+            "previous_score",
+            "delta",
+            "abs_delta",
+            "threshold",
+            "comparison_available",
+            "reason",
+            "clinical_note",
+            "is_overridden",
+            "overridden_by",
+            "override_timestamp",
+            "transaction_id",
+            "previous_transaction_id",
+            "timestamp",
+            "previous_timestamp",
+            "recorded_at",
+            "source",
+        ]
+
+
+class ProgressionOverrideAuditLogSerializer(serializers.ModelSerializer):
+    transaction_id = serializers.SerializerMethodField()
+    xray_timestamp = serializers.SerializerMethodField()
+    radiologist = RadiologistBriefSerializer(read_only=True)
+
+    def get_transaction_id(self, obj):
+        return str(obj.xray_record.transaction_id)
+
+    def get_xray_timestamp(self, obj):
+        if not obj.xray_record.upload_timestamp:
+            return None
+        return obj.xray_record.upload_timestamp.isoformat()
+
+    class Meta:
+        model = ProgressionOverrideAuditLog
+        fields = [
+            "id",
+            "transaction_id",
+            "xray_timestamp",
+            "previous_status",
+            "new_status",
+            "clinical_note",
+            "created_at",
+            "radiologist",
         ]
 
 
@@ -305,6 +379,11 @@ class XrayRecordDetailSerializer(serializers.ModelSerializer):
 
         return None
 
+    active_reviewer = serializers.SerializerMethodField()
+
+    def get_active_reviewer(self, obj):
+        return obj.active_reviewer.username if obj.active_reviewer else None
+
     class Meta:
         model = XrayRecord
         fields = [
@@ -317,4 +396,64 @@ class XrayRecordDetailSerializer(serializers.ModelSerializer):
             'file_format',
             'annotations',
             'ai_result',
+            'active_reviewer',
+            'lock_timestamp',
         ]
+
+
+class ReportSerializer(serializers.ModelSerializer):
+    created_by = RadiologistBriefSerializer(read_only=True)
+    xray_record = serializers.UUIDField(source='xray_record.transaction_id', read_only=True)
+
+    class Meta:
+        model = Report
+        fields = [
+            'id', 'xray_record', 'findings', 'impression',
+            'recommendation', 'severity', 'created_by',
+            'created_at', 'updated_at', 'status'
+        ]
+        read_only_fields = ['created_by', 'created_at', 'updated_at', 'status']
+
+
+class ReportCreateSerializer(serializers.ModelSerializer):
+    status = serializers.ChoiceField(choices=[('DRAFT', 'Draft'), ('SUBMITTED', 'Submitted')], required=False, default='DRAFT')
+
+    class Meta:
+        model = Report
+        fields = ['findings', 'impression', 'recommendation', 'severity', 'status']
+        extra_kwargs = {
+            'findings': {'required': False, 'allow_blank': True},
+            'impression': {'required': False, 'allow_blank': True},
+            'recommendation': {'required': False, 'allow_blank': True},
+            'severity': {'required': False},
+        }
+
+    def validate(self, attrs):
+        status_val = attrs.get('status', 'DRAFT')
+
+        if status_val == 'SUBMITTED':
+            required_fields = ['findings', 'impression', 'recommendation', 'severity']
+            # Check both attrs (incoming data) and instance (existing data for partial updates)
+            missing = []
+            for field in required_fields:
+                value = attrs.get(field)
+                if value is None and self.instance is not None:
+                    value = getattr(self.instance, field, None)
+                if not value:
+                    missing.append(field)
+            if missing:
+                raise serializers.ValidationError({
+                    field: "This field is required for final submission."
+                    for field in missing
+                })
+
+        return attrs
+
+    def update(self, instance, validated_data):
+        status_val = validated_data.get('status', 'DRAFT')
+        # If finalizing, set created_by from context (request.user)
+        if status_val == 'SUBMITTED' and instance.status != 'SUBMITTED':
+            request = self.context.get('request')
+            if request and hasattr(request, 'user'):
+                instance.created_by = request.user
+        return super().update(instance, validated_data)

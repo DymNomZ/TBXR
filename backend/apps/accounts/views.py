@@ -16,6 +16,8 @@ from .decorators import role_required
 ROLE_FRONTEND_URLS = {
     UserRole.RADIOLOGIC_TECH: '/dashboard/technologist',
     UserRole.RADIOLOGIST:     '/dashboard/radiologist',
+	UserRole.PHYSICIAN:       '/dashboard/physician',
+	UserRole.PATIENT:         '/dashboard/patient',
 }
 
 
@@ -93,6 +95,11 @@ def login_view(request):
 
 @require_http_methods(['POST'])
 def logout_view(request):
+    # Free any review locks held by this user so cases are not left blocked.
+    if request.user.is_authenticated:
+        from apps.imaging.models import XrayRecord
+        for record in XrayRecord.objects.filter(active_reviewer=request.user):
+            record.release_lock()
     logout(request)
     return JsonResponse({'detail': 'Logged out.'})
 

@@ -8,6 +8,10 @@ frontend_files.txt
 backend_files.txt
 ai_files.txt
 walker.py
+.proposal_pdf_plain.txt
+.proposal_pdf_text.txt
+.sdd_pdf_plain.txt
+.srs_pdf_plain.txt
 
 # C extensions
 *.so
@@ -109,12 +113,23 @@ celerybeat.pid
 
 # Environments
 .env
+.env.*
+!.env.example
+!.env.*.example
 .venv
 env/
 venv/
 ENV/
 env.bak/
 venv.bak/
+
+# Secrets and credentials
+*.pem
+*.key
+*.p12
+*.pfx
+id_rsa
+id_ed25519
 
 # Spyder project settings
 .spyderproject
@@ -171,6 +186,10 @@ ai/weights/
 # Media files (uploaded images)
 media/
 staticfiles/
+
+# Backups (database + media archives)
+backups/
+.tbxr-backup.lock
 
 # Temporary files
 *.tmp
