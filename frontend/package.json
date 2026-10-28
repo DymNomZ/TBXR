@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc"
+    "typecheck": "tsc",
+    "generate:data-diagrams": "node generate_data_diagrams.js"
   },
   "dependencies": {
     "lucide-react": "^1.14.0",
