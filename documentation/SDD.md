@@ -18,668 +18,2527 @@ COLLEGE OF COMPUTER STUDIES
 
 ## *for*
 
-## TB-XR
+## TB-XR: AI-Assisted Tele-Radiology Screening and Longitudinal Monitoring System
 
 **Change History Signature**
 
 | Version | Date | Authors | Description of Revision |
 | :---- | :---- | :---- | :---- |
 | 1.0 | April 25, 2026 | Borgonia, J.D.; Emia, S.N.; Enario, L.J.L.; Epan, R.S.; Tolentino, B. | Initial Release SDD for TB-XR |
+| 2.0 | October 28, 2026 | Borgonia, J.D.; Emia, S.N.; Enario, L.J.L.; Epan, R.S.; Tolentino, B. | Comprehensive update to as-built architecture across all 4 modules without adding extra sub-modules. Maintained strict 12 sub-module structure (1.1–1.3, 2.1–2.3, 3.1–3.3, 4.1–4.3). Corrected all class diagrams to include complete class names, attributes (with explicit types), and operations (with parameters and return types). Corrected all sequence diagrams to match active API contracts, image quality gating, review concurrency locks, structured diagnostic reporting, longitudinal progression override audit logging, and analytical exports. Converted data design specifications into Crow's Foot ER diagrams matching relational schemas across all 12 sub-modules. Removed obsolete base64 artifacts and synchronized domain entities. |
 
 **Preface**
 
+This Software Design Description (SDD) provides a formal, comprehensive architectural and detailed structural specification for the TB-XR system. Designed in accordance with IEEE Std 1016-2009 (Standard for Information Technology — Systems Design — Software Design Descriptions), this document translates the functional, performance, security, and interface requirements established in the Software Requirements Specification (SRS) into concrete, verified software architectures, object-oriented class hierarchies, sequence diagrams, and relational database schemas.
+
+---
+
 **Table of Contents**
 
-**[1\.](#introduction)**	[**Introduction	6**](#introduction)
+- [1. Introduction](#1-introduction)
+  - [1.1 Purpose](#11-purpose)
+  - [1.2 Scope](#12-scope)
+  - [1.3 Definitions, Acronyms, and Abbreviations](#13-definitions-acronyms-and-abbreviations)
+  - [1.4 References](#14-references)
+  - [1.5 Document Conventions](#15-document-conventions)
+- [2. Architectural Design](#2-architectural-design)
+  - [2.1 Architectural Overview & Layered Structure](#21-architectural-overview--layered-structure)
+  - [2.2 High-Level System Architecture Diagram](#22-high-level-system-architecture-diagram)
+  - [2.3 Overall Domain Entity Class Diagram](#23-overall-domain-entity-class-diagram)
+- [3. Detailed Design: System Modules](#3-detailed-design-system-modules)
+  - [Module 1: X-ray Ingestion and Data Management](#module-1-x-ray-ingestion-and-data-management)
+    - [1.1 Upload Chest X-ray for TB Risk Screening](#11-upload-chest-x-ray-for-tb-risk-screening)
+    - [1.2 Automated Image Standardization](#12-automated-image-standardization)
+    - [1.3 Centralized Patient Profiling and Storage](#13-centralized-patient-profiling-and-storage)
+  - [Module 2: Annotation and Diagnostic Review](#module-2-annotation-and-diagnostic-review)
+    - [2.1 Remote Access Queue](#21-remote-access-queue)
+    - [2.2 Interactive Annotation](#22-interactive-annotation)
+    - [2.3 Diagnostic Submission](#23-diagnostic-submission)
+  - [Module 3: AI Engine and Longitudinal Monitoring](#module-3-ai-engine-and-longitudinal-monitoring)
+    - [3.1 AI Baseline Risk Scoring](#31-ai-baseline-risk-scoring)
+    - [3.2 Historical Record Retrieval](#32-historical-record-retrieval)
+    - [3.3 Comparative Logic and Progression Tracking](#33-comparative-logic-and-progression-tracking)
+  - [Module 4: Clinical Dashboards and Reporting](#module-4-clinical-dashboards-and-reporting)
+    - [4.1 Role-Based Access and Authentication](#41-role-based-access-and-authentication)
+    - [4.2 Role-Specific Dashboards and Transaction Tracking](#42-role-specific-dashboards-and-transaction-tracking)
+    - [4.3 Consolidated Report Generation](#43-consolidated-report-generation)
+- [4. Cross-Cutting Design Concerns](#4-cross-cutting-design-concerns)
+  - [4.1 Transaction and Entity Lifecycles](#41-transaction-and-entity-lifecycles)
+  - [4.2 Concurrency Management & Review Lock Protocol](#42-concurrency-management--review-lock-protocol)
+  - [4.3 Role-Based Access Control (RBAC) Matrix](#43-role-based-access-control-rbac-matrix)
+  - [4.4 Ethical AI and Clinical Safeguards](#44-ethical-ai-and-clinical-safeguards)
+- [5. Appendix: System API Endpoint Catalog](#5-appendix-system-api-endpoint-catalog)
 
-[1.1.	Purpose	6](#purpose)  
-[1.2.	Scope	6](#scope)  
-[1.3.	Definitions and Acronyms	6](#definitions-and-acronyms)  
-[1.4.	References	6](#references)
+---
 
-[**2\.**	**Architectural Design	7**](#architectural-design)
+# 1. Introduction
 
-[**3\.**	**Detailed Design	8**](#detailed-design)
+## 1.1 Purpose
+This document defines the detailed design of the TB Chest X-ray classification and tele-radiology system to ensure consistent and accurate implementation across all system modules. It specifies the system architecture, component interactions, data flow, object-oriented class structures, sequence diagrams, and design constraints to eliminate ambiguity during development and enable complete traceability between system requirements and implementation.
 
-[*Module 1	8*](#module-1:-x-ray-ingestion-and-data-management)  
-[*Module 2	9*](#module-2:-annotation-and-diagnostic-review)
+This document is intended for developers, system architects, clinical evaluators, and test automation engineers involved in the development, integration, and validation of the system.
 
-1. # **Introduction** {#introduction}
+## 1.2 Scope
+The system covers the design and implementation of a web-based TB Chest X-ray screening tool that classifies input radiographs as high-risk or low-risk using a lightweight deep learning model, supports remote radiologist review and annotation, enables deterministic longitudinal progression tracking, and generates structured diagnostic reports.
 
-   1. ## ***Purpose*** {#purpose}
+The system is organized into the following four primary modules without extraneous sub-modules:
+* **Module 1: X-ray Ingestion and Data Management** (Upload screening, image standardization, centralized patient profiling, and image quality checking)
+* **Module 2: Annotation and Diagnostic Review** (Remote access queue, concurrency-safe review locking, interactive multi-shape annotation canvas, and structured diagnostic submission)
+* **Module 3: AI Engine and Longitudinal Monitoring** (AI baseline scoring, Grad-CAM visual heatmaps, historical record retrieval, comprehensive PDF report generation, and comparative progression tracking with manual overrides)
+* **Module 4: Clinical Dashboards and Reporting** (Role-based authentication, role-specific operational dashboards, in-system notifications, consolidated analytics reporting, and automated backup infrastructure)
 
-This document defines the detailed design of the TB Chest X-ray classification system to ensure consistent and accurate implementation across all system modules. It specifies the system architecture, component interactions, data flow, and design constraints to reduce ambiguity during development and enable traceability between system requirements and implementation.
+The system is engineered to operate efficiently on low-resource clinical environments and standard web browsers.
 
-This document is intended for developers, system architects, and evaluators involved in the development, integration, and validation of the system.
+### Exclusions from Scope
+* Autonomous clinical diagnosis or final medical decision-making without a licensed human clinician in the loop (HITL).
+* Bi-directional HL7/FHIR hospital information system (HIS) protocol brokers.
+* Distributed continuous model re-training pipelines in production.
+* Medical device regulatory compliance certification (e.g., FDA Class II or DOH approval).
 
-2. ## ***Scope*** {#scope}
+## 1.3 Definitions, Acronyms, and Abbreviations
+* **AI:** Artificial Intelligence.
+* **AUC:** Area Under the Curve, a measure of classification performance.
+* **CHW:** Channel, Height, Width tensor layout format `(C, H, W)`.
+* **CLAHE:** Contrast Limited Adaptive Histogram Equalization, a localized image processing technique used to prevent noise over-amplification while highlighting lung opacities.
+* **CNN:** Convolutional Neural Network, deep neural network architecture used for image analysis.
+* **CXR:** Chest X-Ray radiograph.
+* **DICOM:** Digital Imaging and Communications in Medicine, the standard format for medical imaging (`.dcm`).
+* **DRF:** Django REST Framework.
+* **Grad-CAM:** Gradient-weighted Class Activation Mapping, generating visual explanation heatmaps highlighting regions influencing CNN decisions.
+* **HITL:** Human-in-the-Loop, clinical workflow model requiring human medical validation before treatment actions.
+* **JPEG/PNG:** Joint Photographic Experts Group / Portable Network Graphics standard image formats.
+* **MobileNetV3:** Lightweight convolutional neural network architecture optimized for efficient inference.
+* **NPY:** NumPy binary container format used for persisting preprocessed tensors.
+* **RBAC:** Role-Based Access Control, restricting system actions based on assigned user roles.
+* **SDD:** Software Design Description (IEEE Std 1016-2009).
+* **SPA:** Single Page Application.
+* **SRS:** Software Requirements Specification.
+* **TB:** Tuberculosis (*Mycobacterium tuberculosis* pulmonary infection).
+* **TB-XR:** Name of the collaborative teleradiology platform specified herein.
+* **UUID:** Universally Unique Identifier (RFC 4122).
 
-The system covers the design and implementation of a web-based TB Chest X-ray screening tool that classifies input images as high-risk or normal using a lightweight deep learning model.
+## 1.4 References
+1. IEEE Std 1016-2009, *IEEE Standard for Information Technology — Systems Design — Software Design Descriptions*.
+2. IEEE Std 830-1998, *IEEE Recommended Practice for Software Requirements Specifications*.
+3. T. Rahman et al., "Reliable Tuberculosis Detection Using Chest X-Ray With Deep Learning, Segmentation and Visualization," in *IEEE Access*, vol. 8, pp. 191586–191601, 2020. doi: 10.1109/ACCESS.2020.3031384.
+4. R. R. Selvaraju et al., "Grad-CAM: Visual Explanations from Deep Networks via Gradient-Based Localization," in *Int. J. Comput. Vis.*, vol. 128, no. 2, pp. 336–359, 2020.
+5. World Health Organization, *Chest radiography in tuberculosis detection — summary of current WHO recommendations and guidance on programmatic approaches*, Geneva: WHO, 2016.
+6. TB-XR Project Software Requirements Specification (`documentation/refactored-SRS.md`), 2026.
+7. TB-XR Endpoints Specification (`backend/ENDPOINTS.md`), 2026.
 
-The system includes the following modules:
+## 1.5 Document Conventions
+- **UML 2.5 Compliance:** Every object-oriented class diagram explicitly details three compartments: Class Name (with stereotype), Attributes (with visibility and types), and Operations (with visibility, parameters, and return types).
+- **Visibility Markers:** Public (`+`), Protected (`#`), Private (`-`), Static (`$`).
+- **Pathing and Links:** All source file references follow forward-slash conventions matching workspace roots.
 
-* X-ray Ingestion and Data Management Module  
-* Annotation and Diagnostic Review Module  
-* AI Engine & Longitudinal Monitoring Module  
-* Clinical Dashboards and Reporting
+---
 
-The system is designed to operate on low-resource environments and supports deployment on standard web platforms.
+# 2. Architectural Design
 
-The scope excludes:
+## 2.1 Architectural Overview & Layered Structure
+TB-XR utilizes a multi-tiered, decoupled client-server architecture organized into four primary operational layers:
 
-* Clinical diagnosis or final medical decision-making  
-* Integration with hospital information systems (HIS)  
-* Model training pipelines beyond initial deployment  
-* Regulatory compliance certification (e.g., FDA, DOH approval)
+```mermaid
+graph TD
+    subgraph Presentation_Layer [Presentation Layer: Client Browser]
+        UI_Tech[Technologist SPA Views]
+        UI_Rad[Radiologist SPA Views]
+        UI_Phys[Physician SPA Views]
+        Auth_Ctx[React AuthContext & RoleGuard]
+        Axios_Client[API Client & CSRF Middleware]
+    end
 
-  3. ## ***Definitions and Acronyms*** {#definitions-and-acronyms}
+    subgraph Application_Layer [Application & API Layer: Django 5 + DRF]
+        API_Gate[REST Endpoints & Session Auth]
+        Lock_Mgr[Review Concurrency Lock Manager]
+        Prog_Eng[ProgressionService Engine]
+        Report_Eng[Report & Notification Engine]
+        Analytics_Eng[Analytics Aggregation Service]
+    end
 
-* **AI:** Artificial Intelligence.  
-* **CNN:** Convolutional Neural Network, a class of deep neural networks commonly applied to analyzing visual imagery, used here for TB baseline scoring.  
-* **DICOM:** Digital Imaging and Communications in Medicine, the international standard to transmit, store, retrieve, print, process, and display medical imaging information.  
-* **JPEG:** Joint Photographic Experts Group, a standard image format.  
-* **RBAC:** Role-Based Access Control, restricting system access to authorized users based on their role.  
-* **SRS:** Software Requirements Specification.  
-* **TB:** Tuberculosis.  
-* **TB-XR:** The name of the collaborative teleradiology platform being specified.  
-* **CXR:** stands for Chest X-Ray (or chest radiograph), a rapid, noninvasive imaging test that uses a small amount of radiation to create images of the lungs, heart, airways, and chest bones.  
-* **AUC:** Area Under the Curve, a measure of a classification model’s discriminative ability.  
-* **HITL:** Human-in-the-loop, workflow model requiring human clinical verification of AI outputs.
+    subgraph AI_Imaging_Layer [AI Engine & Standardization Pipeline]
+        Quality_Gate[Quality Assessment: OpenCV Laplacian/Exposure]
+        Preproc_Util[CLAHE & 224x224 CHW Normalizer: PIL/PyDICOM]
+        Torch_Inference[MobileNetV3 PyTorch Model: v1.0.0]
+        GradCAM_Util[Grad-CAM Heatmap Generator]
+        Puppeteer_Svc[Node.js Headless Puppeteer PDF Service]
+    end
 
-  4. ## ***References*** {#references}
+    subgraph Data_Storage_Layer [Persistence & Storage Layer]
+        Relational_DB[(Relational DB: SQLite / PostgreSQL)]
+        Media_Store[(File Storage: media/raw, processed, heatmaps)]
+        Backup_Svc[Cryptographic Backup & Restore Scripts]
+    end
 
-T. Rahman et al., “Reliable Tuberculosis Detection Using Chest X-Ray With Deep Learning, Segmentation and Visualization,” in IEEE Access, vol. 8, pp. 191586–191601, 2020, doi: 10.1109/ACCESS.2020.3031384.
+    UI_Tech --> Auth_Ctx
+    UI_Rad --> Auth_Ctx
+    UI_Phys --> Auth_Ctx
+    Auth_Ctx --> Axios_Client
+    Axios_Client -->|HTTP REST JSON / Multipart| API_Gate
 
-2. # **Architectural Design** {#architectural-design}
+    API_Gate --> Lock_Mgr
+    API_Gate --> Prog_Eng
+    API_Gate --> Report_Eng
+    API_Gate --> Analytics_Eng
 
-TB-XR follows a client-server architecture with a React front-end and a Django REST back-end.
+    API_Gate -->|File Stream| Quality_Gate
+    Quality_Gate -->|Standardization| Preproc_Util
+    Preproc_Util -->|NPY Tensor| Torch_Inference
+    Torch_Inference -->|Saliency Overlay| GradCAM_Util
+    Report_Eng -->|Compiled HTML| Puppeteer_Svc
 
-**Front-End Layer**
+    API_Gate --> Relational_DB
+    Report_Eng --> Relational_DB
+    Prog_Eng --> Relational_DB
+    Preproc_Util --> Media_Store
+    GradCAM_Util --> Media_Store
+    Puppeteer_Svc --> Media_Store
+    Relational_DB --> Backup_Svc
+    Media_Store --> Backup_Svc
+```
 
-- React (Vite) single-page application
-- Tailwind CSS utility classes for styling
-- Role-based routing handled in AuthContext
+1. **Client Presentation Layer (Frontend):** React 18 SPA built with Vite, styled with Tailwind CSS, utilizing `AuthContext` for session management and `RoleGuard` for role-based navigation.
+2. **Application / API Layer (Backend):** Django 5 and Django REST Framework providing authenticated REST endpoints, session security, CSRF protection, `@role_required` access controls, and business logic services.
+3. **AI Engine & Imaging Pipeline Layer:** Python/PyTorch sub-system executing image quality checks, DICOM parsing, CLAHE standardization, MobileNetV3 inference, Grad-CAM heatmap rendering, and Puppeteer headless PDF generation.
+4. **Data Persistence & Storage Layer:** Relational database (SQLite/PostgreSQL) storing master clinical models, file system storage for raw/processed images and heatmaps, and automated cryptographic backup utilities.
 
-**Back-End Layer**
+---
 
-- Django + Django REST Framework (DRF)
-- Session authentication with CSRF protection
-- Role-based access via role_required decorator
-- OpenAPI schema via drf-spectacular
+## 2.2 High-Level System Architecture Diagram
 
-**Data Layer**
+```mermaid
+graph LR
+    subgraph Users [Clinical User Classes]
+        T[Radiologic Technologist]
+        R[Radiologist]
+        P[Attending Physician]
+    end
 
-- PostgreSQL (if configured) or SQLite for development
-- Core tables: User, Patient, XrayRecord, ProcessedImage, Annotation
+    subgraph Web_Client [Frontend React SPA]
+        Router[React Router & RoleGuard]
+        Upload_UI[Upload & Quality Prompt]
+        Review_UI[Annotation Canvas & Viewer]
+        Report_UI[Report Editor & Severity Select]
+        Dash_UI[Dashboards & Analytics Charts]
+    end
 
-**Imaging Pipeline**
+    subgraph Backend_Server [Django REST Backend API]
+        Endpoints[API Controllers / Views]
+        Auth_Sec[Session & CSRF Validator]
+        Lock_Engine[Lock Expiry & Concurrency Guard]
+        Serializers[DRF Serializers & Validators]
+    end
 
-- DICOM conversion using pydicom
-- CLAHE enhancement using OpenCV
-- Preprocessing to 224x224, RGB, ImageNet-normalized CHW tensor (.npy)
+    subgraph Processing_Engines [AI & Document Services]
+        Quality_Module[OpenCV Quality Assessor]
+        Standardizer[PyDICOM & CLAHE Normalizer]
+        Model_Worker[MobileNetV3 PyTorch Engine]
+        PDF_Worker[Node Puppeteer Generator]
+    end
 
-3. # **Detailed Design** {#detailed-design}
+    subgraph Storage [Databases & Storage]
+        DB[(PostgreSQL / SQLite Database)]
+        Disk[(Media Filesystem Storage)]
+    end
 
-### ***Module 1: X-ray Ingestion and Data Management*** {#module-1:-x-ray-ingestion-and-data-management}
+    T -->|Ingests CXR| Upload_UI
+    R -->|Annotates & Diagnoses| Review_UI
+    R -->|Writes Reports| Report_UI
+    P -->|Monitors & Evaluates| Dash_UI
 
-#### ***1.1 Upload Chest X-ray for TB Risk Screening***
+    Upload_UI --> Router
+    Review_UI --> Router
+    Report_UI --> Router
+    Dash_UI --> Router
 
-**User Interface Design**
+    Router -->|HTTPS / JSON / Session| Endpoints
+    Endpoints --> Auth_Sec
+    Endpoints --> Lock_Engine
+    Endpoints --> Serializers
 
-Radiologic technologists select a patient from the Patients list, open the patient detail view, and click "Upload X-ray" to open a modal upload form. The form validates file type and size, shows a preview for JPG/PNG, and submits the upload. On success, a confirmation panel displays the transaction ID, timestamp, and status.
+    Endpoints -->|Assess Quality| Quality_Module
+    Endpoints -->|Standardize Image| Standardizer
+    Endpoints -->|Run Inference| Model_Worker
+    Endpoints -->|Generate PDF| PDF_Worker
 
-**Front-end component(s)**
+    Serializers -->|ORM Read/Write| DB
+    Standardizer -->|Save Processed PNG & NPY| Disk
+    Model_Worker -->|Save Heatmap JPG| Disk
+    PDF_Worker -->|Stream Report PDF| Disk
+```
 
+---
+
+## 2.3 Overall Domain Entity Class Diagram
+The core domain model is structured around 10 primary entities spanning user identity, clinical master data, image processing transactions, AI outputs, diagnostic reports, notifications, and progression audit histories.
+
+```mermaid
+classDiagram
+    class User {
+        +int id
+        +string username
+        +string password
+        +string first_name
+        +string last_name
+        +string email
+        +string role
+        +bool is_active
+        +bool is_staff
+        +bool is_superuser
+        +datetime date_joined
+        +datetime last_login
+        +get_full_name() string
+        +get_short_name() string
+        +get_role_display() string
+        +check_password(raw_password: str) bool
+        +set_password(raw_password: str) void
+    }
+
+    class Patient {
+        +int patient_id
+        +string first_name
+        +string last_name
+        +date date_of_birth
+        +string sex
+        +string country_code
+        +string contact_number
+        +datetime date_created
+        +get_formatted_contact() string
+        +get_age() int
+        +__str__() string
+    }
+
+    class XrayRecord {
+        +int id
+        +UUID transaction_id
+        +int patient_id
+        +FileField raw_image
+        +datetime upload_timestamp
+        +string status
+        +int uploader_id
+        +string file_format
+        +int active_reviewer_id
+        +datetime lock_timestamp
+        +string status_before_review
+        +review_lock_timeout_minutes() int
+        +lock_has_expired(now: datetime) bool
+        +acquire_lock(reviewer: User, now: datetime) bool
+        +release_lock() void
+        +start_review(reviewer: User, now: datetime) bool
+        +clear_if_expired(now: datetime) bool
+        +clear_expired_locks(now: datetime)$ void
+        +__str__() string
+    }
+
+    class ProcessedImage {
+        +int id
+        +int xray_record_id
+        +ImageField processed_image
+        +json preprocessing_metadata
+        +get_absolute_url() string
+        +__str__() string
+    }
+
+    class Annotation {
+        +int id
+        +int xray_record_id
+        +int radiologist_id
+        +json bounding_boxes
+        +string notes
+        +datetime submitted_at
+        +get_box_count() int
+        +__str__() string
+    }
+
+    class AIResult {
+        +int id
+        +int xray_record_id
+        +float risk_score
+        +string risk_label
+        +ImageField heatmap_image
+        +string model_version
+        +datetime generated_at
+        +is_high_risk() bool
+        +get_heatmap_url() string
+        +__str__() string
+    }
+
+    class Report {
+        +int id
+        +int xray_record_id
+        +string findings
+        +string impression
+        +string recommendation
+        +string severity
+        +int created_by_id
+        +string status
+        +datetime created_at
+        +datetime updated_at
+        +is_submitted() bool
+        +__str__() string
+    }
+
+    class Notification {
+        +int id
+        +int recipient_id
+        +string message
+        +bool read_status
+        +datetime created_at
+        +datetime updated_at
+        +mark_as_read() void
+        +__str__() string
+    }
+
+    class ProgressionStatus {
+        +int id
+        +int patient_id
+        +int xray_record_id
+        +int previous_record_id
+        +string status
+        +float score
+        +float previous_score
+        +float delta
+        +float abs_delta
+        +float threshold
+        +bool comparison_available
+        +string reason
+        +string source
+        +string clinical_note
+        +bool is_overridden
+        +int overridden_by_id
+        +datetime override_timestamp
+        +datetime recorded_at
+        +is_worsening() bool
+        +__str__() string
+    }
+
+    class ProgressionOverrideAuditLog {
+        +int id
+        +int patient_id
+        +int xray_record_id
+        +int radiologist_id
+        +string previous_status
+        +string new_status
+        +string clinical_note
+        +datetime created_at
+        +get_summary() string
+        +__str__() string
+    }
+
+    Patient "1" --> "*" XrayRecord : patient
+    User "1" --> "*" XrayRecord : uploader
+    User "0..1" --> "*" XrayRecord : active_reviewer
+    XrayRecord "1" *-- "1" ProcessedImage : xray_record
+    XrayRecord "1" *-- "0..1" AIResult : xray_record
+    XrayRecord "1" *-- "*" Annotation : xray_record
+    User "0..1" --> "*" Annotation : radiologist
+    XrayRecord "1" *-- "0..1" Report : xray_record
+    User "0..1" --> "*" Report : created_by
+    User "1" --> "*" Notification : recipient
+    Patient "1" --> "*" ProgressionStatus : patient
+    XrayRecord "1" --> "*" ProgressionStatus : xray_record
+    XrayRecord "0..1" --> "*" ProgressionStatus : previous_record
+    User "0..1" --> "*" ProgressionStatus : overridden_by
+    Patient "1" --> "*" ProgressionOverrideAuditLog : patient
+    XrayRecord "1" --> "*" ProgressionOverrideAuditLog : xray_record
+    User "0..1" --> "*" ProgressionOverrideAuditLog : radiologist
+```
+
+---
+
+# 3. Detailed Design: System Modules
+
+## Module 1: X-ray Ingestion and Data Management
+
+### 1.1 Upload Chest X-ray for TB Risk Screening
+
+#### User Interface Design
+Radiologic technologists select a patient from `PatientsPage`, navigate to `PatientDetailPage`, and click "Upload X-ray". The upload modal (`XrayUploadForm`) validates file type (`.png`, `.jpg`, `.jpeg`, `.dcm`) and file size (maximum 50MB), provides an immediate visual preview for standard image types, and initiates upload progress. 
+
+Integrated into this ingestion step is the **Image Quality Gate**: if the image fails algorithmic quality checks (< 0.60 threshold due to blur, underexposure, overexposure, or low contrast), `XrayUploadForm` halts automated inference and displays an informative warning dialog with the detected defect reasons. The technologist is prompted to either re-upload or click "Proceed Anyway" (`force_proceed=True`). Upon successful ingestion, `UploadConfirmation` displays the assigned transaction UUID, acquisition timestamp, and status.
+
+#### Front-End Component(s)
 | Component Name | Description and Purpose | Component Type / Format |
-| --- | --- | --- |
-| PatientsPage | Lists registered patients and provides entry point to a patient profile. | React page |
-| PatientTable | Displays searchable patient list; row click opens PatientDetailPage. | React component |
-| PatientSearchBar | Filters patients by name in the list view. | React component |
-| PatientDetailPage | Patient profile view with "Upload X-ray" action. | React page |
-| XrayUploadForm | Drag/drop file upload with type/size validation and preview. | React component |
-| UploadConfirmation | Shows transaction ID, timestamp, and status after upload. | React component |
-| SuccessBanner | Visual success header used inside UploadConfirmation. | React component |
-| Modal, Button | Reusable UI controls for dialog and submit actions. | React components |
+| :--- | :--- | :--- |
+| `PatientsPage` | Registered patient directory with search and intake triggers. | React Page (`JSX`) |
+| `PatientDetailPage` | Profile view displaying demographic card, CXR history, and upload trigger. | React Page (`JSX`) |
+| `XrayUploadForm` | Drag-and-drop file ingestion modal with validation, quality feedback, and force-proceed bypass. | React Component (`JSX`) |
+| `UploadConfirmation` | Renders transaction UUID, receipt timestamp, and case status. | React Component (`JSX`) |
+| `SuccessBanner` | Container displaying upload success messaging. | React Component (`JSX`) |
+| `ErrorBanner` | Alert container displaying quality gate failure reasons and bypass options. | React Component (`JSX`) |
 
-**Back-end component(s)**
-
+#### Back-End Component(s)
 | Component Name | Description and Purpose | Component Type / Format |
-| --- | --- | --- |
-| upload_xray | Handles multipart upload and creates XrayRecord. | Django REST view (POST /api/imaging/patients/<patient_id>/xray/upload/) |
-| XrayRecordUploadSerializer | Validates size and extension; converts DICOM to PNG and creates ProcessedImage. | DRF serializer |
-| preprocess_xray | Resizes, normalizes, and exports .npy tensor for AI. | Python utility |
-| XrayRecord | Stores transaction metadata and raw file path. | Django model |
-| ProcessedImage | Stores processed image and preprocessing metadata. | Django model |
-| XrayRecordSerializer | API response payload for created record. | DRF serializer |
+| :--- | :--- | :--- |
+| `upload_xray` | Multipart upload handler executing validation, quality assessment, and record creation. | DRF API View (`POST /api/imaging/patients/<patient_id>/xray/upload/`) |
+| `XrayRecordUploadSerializer` | Validates file extensions (`dcm`, `png`, `jpg`), size limit (50MB), and initializes records. | DRF Serializer |
+| `assess_quality` | Evaluates exposure, contrast, resolution, and Laplacian blur variance against 0.60 threshold. | Python Utility (`ai/scripts/quality.py`) |
+| `XrayRecord` | Master entity recording transaction UUID, raw media path, format, and status. | Django Model (`ORM`) |
+| `ProcessedImage` | Child entity holding enhanced standard image and tensor paths. | Django Model (`ORM`) |
 
-**Object-Oriented Components**
+#### Object-Oriented Components
 
-- Patient 1..* XrayRecord
-- User (uploader) 1..* XrayRecord
-- XrayRecord 1..1 ProcessedImage
+```mermaid
+classDiagram
+    class Patient {
+        +int patient_id
+        +string first_name
+        +string last_name
+        +get_full_name() string
+    }
 
-**Sequence Diagram (text)**
+    class User {
+        +int id
+        +string username
+        +string role
+        +get_role_display() string
+    }
 
-1. Technologist opens PatientDetailPage and selects a file in XrayUploadForm.
-2. Front-end submits multipart upload to /api/imaging/patients/<patient_id>/xray/upload/.
-3. XrayRecordUploadSerializer validates size/extension and creates XrayRecord.
-4. If DICOM, the file is converted to PNG and a ProcessedImage is created.
-5. upload_xray applies CLAHE enhancement and calls preprocess_xray to save the .npy tensor.
-6. Response returns transaction_id, status, and upload_timestamp for confirmation.
+    class XrayRecord {
+        +UUID transaction_id
+        +string status
+        +string file_format
+        +datetime upload_timestamp
+        +FileField raw_image
+        +__str__() string
+    }
 
-**Data Design**
+    class ProcessedImage {
+        +ImageField processed_image
+        +json preprocessing_metadata
+        +get_absolute_url() string
+        +__str__() string
+    }
 
-- XrayRecord
-  - transaction_id (UUID, unique)
-  - patient_id (FK -> Patient.patient_id)
-  - raw_image (file path under media/raw/)
-  - upload_timestamp (datetime)
-  - status (PENDING, IN_REVIEW, COMPLETED)
-  - uploader_id (FK -> User.id)
-  - file_format (string)
+    class XrayRecordUploadSerializer {
+        +FileField raw_image
+        +bool force_proceed
+        +validate_raw_image(value: File) File
+        +create(validated_data: dict) XrayRecord
+    }
 
+    class QualityAssessor {
+        +float QUALITY_THRESHOLD
+        +set QUALITY_REASONS
+        +assess_quality(image: Image)$ dict
+    }
 
-#### ***1.2 Automated Image Standardization***
+    class UploadXrayController {
+        +string route
+        +list allowed_roles
+        +upload_xray(request: Request, patient_id: int) Response
+    }
 
-**User Interface Design**
+    class XrayUploadForm {
+        +File selectedFile
+        +bool isSubmitting
+        +string previewUrl
+        +dict qualityWarning
+        +handleFileSelect(e: Event) void
+        +handleSubmit(e: Event) void
+        +handleForceProceed() void
+        +validateFile(file: File) bool
+    }
 
-Image standardization runs server-side during upload. There is no direct UI for preprocessing, but the upload confirmation indicates the record is ready for review.
+    class UploadConfirmation {
+        +string transactionId
+        +string status
+        +datetime timestamp
+        +render() JSX
+    }
 
-**Front-end component(s)**
+    Patient "1" --> "*" XrayRecord : patient
+    User "1" --> "*" XrayRecord : uploader
+    XrayRecord "1" *-- "1" ProcessedImage : xray_record
+    UploadXrayController ..> XrayRecordUploadSerializer : validates with
+    UploadXrayController ..> QualityAssessor : checks quality
+    UploadXrayController ..> XrayRecord : persists
+    UploadXrayController ..> ProcessedImage : creates
+    XrayUploadForm ..> UploadXrayController : POST multipart/form-data
+    UploadConfirmation ..> XrayRecord : renders receipt
+```
 
+#### Sequence Diagram
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Tech as Radiologic Technologist
+    participant Form as XrayUploadForm
+    participant View as UploadXrayController
+    participant Ser as XrayRecordUploadSerializer
+    participant Quality as QualityAssessor
+    participant ModelRec as XrayRecord
+    participant DB as Relational Database
+    participant Confirm as UploadConfirmation
+
+    Tech->>Form: Select CXR file (DICOM / PNG / JPEG)
+    Form->>Form: Validate file extension & size <= 50MB
+    Form->>View: POST /api/imaging/patients/{id}/xray/upload/
+    View->>Ser: Instantiate with request.data & request.FILES
+    Ser->>Ser: validate_raw_image()
+    View->>Quality: assess_quality(image)
+    alt Quality < 0.60 and force_proceed is False
+        Quality-->>View: {status: 'LOW_QUALITY', score: 0.42, reasons: ['blurry']}
+        View-->>Form: HTTP 200 {status: 'quality_check_failed', can_proceed: true}
+        Form-->>Tech: Display Quality Warning Modal (Blurry)
+        Tech->>Form: Click "Proceed Anyway"
+        Form->>View: POST /api/imaging/patients/{id}/xray/upload/ {force_proceed: true}
+    end
+    Ser->>ModelRec: Create XrayRecord(status='PENDING')
+    ModelRec->>DB: INSERT into imaging_xrayrecord
+    DB-->>ModelRec: Save OK (transaction_id assigned)
+    View-->>Form: HTTP 200 OK {transaction_id, status, upload_timestamp}
+    Form->>Confirm: Mount confirmation dialog
+    Confirm-->>Tech: Display transaction receipt
+```
+
+#### Data Design
+
+```mermaid
+erDiagram
+    PROCESSED_IMAGE {
+        int id PK
+        uuid xray_record_id FK
+        string processed_image
+        json preprocessing_metadata
+    }
+
+    XRAY_RECORD {
+        uuid transaction_id PK
+        int patient_id FK
+        int uploader_id FK
+        string raw_image
+        datetime upload_timestamp
+        string status
+        string file_format
+    }
+
+    USER {
+        int id PK
+        string username
+        string role
+    }
+
+    XRAY_RECORD ||--o| PROCESSED_IMAGE : "has"
+    USER ||--o{ XRAY_RECORD : "uploads"
+```
+
+- **Table:** `imaging_xrayrecord`
+  - `id` (int, Primary Key, Auto-increment)
+  - `transaction_id` (UUID, Unique, Indexed)
+  - `patient_id` (int, Foreign Key -> `patients_patient.patient_id`, CASCADE)
+  - `raw_image` (varchar(255), File path relative to `media/raw/`)
+  - `upload_timestamp` (datetime, auto_now_add=True)
+  - `status` (varchar(20), Choices: `PENDING`, `IN_REVIEW`, `AI_REVIEWED`, `MANUAL_REVIEW`, `COMPLETED`)
+  - `uploader_id` (int, Foreign Key -> `accounts_user.id`, CASCADE)
+  - `file_format` (varchar(10), e.g., 'jpg', 'png', 'dcm')
+
+---
+
+### 1.2 Automated Image Standardization
+
+#### User Interface Design
+Standardization is an autonomous server-side pipeline that executes automatically during upload. Visual progress indicators in `XrayUploadForm` confirm standardization before the record transitions to review readiness.
+
+#### Front-End Component(s)
 | Component Name | Description and Purpose | Component Type / Format |
-| --- | --- | --- |
-| UploadConfirmation | Indicates the upload was processed and queued. | React component |
+| :--- | :--- | :--- |
+| `UploadConfirmation` | Displays standardization completion state. | React Component (`JSX`) |
 
-**Back-end component(s)**
-
+#### Back-End Component(s)
 | Component Name | Description and Purpose | Component Type / Format |
-| --- | --- | --- |
-| XrayRecordUploadSerializer | Converts DICOM to PNG, validates pixel data, and creates ProcessedImage. | DRF serializer |
-| upload_xray | Applies CLAHE enhancement and triggers preprocess_xray. | Django REST view |
-| preprocess_xray | Converts to 224x224 RGB, normalizes to ImageNet mean/std, saves CHW .npy tensor. | Python utility |
-| ProcessedImage | Stores processed image path and preprocessing metadata (ai_tensor_path, ai_tensor_ready). | Django model |
+| :--- | :--- | :--- |
+| `preprocess_xray` | Medical imaging utility converting raw radiographs to 224x224 RGB ImageNet tensors. | Python Utility (`apps/imaging/preprocessing.py`) |
+| `ProcessedImage` | Child model holding the enhanced PNG file and preprocessing metadata JSON. | Django Model (`ORM`) |
 
-**Object-Oriented Components**
+#### Object-Oriented Components
 
-- ProcessedImage 1..1 XrayRecord
+```mermaid
+classDiagram
+    class XrayRecord {
+        +UUID transaction_id
+        +FileField raw_image
+        +string file_format
+        +__str__() string
+    }
 
-**Sequence Diagram (text)**
+    class ProcessedImage {
+        +int id
+        +int xray_record_id
+        +ImageField processed_image
+        +json preprocessing_metadata
+        +get_absolute_url() string
+        +__str__() string
+    }
 
-1. upload_xray retrieves raw or converted image path.
-2. CLAHE enhancement is applied and stored as processed_image.
-3. preprocess_xray generates a normalized .npy tensor for AI inference and writes ai_tensor_path.
-4. preprocessing_metadata is updated with ai_tensor_ready = true.
+    class PreprocessPipeline {
+        +int TARGET_SIZE
+        +list IMAGENET_MEAN
+        +list IMAGENET_STD
+        +preprocess_xray(input_path: str)$ str
+        +_load_image(input_path: Path)$ Image
+        +_prepare_image(image: Image)$ Image
+        +_to_normalized_chw_tensor(image: Image)$ ndarray
+    }
 
-**Data Design**
+    class UploadXrayController {
+        +string route
+        +list allowed_roles
+        +upload_xray(request: Request, patient_id: int) Response
+    }
 
-- ProcessedImage
-  - xray_record_id (FK -> XrayRecord)
-  - processed_image (file path under media/xray_processed/)
-  - preprocessing_metadata (JSON: source, clahe_settings, ai_tensor_path, ai_tensor_ready)
+    XrayRecord "1" *-- "1" ProcessedImage : owns
+    UploadXrayController ..> PreprocessPipeline : invokes
+    UploadXrayController ..> ProcessedImage : stores path & metadata
+```
 
-#### ***1.3  Centralized Patient Profiling and Storage***
+#### Sequence Diagram
 
-**User Interface Design**
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Controller as UploadXrayController
+    participant Pipeline as PreprocessPipeline
+    participant FS as Media File Storage
+    participant DB as Relational Database
 
-Patient profiling is performed in the Patients page. Technologists can search existing patients, open a patient profile, or register a new patient using a modal form. The patient profile card surfaces demographic details for use during upload and review.
-The current UI includes MRN and total_records display fields, but these values are placeholders and are not returned by the API yet.
+    Controller->>Pipeline: preprocess_xray(raw_image_path)
+    alt File is DICOM (.dcm)
+        Pipeline->>Pipeline: pydicom.dcmread() & extract pixel_array
+        Pipeline->>Pipeline: Apply RescaleSlope, RescaleIntercept, WindowCenter/Width
+        Pipeline->>Pipeline: Invert if MONOCHROME1
+    else Standard Image (.png/.jpg)
+        Pipeline->>Pipeline: PIL.Image.open()
+    end
+    Pipeline->>Pipeline: Convert to Grayscale ("L") -> 3-channel RGB
+    Pipeline->>Pipeline: Bilinear resize to (224, 224)
+    Pipeline->>Pipeline: Normalize to ImageNet mean [0.485, 0.456, 0.406] & std [0.229, 0.224, 0.225]
+    Pipeline->>FS: Save normalized CHW array as {stem}_processed.npy
+    Pipeline-->>Controller: Return output tensor path
+    Controller->>DB: INSERT/UPDATE ProcessedImage(processed_image, metadata)
+```
 
-**Front-end component(s)**
+#### Data Design
 
+```mermaid
+erDiagram
+    XRAY_RECORD {
+        uuid transaction_id PK
+        string raw_image
+        string file_format
+        string status
+    }
+
+    PROCESSED_IMAGE {
+        int id PK
+        uuid xray_record_id FK
+        string processed_image
+        json preprocessing_metadata
+    }
+
+    XRAY_RECORD ||--|| PROCESSED_IMAGE : "standardizes_into"
+```
+
+- **Table:** `imaging_processedimage`
+  - `id` (int, Primary Key, Auto-increment)
+  - `xray_record_id` (int, One-to-One Foreign Key -> `imaging_xrayrecord.id`, CASCADE)
+  - `processed_image` (varchar(255), File path relative to `media/xray_processed/`)
+  - `preprocessing_metadata` (json, Stores source format, CLAHE parameters, `ai_tensor_path`, `ai_tensor_ready`)
+
+---
+
+### 1.3 Centralized Patient Profiling and Storage
+
+#### User Interface Design
+The `PatientsPage` interface provides a searchable master patient list with pagination, real-time debounced search across names and numeric IDs, and a patient registration modal (`PatientCard`). Technologists submit demographics using `PatientForm`. Phone numbers are parsed and formatted into international E.164 notation. `PatientProfileCard` displays patient identity headers across diagnostic and review screens.
+
+#### Front-End Component(s)
 | Component Name | Description and Purpose | Component Type / Format |
-| --- | --- | --- |
-| PatientsPage | Entry point for listing and creating patient profiles. | React page |
-| PatientTable | Displays all patients; row click opens detail view. | React component |
-| PatientSearchBar | Filters patient list by name. | React component |
-| PatientCard | Modal container for registering a new patient. | React component |
-| PatientForm | Submits patient demographics to backend. | React component |
-| PatientProfileCard | Displays patient demographics on detail view. | React component |
+| :--- | :--- | :--- |
+| `PatientsPage` | Master directory view with search and registration triggers. | React Page (`JSX`) |
+| `PatientTable` | Tabular display of registered patients with row-level routing. | React Component (`JSX`) |
+| `PatientSearchBar` | Live debounce search filter matching first/last names or patient ID. | React Component (`JSX`) |
+| `PatientCard` | Dialog container wrapping the patient intake form. | React Component (`JSX`) |
+| `PatientForm` | Validated demographic intake form (Name, DOB, Sex, Country, Phone). | React Component (`JSX`) |
+| `PatientProfileCard` | Read-only demographic card displaying patient identity. | React Component (`JSX`) |
 
-**Back-end component(s)**
-
+#### Back-End Component(s)
 | Component Name | Description and Purpose | Component Type / Format |
-| --- | --- | --- |
-| register_patient | Creates Patient record (RADIOLOGIC_TECH only). | Django REST view (POST /api/patients/register/) |
-| patient_list | Lists all patients. | Django REST view (GET /api/patients/) |
-| patient_detail | Returns patient detail by ID. | Django REST view (GET /api/patients/<patient_id>/) |
-| search_patients | Name search across first/last name. | Django REST view (GET /api/patients/search/) |
-| PatientCreateSerializer / PatientSerializer | Validation and response payloads. | DRF serializers |
-| Patient | Patient master record. | Django model |
+| :--- | :--- | :--- |
+| `register_patient` | Creates a new patient record (Restricted to `RADIOLOGIC_TECH`). | DRF API View (`POST /api/patients/register/`) |
+| `patient_detail` | Retrieves single patient demographic record by primary key. | DRF API View (`GET /api/patients/<patient_id>/`) |
+| `search_patients` | Case-insensitive multi-field search across first name, last name, and ID. | DRF API View (`GET /api/patients/search/?name=`) |
+| `patient_list` | Returns all patients ordered by last name, first name. | DRF API View (`GET /api/patients/`) |
+| `PatientCreateSerializer` | Validates demographics and normalizes phone numbers to E.164. | DRF Serializer |
+| `PatientSerializer` | Serializes complete patient records with international phone formatting. | DRF Serializer |
+| `Patient` | Master patient domain entity. | Django Model (`ORM`) |
 
-**Object-Oriented Components**
+#### Object-Oriented Components
 
-- Patient (master entity used by imaging and reporting)
+```mermaid
+classDiagram
+    class Patient {
+        +int patient_id
+        +string first_name
+        +string last_name
+        +date date_of_birth
+        +string sex
+        +string country_code
+        +string contact_number
+        +datetime date_created
+        +get_formatted_contact() string
+        +get_age() int
+        +__str__() string
+    }
 
-**Sequence Diagram (text)**
+    class PatientCreateSerializer {
+        +string first_name
+        +string last_name
+        +date date_of_birth
+        +string sex
+        +string country_code
+        +string contact_number
+        +validate_contact_number(value: str) str
+        +create(validated_data: dict) Patient
+    }
 
-1. Technologist opens PatientsPage and submits PatientForm.
-2. Front-end POSTs to /api/patients/register/ with demographics.
-3. register_patient validates via PatientCreateSerializer and saves Patient.
-4. Response returns PatientSerializer payload and Location header.
+    class PatientSerializer {
+        +int patient_id
+        +string first_name
+        +string last_name
+        +date date_of_birth
+        +string sex
+        +string country_code
+        +string contact_number
+        +datetime date_created
+        +to_representation(instance: Patient) dict
+    }
 
-**Data Design**
+    class PatientController {
+        +string base_route
+        +list allowed_roles
+        +register_patient(request: Request) Response
+        +patient_detail(request: Request, patient_id: int) Response
+        +search_patients(request: Request) Response
+        +patient_list(request: Request) Response
+    }
 
-- Patient
-  - patient_id (PK, auto integer)
-  - first_name, last_name (string)
-  - date_of_birth (date)
-  - sex (M, F, O)
-  - contact_number (string)
-  - date_created (datetime)
+    class PatientForm {
+        +string firstName
+        +string lastName
+        +string dob
+        +string sex
+        +string contactNumber
+        +handleSubmit(e: Event) void
+        +validate() bool
+    }
 
-    
+    PatientController ..> PatientCreateSerializer : validates input
+    PatientController ..> PatientSerializer : formats output
+    PatientController ..> Patient : queries and saves
+    PatientForm ..> PatientController : POST /api/patients/register/
+```
 
-. . .
+#### Sequence Diagram
 
-### ***Module 2: Annotation and Diagnostic Review*** {#module-2:-annotation-and-diagnostic-review}
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Tech as Radiologic Technologist
+    participant Form as PatientForm
+    participant View as PatientController
+    participant Ser as PatientCreateSerializer
+    participant Model as Patient
+    participant DB as Relational Database
 
-#### ***2.1  Remote Access Queue***
+    Tech->>Form: Enter demographics (First, Last, DOB, Sex, Phone)
+    Form->>Form: Client-side validation
+    Form->>View: POST /api/patients/register/ {data}
+    View->>Ser: Initialize PatientCreateSerializer(data)
+    Ser->>Ser: Validate fields & parse E.164 phone
+    Ser->>Model: Create Patient instance
+    Model->>DB: INSERT INTO patients_patient
+    DB-->>Model: Assigned patient_id
+    View-->>Form: HTTP 201 Created {Location: /api/patients/{id}/, data}
+    Form-->>Tech: Display success & route to patient profile
+```
 
-**User Interface Design:**
+#### Data Design
 
-The radiologist dashboard lists all X-ray records in PENDING status. The list is paginated and supports search and status filters. Each row shows patient name, transaction ID, upload time, and uploader username. Selecting "Review" navigates to a review route (UI integration pending).
+```mermaid
+erDiagram
+    PATIENT {
+        int patient_id PK
+        string first_name
+        string last_name
+        date date_of_birth
+        string sex
+        string country_code
+        string contact_number
+        datetime date_created
+    }
 
-**Front-end component(s)**
+    XRAY_RECORD {
+        uuid transaction_id PK
+        int patient_id FK
+        string status
+        datetime upload_timestamp
+    }
 
+    PATIENT ||--o{ XRAY_RECORD : "owns"
+```
+
+- **Table:** `patients_patient`
+  - `patient_id` (int, Primary Key, Auto-increment)
+  - `first_name` (varchar(100), Not Null)
+  - `last_name` (varchar(100), Not Null)
+  - `date_of_birth` (date, Not Null)
+  - `sex` (varchar(1), Choices: `M`, `F`, `O`, Not Null)
+  - `country_code` (varchar(2), Default: 'PH')
+  - `contact_number` (varchar(20), Stored in E.164 international format)
+  - `date_created` (datetime, auto_now_add=True)
+
+---
+
+## Module 2: Annotation and Diagnostic Review
+
+### 2.1 Remote Access Queue
+
+#### User Interface Design
+The `RadiologistDashboardPage` renders a paginated, sortable worklist (`RadiologistDashboardTable`) displaying cases awaiting radiologist evaluation. The queue provides full-text search across patient names and transaction UUIDs, status filtering (`PENDING`, `IN_REVIEW`, `AI_REVIEWED`, `MANUAL_REVIEW`, `COMPLETED`), and AI risk categorization badges (`LOW`, `MODERATE`, `HIGH`). Stale review locks older than 60 minutes are automatically cleared upon worklist access. Selecting "Review" initiates a concurrency-safe review session.
+
+#### Front-End Component(s)
 | Component Name | Description and Purpose | Component Type / Format |
-| --- | --- | --- |
-| RadiologistDashboardPage | Fetches queue data, handles pagination and filters. | React page |
-| RadiologistDashboardTable | Renders queue rows and review actions. | React component |
-| FilterBar | Search + status dropdown filters. | React component |
-| StatCard, StatusBadge | Summary counts and status labels. | React components |
+| :--- | :--- | :--- |
+| `RadiologistDashboardPage` | Worklist controller managing pagination, debounced search, and status filters. | React Page (`JSX`) |
+| `RadiologistDashboardTable` | Renders queue rows, patient identifiers, AI risk badges, and review links. | React Component (`JSX`) |
+| `FilterBar` | Search input, status dropdown, and AI risk label filter controls. | React Component (`JSX`) |
+| `AIRiskBadge` | Visual indicator reflecting AI-assigned risk tiers (Green/Amber/Red). | React Component (`JSX`) |
 
-**Back-end component(s)**
-
+#### Back-End Component(s)
 | Component Name | Description and Purpose | Component Type / Format |
-| --- | --- | --- |
-| radiologist_queue | Returns PENDING X-ray records with pagination and filters. | Django REST view (GET /api/imaging/queue/) |
-| RadiologistQueueSerializer | Serializes record, patient, and uploader info. | DRF serializer |
+| :--- | :--- | :--- |
+| `radiologist_queue` | Worklist endpoint returning paginated records with expired lock purging. | DRF API View (`GET /api/imaging/queue/`) |
+| `RadiologistQueueSerializer` | Serializes records, patient demographics, uploader identities, and AI results. | DRF Serializer |
+| `XrayRecord` | Domain model providing lock status and query filtering scopes. | Django Model (`ORM`) |
 
-**Object-Oriented Components**
+#### Object-Oriented Components
 
-- XrayRecord (status = PENDING) with Patient and User (uploader)
+```mermaid
+classDiagram
+    class Patient {
+        +int patient_id
+        +string first_name
+        +string last_name
+        +get_full_name() string
+    }
 
-**Sequence Diagram (text)**
+    class User {
+        +int id
+        +string username
+        +string role
+        +get_role_display() string
+    }
 
-1. Radiologist opens RadiologistDashboardPage.
-2. Front-end requests /api/imaging/queue/ with search/status params.
-3. radiologist_queue filters and paginates XrayRecord rows.
-4. Response populates RadiologistDashboardTable.
+    class AIResult {
+        +float risk_score
+        +string risk_label
+        +is_high_risk() bool
+    }
 
-**Data Design**
+    class XrayRecord {
+        +UUID transaction_id
+        +datetime upload_timestamp
+        +string status
+        +string file_format
+        +int active_reviewer_id
+        +datetime lock_timestamp
+        +clear_expired_locks(now: datetime)$ void
+        +__str__() string
+    }
 
-- XrayRecord (see Module 1.1 for field list)
+    class RadiologistQueueSerializer {
+        +UUID transaction_id
+        +PatientBriefSerializer patient
+        +datetime upload_timestamp
+        +string status
+        +AIResultBriefSerializer ai_result
+        +UserBriefSerializer uploader
+        +UserBriefSerializer active_reviewer
+        +to_representation(instance: XrayRecord) dict
+    }
 
+    class RadiologistQueueController {
+        +string route
+        +list allowed_roles
+        +radiologist_queue(request: Request) Response
+    }
 
-#### ***2.2 Interactive Annotation***
+    class RadiologistDashboardPage {
+        +int page
+        +string search
+        +string statusFilter
+        +string riskLabelFilter
+        +fetchQueue() void
+        +render() JSX
+    }
 
-**User Interface Design**
+    Patient "1" --> "*" XrayRecord : patient
+    User "1" --> "*" XrayRecord : uploader
+    XrayRecord "1" *-- "0..1" AIResult : ai_result
+    RadiologistQueueController ..> XrayRecord : clears locks & filters
+    RadiologistQueueController ..> RadiologistQueueSerializer : serializes
+    RadiologistDashboardPage ..> RadiologistQueueController : GET /api/imaging/queue/
+```
 
-The current UI provides a reusable X-ray viewer with zoom/pan controls and an annotation overlay that supports drawing bounding boxes with labels. The viewer is integrated into the patient record modal. A dedicated radiologist review page is referenced in navigation routes but not yet implemented.
+#### Sequence Diagram
 
-**Front-end component(s)**
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Rad as Radiologist
+    participant Page as RadiologistDashboardPage
+    participant View as RadiologistQueueController
+    participant Model as XrayRecord
+    participant Ser as RadiologistQueueSerializer
+    participant DB as Relational Database
 
+    Rad->>Page: Open Radiologist Dashboard
+    Page->>View: GET /api/imaging/queue/?page=1&status=PENDING&risk_label=HIGH
+    View->>Model: clear_expired_locks()
+    Model->>DB: UPDATE records WHERE lock_timestamp < now - 60min
+    View->>Model: Query records matching filters with select_related
+    Model->>DB: SELECT records, patients, ai_results, uploaders
+    DB-->>View: QuerySet results
+    View->>Ser: Instantiate with page QuerySet
+    Ser-->>View: Serialized paginated JSON
+    View-->>Page: HTTP 200 OK {count, next, previous, results: [...]}
+    Page-->>Rad: Render queue worklist
+```
+
+#### Data Design
+
+```mermaid
+erDiagram
+    PATIENT {
+        int patient_id PK
+        string first_name
+        string last_name
+    }
+
+    USER {
+        int id PK
+        string username
+        string role
+    }
+
+    XRAY_RECORD {
+        uuid transaction_id PK
+        int patient_id FK
+        int active_reviewer_id FK
+        string status
+        datetime upload_timestamp
+        datetime lock_timestamp
+    }
+
+    AI_RESULT {
+        int id PK
+        uuid xray_record_id FK
+        float risk_score
+        string risk_label
+    }
+
+    PATIENT ||--o{ XRAY_RECORD : "has"
+    USER ||--o{ XRAY_RECORD : "locks_for_review"
+    XRAY_RECORD ||--o| AI_RESULT : "displays_score"
+```
+
+Data is drawn from `imaging_xrayrecord` joined with `patients_patient`, `accounts_user`, and `imaging_airesult`. Query filtering utilizes indexes on `upload_timestamp`, `status`, and `active_reviewer_id`.
+
+---
+
+### 2.2 Interactive Annotation
+
+#### User Interface Design
+`AnnotationCanvas` overlay allows radiologists to draw vector annotations directly on the high-resolution radiograph. Supported drawing tools include bounding boxes (rectangles), ellipses (circles), and freehand paths. Users can select shapes, assign radiological labels (e.g., "Infiltrate", "Cavitation", "Nodule"), delete selected elements, and execute multi-level undo operations. Annotations are saved via the `AnnotationPanel`.
+
+Integrated into this workflow is **Concurrency-Safe Review Locking**: when a radiologist opens a case, the system attempts to acquire an exclusive lock via `start_review()`. If another radiologist currently holds the active lock, the server responds with HTTP 409 Conflict. `AnnotationReviewPage` detects this and renders a persistent warning banner indicating the current lock holder, disabling all drawing tools and report editing controls (read-only mode). The lock is automatically renewed during active review and released upon case exit.
+
+#### Front-End Component(s)
 | Component Name | Description and Purpose | Component Type / Format |
-| --- | --- | --- |
-| XrayViewer | Loads X-ray detail from API and renders image with zoom/pan. | React component |
-| AnnotationCanvas | Draws bounding boxes, collects labels, emits box data. | React component |
-| XrayRecordList | Opens X-ray viewer modal from patient history list. | React component |
+| :--- | :--- | :--- |
+| `AnnotationReviewPage` | Master container orchestrating viewer, canvas, lock heartbeats, and report panels. | React Page (`JSX`) |
+| `XrayViewer` | Renders radiograph with hardware-accelerated zoom and pan controls. | React Component (`JSX`) |
+| `AnnotationCanvas` | Vector drawing surface capturing rectangles, circles, and freehand strokes. | React Component (`JSX`) |
+| `AnnotationPanel` | Annotation list manager displaying labels, notes, and delete actions. | React Component (`JSX`) |
+| `StaticAnnotationOverlay` | Read-only vector overlay for read-only and historical inspection modes. | React Component (`JSX`) |
+| `ErrorBanner` | Alert banner notifying radiologist when a case is locked by another clinician. | React Component (`JSX`) |
 
-**Back-end component(s)**
-
+#### Back-End Component(s)
 | Component Name | Description and Purpose | Component Type / Format |
-| --- | --- | --- |
-| xray_detail | Returns XrayRecord details and annotations. | Django REST view (GET /api/imaging/xray/<transaction_id>/) |
-| annotate_xray | Creates or updates radiologist annotation. | Django REST view (POST /api/imaging/xray/<transaction_id>/annotate/) |
-| AnnotationSerializer | Serializes bounding boxes and notes. | DRF serializer |
-| Annotation | Stores bounding boxes and notes linked to XrayRecord. | Django model |
+| :--- | :--- | :--- |
+| `xray_detail` | Case retrieval endpoint attempting review lock acquisition; returns 409 on conflict. | DRF API View (`GET /api/imaging/xray/<id>/`) |
+| `annotate_xray` | Persists or updates radiologist bounding boxes and descriptive notes. | DRF API View (`POST /api/imaging/xray/<id>/annotate/`) |
+| `renew_review_lock` | Extends review lock timestamp for the active reviewer. | DRF API View (`POST /api/imaging/xray/<id>/lock/renew/`) |
+| `release_review_lock` | Releases lock and restores pre-review status upon case exit. | DRF API View (`POST /api/imaging/xray/<id>/lock/release/`) |
+| `AnnotationSerializer` | Validates JSON geometry array structure and label strings. | DRF Serializer |
+| `Annotation` | Domain model storing annotation geometries linked to X-ray transactions. | Django Model (`ORM`) |
+| `XrayRecord` | Manages review lock acquisition, conflict validation, and status restoration. | Django Model (`ORM`) |
 
-**Object-Oriented Components**
+#### Object-Oriented Components
 
-- XrayRecord 1..* Annotation
-- Annotation -> User (radiologist)
+```mermaid
+classDiagram
+    class User {
+        +int id
+        +string username
+        +get_full_name() string
+    }
 
-**Sequence Diagram (text)**
+    class XrayRecord {
+        +UUID transaction_id
+        +string status
+        +int active_reviewer_id
+        +datetime lock_timestamp
+        +string status_before_review
+        +acquire_lock(reviewer: User, now: datetime) bool
+        +release_lock() void
+        +start_review(reviewer: User, now: datetime) bool
+        +__str__() string
+    }
 
-1. User opens an X-ray record from XrayRecordList.
-2. XrayViewer requests /api/imaging/xray/<transaction_id>/ and displays display_image.
-3. AnnotationCanvas collects bounding box geometry and labels.
-4. (Pending UI integration) Front-end submits bounding_boxes and notes to annotate_xray.
+    class Annotation {
+        +int id
+        +int xray_record_id
+        +int radiologist_id
+        +json bounding_boxes
+        +string notes
+        +datetime submitted_at
+        +get_box_count() int
+        +__str__() string
+    }
 
-**Data Design**
+    class AnnotationSerializer {
+        +int id
+        +json bounding_boxes
+        +string notes
+        +datetime submitted_at
+        +RadiologistBriefSerializer radiologist
+        +validate_bounding_boxes(value: list) list
+        +create(validated_data: dict) Annotation
+    }
 
-- Annotation
-  - id (PK)
-  - xray_record_id (FK -> XrayRecord)
-  - radiologist_id (FK -> User, nullable)
-  - bounding_boxes (JSON array of {x,y,width,height,label})
-  - notes (text)
-  - submitted_at (datetime)
+    class AnnotationController {
+        +string route
+        +list allowed_roles
+        +xray_detail(request: Request, transaction_id: str) Response
+        +annotate_xray(request: Request, transaction_id: str) Response
+        +renew_review_lock(request: Request, transaction_id: str) Response
+        +release_review_lock(request: Request, transaction_id: str) Response
+    }
 
-#### ***2.3  Diagnostic Submission***
+    class AnnotationCanvas {
+        +string activeTool
+        +string activeColor
+        +list shapes
+        +object selectedShape
+        +list history
+        +startDrawing(point: Point) void
+        +draw(point: Point) void
+        +finishDrawing() void
+        +deleteSelected() void
+        +undoLastAction() void
+        +exportAnnotations() list
+    }
 
-**User Interface Design**
+    User "1" --> "*" Annotation : radiologist
+    XrayRecord "1" *-- "*" Annotation : annotations
+    AnnotationController ..> AnnotationSerializer : validates
+    AnnotationController ..> Annotation : persists
+    AnnotationController ..> XrayRecord : manages lock
+    AnnotationCanvas ..> AnnotationController : POST annotate/
+```
 
-Diagnostic submission is supported by the backend API, but the front-end review submission UI is not yet wired. The current workflow prepares annotation data in the canvas component and will POST it when the review page is implemented.
+#### Sequence Diagram
 
-**Front-end component(s)**
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Rad as Radiologist
+    participant Page as AnnotationReviewPage
+    participant Canvas as AnnotationCanvas
+    participant View as AnnotationController
+    participant Model as XrayRecord
+    participant Ser as AnnotationSerializer
+    participant DB as Relational Database
 
+    Rad->>Page: Open Case UUID-001
+    Page->>View: GET /api/imaging/xray/UUID-001/
+    View->>Model: start_review(Rad) -> acquire_lock(Rad)
+    Model->>DB: UPDATE XrayRecord SET active_reviewer=Rad, lock_timestamp=now, status='IN_REVIEW'
+    View-->>Page: HTTP 200 OK (Full edit mode)
+    Rad->>Canvas: Draw anatomical lesion (Rectangle/Circle/Freehand)
+    Canvas->>Page: Emit geometry payload
+    Rad->>Page: Click "Save Annotations"
+    Page->>View: POST /api/imaging/xray/UUID-001/annotate/ {bounding_boxes, notes}
+    View->>Ser: Validate payload schema
+    Ser->>DB: INSERT/UPDATE into imaging_annotation
+    DB-->>View: Save confirmed
+    View-->>Page: HTTP 200 OK (Annotations updated)
+    Rad->>Page: Exit case view
+    Page->>View: POST /api/imaging/xray/UUID-001/lock/release/
+    View->>Model: release_lock()
+    Model->>DB: UPDATE XrayRecord SET active_reviewer=NULL, lock_timestamp=NULL
+    View-->>Page: HTTP 200 OK (Lock cleared)
+```
+
+#### Data Design
+
+```mermaid
+erDiagram
+    XRAY_RECORD {
+        uuid transaction_id PK
+        int active_reviewer_id FK
+        datetime lock_timestamp
+        string status_before_review
+        string status
+    }
+
+    ANNOTATION {
+        int id PK
+        uuid xray_record_id FK
+        int radiologist_id FK
+        json bounding_boxes
+        string notes
+        datetime submitted_at
+    }
+
+    USER {
+        int id PK
+        string username
+        string role
+    }
+
+    XRAY_RECORD ||--o{ ANNOTATION : "contains"
+    USER ||--o{ ANNOTATION : "creates"
+    USER ||--o{ XRAY_RECORD : "holds_lock"
+```
+
+- **Table:** `imaging_annotation`
+  - `id` (int, Primary Key, Auto-increment)
+  - `xray_record_id` (int, Foreign Key -> `imaging_xrayrecord.id`, CASCADE)
+  - `radiologist_id` (int, Foreign Key -> `accounts_user.id`, SET_NULL, Null=True)
+  - `bounding_boxes` (json, Array of objects containing: `x`, `y`, `width`, `height`, `tool`, `label`, `stroke_color`)
+  - `notes` (text, Optional clinical observations)
+  - `submitted_at` (datetime, auto_now_add=True)
+- Lock fields on `imaging_xrayrecord`:
+  - `active_reviewer_id` (int, Foreign Key -> `accounts_user.id`, Null=True)
+  - `lock_timestamp` (datetime, Null=True)
+  - `status_before_review` (varchar(20), Null=True)
+
+---
+
+### 2.3 Diagnostic Submission
+
+#### User Interface Design
+`ReportWritePage` provides a structured clinical reporting interface enforcing radiological reporting standards. It partitions input into four standardized clinical sections: Findings, Impression, Recommendation, and Severity Classification (`NORMAL`, `MILD`, `MODERATE`, `SEVERE`, `CRITICAL`). 
+
+Radiologists can save incomplete progress using "Save Draft" (`status='DRAFT'`). When ready for final sign-off, clicking "Finalize & Submit" triggers strict validation: all four fields are mandatory. Upon successful submission, the report becomes immutable (`status='SUBMITTED'`), `XrayRecord.status` transitions to `COMPLETED`, the active review lock is released, and an automated alert is created in the physician notification center.
+
+#### Front-End Component(s)
 | Component Name | Description and Purpose | Component Type / Format |
-| --- | --- | --- |
-| AnnotationCanvas | Produces bounding box payload ready for submission. | React component |
+| :--- | :--- | :--- |
+| `ReportWritePage` | Structured diagnostic report editor supporting draft and submit actions. | React Page (`JSX`) |
+| `SelectField` | Standardized dropdown selector for clinical severity categories. | React Component (`JSX`) |
+| `SuccessBanner` | Renders case completion receipt with link back to dashboard. | React Component (`JSX`) |
+| `ErrorBanner` | Displays field validation error feedback on submission attempt. | React Component (`JSX`) |
 
-**Back-end component(s)**
-
+#### Back-End Component(s)
 | Component Name | Description and Purpose | Component Type / Format |
-| --- | --- | --- |
-| annotate_xray | Accepts bounding_boxes and notes; sets XrayRecord status to COMPLETED. | Django REST view |
+| :--- | :--- | :--- |
+| `report_detail` | Endpoint supporting GET, POST (Draft creation), and PATCH (Draft update / Final submit). | DRF API View (`GET/POST/PATCH /api/imaging/xray/<id>/report/`) |
+| `_trigger_report_submission_notification` | Generates an unread `Notification` record for attending physicians. | Python Service Function |
+| `ReportCreateSerializer` | Serializes draft report creation without mandatory non-empty constraints. | DRF Serializer |
+| `ReportSerializer` | Serializes complete report instances with validation on final submit. | DRF Serializer |
+| `Report` | Domain entity storing structured findings, impression, recommendations, and status. | Django Model (`ORM`) |
+| `XrayRecord` | Master entity transitioned to `COMPLETED` on final submission. | Django Model (`ORM`) |
+| `Notification` | In-system alert entity routed to physician upon report finalization. | Django Model (`ORM`) |
 
-**Object-Oriented Components**
+#### Object-Oriented Components
 
-- Annotation linked to XrayRecord; status updated on XrayRecord
+```mermaid
+classDiagram
+    class User {
+        +int id
+        +string username
+        +get_full_name() string
+    }
 
-**Sequence Diagram (text)**
+    class XrayRecord {
+        +UUID transaction_id
+        +string status
+        +release_lock() void
+        +__str__() string
+    }
 
-1. Radiologist completes bounding boxes and notes.
-2. Front-end POSTs to /api/imaging/xray/<transaction_id>/annotate/.
-3. annotate_xray creates/updates Annotation and sets XrayRecord.status = COMPLETED.
-4. Response returns transaction_id, annotation_id, and updated status.
+    class Report {
+        +int id
+        +int xray_record_id
+        +string findings
+        +string impression
+        +string recommendation
+        +string severity
+        +int created_by_id
+        +string status
+        +datetime created_at
+        +datetime updated_at
+        +is_submitted() bool
+        +__str__() string
+    }
 
-**Data Design**
+    class Notification {
+        +int recipient_id
+        +string message
+        +bool read_status
+        +mark_as_read() void
+        +__str__() string
+    }
 
-- Uses Annotation and XrayRecord tables (see Module 2.2 and Module 1.1)
+    class ReportSerializer {
+        +int id
+        +string findings
+        +string impression
+        +string recommendation
+        +string severity
+        +string status
+        +to_representation(instance: Report) dict
+    }
 
-### ***Module 3: AI Engine and Longitudinal Monitoring***
+    class ReportSubmissionController {
+        +string route
+        +list allowed_roles
+        +report_detail(request: Request, transaction_id: str) Response
+        +_trigger_report_submission_notification(report: Report) void
+    }
 
-#### ***3.1 AI Baseline Risk Scoring***
+    class ReportWritePage {
+        +string findings
+        +string impression
+        +string recommendation
+        +string severity
+        +string status
+        +handleSaveDraft() void
+        +handleFinalSubmit() void
+        +validateRequiredFields() bool
+        +render() JSX
+    }
 
-**User Interface Design**
+    User "1" --> "*" Report : created_by
+    XrayRecord "1" *-- "1" Report : report
+    ReportSubmissionController ..> ReportSerializer : serializes
+    ReportSubmissionController ..> Report : creates/updates
+    ReportSubmissionController ..> XrayRecord : marks COMPLETED & unlocks
+    ReportSubmissionController ..> Notification : generates alert
+    ReportWritePage ..> ReportSubmissionController : POST/PATCH report/
+```
 
-AI baseline scores are displayed alongside the X-ray viewer and in the radiologist queue. The viewer shows a probability percentage with a status badge (AVAILABLE, FAILED, PENDING) and the queue table includes the score column for prioritization.
+#### Sequence Diagram
 
-**Front-end component(s)**
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Rad as Radiologist
+    participant Form as ReportWritePage
+    participant View as ReportSubmissionController
+    participant ModelRep as Report
+    participant ModelRec as XrayRecord
+    participant ModelNotif as Notification
+    participant DB as Relational Database
 
+    Rad->>Form: Enter Findings, Impression, Recs, Severity
+    opt Save Draft Workflow
+        Rad->>Form: Click "Save Draft"
+        Form->>View: POST /api/imaging/xray/{uuid}/report/ {status: 'DRAFT', ...fields}
+        View->>ModelRep: Save Report(status='DRAFT')
+        ModelRep->>DB: INSERT/UPDATE into imaging_report
+        View-->>Form: HTTP 200 OK (Draft Saved)
+    end
+    Rad->>Form: Click "Finalize & Submit"
+    Form->>Form: Validate non-empty: Findings, Impression, Recs, Severity
+    Form->>View: PATCH /api/imaging/xray/{uuid}/report/ {status: 'SUBMITTED', ...fields}
+    View->>View: Assert all 4 clinical fields non-empty
+    View->>ModelRep: Set status='SUBMITTED' (Immutable)
+    ModelRep->>DB: UPDATE imaging_report
+    View->>ModelRec: Set status='COMPLETED' & release_lock()
+    ModelRec->>DB: UPDATE imaging_xrayrecord SET status='COMPLETED', active_reviewer=NULL, lock_timestamp=NULL
+    View->>View: _trigger_report_submission_notification(report)
+    View->>ModelNotif: Create Notification(recipient=Physician, message="Report ready for Patient...")
+    ModelNotif->>DB: INSERT INTO imaging_notification
+    View-->>Form: HTTP 200 OK (Report finalized)
+    Form-->>Rad: Render completion dialog & redirect to worklist
+```
+
+#### Data Design
+
+```mermaid
+erDiagram
+    XRAY_RECORD {
+        uuid transaction_id PK
+        string status
+        int active_reviewer_id FK
+    }
+
+    REPORT {
+        int id PK
+        uuid xray_record_id FK
+        int created_by_id FK
+        string findings
+        string impression
+        string recommendation
+        string severity
+        string status
+        datetime created_at
+        datetime updated_at
+    }
+
+    USER {
+        int id PK
+        string username
+        string role
+    }
+
+    NOTIFICATION {
+        int id PK
+        int recipient_id FK
+        string message
+        boolean read_status
+        datetime created_at
+    }
+
+    XRAY_RECORD ||--o| REPORT : "documents"
+    USER ||--o{ REPORT : "authors"
+    USER ||--o{ NOTIFICATION : "receives"
+```
+
+- **Table:** `imaging_report`
+  - `id` (int, Primary Key, Auto-increment)
+  - `xray_record_id` (int, One-to-One Foreign Key -> `imaging_xrayrecord.id`, CASCADE)
+  - `findings` (text, Detailed radiological observations)
+  - `impression` (text, Diagnostic synthesis/impression)
+  - `recommendation` (text, Recommended follow-up or treatment)
+  - `severity` (varchar(20), Choices: `NORMAL`, `MILD`, `MODERATE`, `SEVERE`, `CRITICAL`)
+  - `created_by_id` (int, Foreign Key -> `accounts_user.id`, SET_NULL, Null=True)
+  - `status` (varchar(20), Choices: `DRAFT`, `SUBMITTED`, Default: `DRAFT`)
+  - `created_at` (datetime, auto_now_add=True)
+  - `updated_at` (datetime, auto_now=True)
+- **Table:** `imaging_notification`
+  - `id` (int, Primary Key, Auto-increment)
+  - `recipient_id` (int, Foreign Key -> `accounts_user.id`, CASCADE)
+  - `message` (text, Notification message body)
+  - `read_status` (boolean, Default: False)
+  - `created_at` (datetime, auto_now_add=True)
+  - `updated_at` (datetime, auto_now=True)
+
+---
+
+## Module 3: AI Engine and Longitudinal Monitoring
+
+### 3.1 AI Baseline Risk Scoring
+
+#### User Interface Design
+AI baseline risk scores are surfaced across the system. In the radiologist queue, an `AIRiskBadge` indicates `LOW` (< 0.50) or `HIGH` (>= 0.50) probability. Within `XrayViewer`, an interactive toggle activates `HeatmapViewer`, which renders a pseudo-colored Grad-CAM visual overlay highlighting suspicious pulmonary opacities. Cases marked `MANUAL_REVIEW` display a "Re-run Analysis" button.
+
+#### Front-End Component(s)
 | Component Name | Description and Purpose | Component Type / Format |
-| --- | --- | --- |
-| XrayViewer | Displays the processed image with an AI score panel. | React component |
-| RiskScoreBadge | Renders AI probability and status label. | React component |
-| RadiologistDashboardTable | Shows AI baseline score and status in the queue. | React component |
-| PatientDetailPage / XrayRecordList | Shows AI score in record list detail rows. | React components |
+| :--- | :--- | :--- |
+| `XrayViewer` | Renders base CXR and coordinates Grad-CAM heatmap toggling. | React Component (`JSX`) |
+| `HeatmapViewer` | Alpha-blended Grad-CAM visual saliency heatmap overlay. | React Component (`JSX`) |
+| `AIRiskBadge` | Visual indicator rendering numerical probability and risk tier. | React Component (`JSX`) |
+| `AIScoreLegend` | Reference legend defining clinical risk score boundaries. | React Component (`JSX`) |
 
-**Back-end component(s)**
-
+#### Back-End Component(s)
 | Component Name | Description and Purpose | Component Type / Format |
-| --- | --- | --- |
-| preprocess_xray | Produces normalized .npy tensor for AI inference. | Python utility |
-| AIInferenceService | Loads tensor, invokes CNN, and produces probability score. | Python service module |
-| score_xray | Triggers or returns AI score for a transaction. | Django REST view (POST/GET /api/imaging/xray/<transaction_id>/score/) |
-| AiScore | Stores AI inference results linked to XrayRecord. | Django model |
-| ProcessedImage | Stores preprocessing metadata including ai_tensor_path. | Django model |
+| :--- | :--- | :--- |
+| `_run_ai_inference` | Core execution harness loading model checkpoint, executing forward pass, and computing Grad-CAM. | Python Service (`apps/imaging/views.py`) |
+| `predict` | Model wrapper handling tensor normalization and sigmoid output. | Python Script (`ai/scripts/inference.py`) |
+| `analyse_xray` | Endpoint triggering on-demand inference re-runs (supports `force_proceed`). | DRF API View (`POST /api/imaging/xray/<id>/analyse/`) |
+| `AIResult` | Domain entity storing risk score, risk label, heatmap file path, and version string. | Django Model (`ORM`) |
 
-**Object-Oriented Components**
+#### Object-Oriented Components
 
-- XrayRecord 1..1 AiScore
-- ProcessedImage -> AiScore
+```mermaid
+classDiagram
+    class XrayRecord {
+        +UUID transaction_id
+        +string status
+        +__str__() string
+    }
 
-**Sequence Diagram (text)**
+    class AIResult {
+        +int id
+        +int xray_record_id
+        +float risk_score
+        +string risk_label
+        +ImageField heatmap_image
+        +string model_version
+        +datetime generated_at
+        +is_high_risk() bool
+        +get_heatmap_url() string
+        +__str__() string
+    }
 
-1. upload_xray completes preprocessing and writes ai_tensor_path.
-2. score_xray invokes AIInferenceService for the transaction.
-3. AIInferenceService loads the .npy tensor, runs inference, and returns probability.
-4. AiScore is stored and XrayRecord.ai_status is updated to AVAILABLE.
-5. Radiologist queue and viewer render the score badge.
+    class AIResultSerializer {
+        +float risk_score
+        +string risk_label
+        +string heatmap_url
+        +string model_version
+        +datetime generated_at
+        +get_heatmap_url(obj: AIResult) string
+    }
 
-**Data Design**
+    class MobileNetV3Model {
+        +string MODEL_VERSION
+        +string MODEL_NAME
+        +load_model()$ nn.Module
+        +forward(tensor: Tensor) Tensor
+    }
 
-- AIScore
-  - id (PK)
-  - xray_record_id (FK -> XrayRecord)
-  - probability (float)
-  - model_version (string)
-  - ai_status (AVAILABLE, FAILED, PENDING)
-  - error_message (text, nullable)
-  - inference_ms (int)
-  - created_at (datetime)
+    class GradCAMGenerator {
+        +string colormap
+        +generate_heatmap(model: Module, tensor: Tensor, orig_image: Image)$ ndarray
+    }
 
-        
+    class InferenceService {
+        +int image_size
+        +predict(image_path: str, force_proceed: bool, transaction_id: str)$ dict
+    }
 
+    class AIController {
+        +string route
+        +list allowed_roles
+        +analyse_xray(request: Request, transaction_id: str) Response
+        +_run_ai_inference(record: XrayRecord, force_proceed: bool, notify_on_failure: bool) dict
+    }
 
-#### ***3.2 Historical Record Retrieval***
+    XrayRecord "1" *-- "0..1" AIResult : ai_result
+    AIController ..> InferenceService : invokes
+    InferenceService ..> MobileNetV3Model : loads weights
+    InferenceService ..> GradCAMGenerator : computes saliency
+    AIController ..> AIResult : saves output
+    AIController ..> AIResultSerializer : serializes
+```
 
-**User Interface Design**
+#### Sequence Diagram
 
-Patient history is shown in the PatientDetailPage via a list of past X-ray records. Selecting a record opens the viewer modal.
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Controller as AIController
+    participant InfService as InferenceService
+    participant PyTorch as MobileNetV3Model
+    participant GradCAM as GradCAMGenerator
+    participant FS as Media File Storage
+    participant DB as Relational Database
 
-**Front-end component(s)**
+    Controller->>InfService: predict(processed_image_path, transaction_id)
+    InfService->>PyTorch: Load weights (v1.0.0 deploy_model.pth)
+    InfService->>PyTorch: Execute forward pass with normalized CHW tensor
+    PyTorch-->>InfService: Logit output -> Sigmoid probability (0.923)
+    InfService->>GradCAM: Compute gradients from classifier layer
+    GradCAM->>GradCAM: Generate feature map overlay & apply cv2.COLORMAP_JET
+    GradCAM->>FS: Write heatmap to media/heatmaps/{uuid}_heatmap.jpg
+    InfService-->>Controller: Return {risk_score: 0.923, risk_label: 'HIGH', heatmap_path}
+    Controller->>DB: INSERT/UPDATE into imaging_airesult
+    Controller->>DB: UPDATE imaging_xrayrecord SET status='AI_REVIEWED'
+```
 
+#### Data Design
+
+```mermaid
+erDiagram
+    XRAY_RECORD {
+        uuid transaction_id PK
+        string status
+        datetime upload_timestamp
+    }
+
+    AI_RESULT {
+        int id PK
+        uuid xray_record_id FK
+        float risk_score
+        string risk_label
+        string heatmap_image
+        string model_version
+        datetime generated_at
+    }
+
+    XRAY_RECORD ||--o| AI_RESULT : "generates"
+```
+
+- **Table:** `imaging_airesult`
+  - `id` (int, Primary Key, Auto-increment)
+  - `xray_record_id` (int, One-to-One Foreign Key -> `imaging_xrayrecord.id`, CASCADE)
+  - `risk_score` (float, Range: 0.0000 - 1.0000)
+  - `risk_label` (varchar(10), Choices: `LOW`, `MODERATE`, `HIGH`)
+  - `heatmap_image` (varchar(255), Path relative to `media/heatmaps/`, Null=True)
+  - `model_version` (varchar(64), e.g., 'v1.0.0')
+  - `generated_at` (datetime, auto_now_add=True)
+
+---
+
+### 3.2 Historical Record Retrieval
+
+#### User Interface Design
+The `PatientDetailPage` provides clinicians with chronological access to all historical radiographs for a selected patient via `XrayRecordList`. Each record card displays the acquisition timestamp, assigned transaction UUID, AI score badge, and review status. Selecting a history item opens `XrayViewer` with associated annotations and finalized diagnostic reports.
+
+Integrated into this feature is **Comprehensive PDF Report Generation**: on completed cases, radiologists and physicians can click "Download Diagnostic Report". The system triggers real-time headless PDF compilation, returning a print-ready, multi-page diagnostic document attachment containing patient demographics, institutional branding, the original CXR, Grad-CAM heatmap, AI score/risk tier, vector lesion overlays, radiologist findings, impressions, recommendations, severity classification, digital signatures, and the mandatory ethical AI disclaimer.
+
+#### Front-End Component(s)
 | Component Name | Description and Purpose | Component Type / Format |
-| --- | --- | --- |
-| XrayRecordList | Lists all X-ray records for a patient; opens viewer modal. | React component |
-| XrayViewer | Displays the selected record. | React component |
+| :--- | :--- | :--- |
+| `PatientDetailPage` | Primary patient profile view hosting historical timeline. | React Page (`JSX`) |
+| `XrayRecordList` | Chronological list rendering past records with thumbnail badges. | React Component (`JSX`) |
+| `XrayViewer` | Modal viewer inspecting selected historical records. | React Component (`JSX`) |
+| `ReportWritePage` | Hosts "Download PDF" action on completed records. | React Page (`JSX`) |
 
-**Back-end component(s)**
-
+#### Back-End Component(s)
 | Component Name | Description and Purpose | Component Type / Format |
-| --- | --- | --- |
-| patient_xrays | Returns all XrayRecord rows for a patient (latest first). | Django REST view (GET /api/imaging/patients/<patient_id>/xray/) |
-| XrayRecordSerializer | Serializes basic record fields for list view. | DRF serializer |
+| :--- | :--- | :--- |
+| `patient_history` | Returns all records for a patient ordered chronologically with AI & annotations. | DRF API View (`GET /api/imaging/patients/<patient_id>/history/`) |
+| `patient_xrays` | Basic transaction listing for a patient (newest first). | DRF API View (`GET /api/imaging/patients/<patient_id>/xray/`) |
+| `generate_report` | Aggregates all case data, compiles HTML template, and executes Puppeteer. | DRF API View (`GET /api/imaging/xray/<id>/report/generate/`) |
+| `generate_pdf.cjs` | Node.js headless Chromium script rendering HTML to vector PDF binary. | Node Script (`pdf_scripts/generate_pdf.cjs`) |
+| `PatientHistorySerializer` | Serializes records including child annotations, AI result, and uploader identity. | DRF Serializer |
 
-**Object-Oriented Components**
+#### Object-Oriented Components
 
-- Patient 1..* XrayRecord
+```mermaid
+classDiagram
+    class Patient {
+        +int patient_id
+        +string first_name
+        +string last_name
+        +get_full_name() string
+    }
 
-**Sequence Diagram (text)**
+    class XrayRecord {
+        +UUID transaction_id
+        +datetime upload_timestamp
+        +string status
+        +__str__() string
+    }
 
-1. PatientDetailPage loads XrayRecordList.
-2. Front-end calls /api/imaging/patients/<patient_id>/xray/.
-3. patient_xrays returns ordered XrayRecord list.
+    class AIResult {
+        +float risk_score
+        +string risk_label
+        +is_high_risk() bool
+    }
 
-**Data Design**
+    class Annotation {
+        +json bounding_boxes
+        +string notes
+        +get_box_count() int
+    }
 
-- XrayRecord (see Module 1.1)
+    class Report {
+        +string findings
+        +string impression
+        +string recommendation
+        +string severity
+        +is_submitted() bool
+    }
 
-#### ***3.3  Comparative Logic and Progression Tracking***
+    class PatientHistorySerializer {
+        +UUID transaction_id
+        +datetime upload_timestamp
+        +string status
+        +AIResultBriefSerializer ai_result
+        +AnnotationSerializer annotations
+        +to_representation(instance: XrayRecord) dict
+    }
 
-**User Interface Design**
+    class PatientHistoryController {
+        +string history_route
+        +string pdf_route
+        +list allowed_roles
+        +patient_history(request: Request, patient_id: int) Response
+        +patient_xrays(request: Request, patient_id: int) Response
+        +generate_report(request: Request, transaction_id: str) Response
+        +_build_pdf_html(record: XrayRecord, patient: Patient, report: Report) str
+    }
 
-Progression tracking is shown as a trend chart with a delta value and status label. The radiologist can override the auto-classification with a dropdown and a required note.
+    class PuppeteerService {
+        +string scriptPath
+        +int timeoutMs
+        +generatePdf(htmlContent: str, outputPath: str)$ bytes
+    }
 
-**Front-end component(s)**
+    Patient "1" --> "*" XrayRecord : patient
+    XrayRecord "1" *-- "0..1" AIResult : ai_result
+    XrayRecord "1" *-- "*" Annotation : annotations
+    XrayRecord "1" *-- "0..1" Report : report
+    PatientHistoryController ..> PatientHistorySerializer : serializes
+    PatientHistoryController ..> PuppeteerService : compiles PDF
+```
 
+#### Sequence Diagram
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Clinician as Radiologist / Physician
+    participant Page as PatientDetailPage
+    participant List as XrayRecordList
+    participant View as PatientHistoryController
+    participant DB as Relational Database
+    participant Node as PuppeteerService (generate_pdf.cjs)
+
+    Clinician->>Page: View patient profile (ID: 42)
+    Page->>List: Mount historical component
+    List->>View: GET /api/imaging/patients/42/history/
+    View->>DB: SELECT XrayRecords WHERE patient_id=42 ORDER BY upload_timestamp ASC
+    DB-->>View: Chronological QuerySet
+    View-->>List: HTTP 200 OK [ {...record1}, {...record2} ]
+    List-->>Clinician: Render interactive timeline
+
+    opt Generate PDF Report
+        Clinician->>Page: Click "Download PDF Report" on Case UUID-001
+        Page->>View: GET /api/imaging/xray/UUID-001/report/generate/
+        View->>DB: Query completed record, AIResult, Annotations, and Report
+        View->>View: Compile HTML template with embedded CXR & Heatmap
+        View->>Node: Spawn `node generate_pdf.cjs` with HTML payload
+        Node-->>View: Raw PDF binary buffer
+        View-->>Page: HTTP 200 OK (Content-Type: application/pdf)
+        Page-->>Clinician: Trigger browser file download
+    end
+```
+
+#### Data Design
+
+```mermaid
+erDiagram
+    PATIENT {
+        int patient_id PK
+        string first_name
+        string last_name
+        date date_of_birth
+    }
+
+    XRAY_RECORD {
+        uuid transaction_id PK
+        int patient_id FK
+        datetime upload_timestamp
+        string status
+    }
+
+    AI_RESULT {
+        int id PK
+        uuid xray_record_id FK
+        float risk_score
+        string risk_label
+    }
+
+    ANNOTATION {
+        int id PK
+        uuid xray_record_id FK
+        json bounding_boxes
+    }
+
+    REPORT {
+        int id PK
+        uuid xray_record_id FK
+        string severity
+        string status
+    }
+
+    PATIENT ||--o{ XRAY_RECORD : "chronological_history"
+    XRAY_RECORD ||--o| AI_RESULT : "includes"
+    XRAY_RECORD ||--o{ ANNOTATION : "includes"
+    XRAY_RECORD ||--o| REPORT : "includes"
+```
+
+Queries `imaging_xrayrecord` filtered by `patient_id` and ordered by `upload_timestamp` ascending, with prefetching for `ai_result`, `annotations`, and `report`. PDF generation outputs an ISO 32000-1 document.
+
+---
+
+### 3.3 Comparative Logic and Progression Tracking
+
+#### User Interface Design
+`LongitudinalPanel` displays deterministic disease progression tracking across sequential examinations. It renders historical score deltas, classification badges (`no_prior`, `stable`, `decreased_risk`, `increased_risk`), and an interactive trend plot. 
+
+When clinical findings contradict the model prediction, radiologists open the **Override Modal**, select a clinical status, enter a mandatory non-empty clinical justification note, and submit. The panel immediately renders the override badge and updates the audit log (`ProgressionOverrideAuditLog`).
+
+#### Front-End Component(s)
 | Component Name | Description and Purpose | Component Type / Format |
-| --- | --- | --- |
-| ProgressionPanel | Displays delta, status, and comparison summary. | React component |
-| TrendChart | Plots historical AI scores over time. | React component |
-| ProgressionOverrideForm | Allows manual status override and notes. | React component |
+| :--- | :--- | :--- |
+| `LongitudinalPanel` | Renders score progression delta, classification badges, and trend chart. | React Component (`JSX`) |
+| `TrendChart` | Data visualization plotting AI probability over sequential visits. | React Component (`JSX`) |
+| `ProgressionOverrideModal` | Form capturing radiologist override status selection and required clinical note. | React Component (`JSX`) |
 
-**Back-end component(s)**
-
+#### Back-End Component(s)
 | Component Name | Description and Purpose | Component Type / Format |
-| --- | --- | --- |
-| progression_summary | Computes delta and returns trend data for a patient. | Django REST view (GET /api/imaging/patients/<patient_id>/progression/) |
-| override_progression | Saves a radiologist manual override and note. | Django REST view (POST /api/imaging/patients/<patient_id>/progression/override/) |
-| ProgressionService | Calculates delta and classification. | Python/Django service |
-| ProgressionLog | Stores computed status and overrides. | Django model |
+| :--- | :--- | :--- |
+| `ProgressionService` | Deterministic engine computing deltas and classifying risk progression against a 0.05 threshold. | Python Service (`apps/imaging/services.py`) |
+| `case_progression_history` | Refreshes and returns progression snapshots for a case's patient. | DRF API View (`GET /api/imaging/cases/<id>/progression/`) |
+| `case_progression_override` | Validates non-empty note, updates snapshot, and writes audit log. | DRF API View (`POST /api/imaging/cases/<id>/progression/override/`) |
+| `ProgressionStatus` | Domain entity storing calculated or overridden progression state. | Django Model (`ORM`) |
+| `ProgressionOverrideAuditLog` | Immutable audit trail storing radiologist override justifications. | Django Model (`ORM`) |
 
-**Object-Oriented Components**
+#### Object-Oriented Components
 
-- Patient 1..* XrayRecord
-- XrayRecord 1..1 AiScore
-- Patient 1..* ProgressionLog
+```mermaid
+classDiagram
+    class ProgressionStatus {
+        +int id
+        +int patient_id
+        +int xray_record_id
+        +int previous_record_id
+        +string status
+        +float score
+        +float previous_score
+        +float delta
+        +float abs_delta
+        +float threshold
+        +bool comparison_available
+        +string reason
+        +string clinical_note
+        +bool is_overridden
+        +int overridden_by_id
+        +datetime override_timestamp
+        +is_worsening() bool
+        +__str__() string
+    }
 
-**Sequence Diagram (text)**
+    class ProgressionOverrideAuditLog {
+        +int id
+        +int patient_id
+        +int xray_record_id
+        +int radiologist_id
+        +string previous_status
+        +string new_status
+        +string clinical_note
+        +datetime created_at
+        +get_summary() string
+        +__str__() string
+    }
 
-1. Viewer requests progression_summary for patient_id.
-2. ProgressionService loads current and most recent completed AiScore.
-3. Service computes delta and classification (Improvement, Stable, Deterioration).
-4. ProgressionLog is stored and trend data returned.
-5. Radiologist may submit override_progression with status and note.
+    class ProgressionService {
+        +string NO_PRIOR
+        +string DECREASED_RISK
+        +string STABLE
+        +string INCREASED_RISK
+        +float DEFAULT_STABLE_THRESHOLD
+        +get_threshold()$ float
+        +validate_score(score: float)$ float
+        +compute(current_score: float, previous_score: float, threshold: float)$ dict
+        +get_previous_result(current_record: XrayRecord)$ AIResult
+        +compare_history(patient_id: int, threshold: float)$ list
+    }
 
-**Data Design**
+    class ProgressionController {
+        +string route
+        +list allowed_roles
+        +case_progression_history(request: Request, case_id: str) Response
+        +case_progression_override(request: Request, case_id: str) Response
+    }
 
-- ProgressionLog
-  - id (PK)
-  - patient_id (FK -> Patient)
-  - current_xray_id (FK -> XrayRecord)
-  - prior_xray_id (FK -> XrayRecord, nullable)
-  - current_score (float)
-  - prior_score (float, nullable)
-  - delta (float, nullable)
-  - status (Improvement, Stable, Deterioration, Manual)
-  - override_status (nullable)
-  - override_note (text, nullable)
-  - created_at (datetime)
+    class LongitudinalPanel {
+        +list progressionHistory
+        +dict latestSnapshot
+        +bool showOverrideModal
+        +handleOverrideSubmit(status: str, note: str) void
+        +renderTrend() JSX
+    }
 
-### ***Module 4: Clinical Dashboards and Reporting***
+    ProgressionController ..> ProgressionService : computes classifications
+    ProgressionController ..> ProgressionStatus : updates snapshots
+    ProgressionController ..> ProgressionOverrideAuditLog : records audit trail
+    LongitudinalPanel ..> ProgressionController : GET & POST /api/imaging/cases/{id}/progression/
+```
 
-#### ***4.1 Role-Based Access and Authentication***
+#### Sequence Diagram
 
-**User Interface Design**
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Rad as Radiologist
+    participant UI as LongitudinalPanel
+    participant Controller as ProgressionController
+    participant Service as ProgressionService
+    participant ModelStat as ProgressionStatus
+    participant ModelAudit as ProgressionOverrideAuditLog
+    participant DB as Relational Database
 
-Users authenticate through the login screen. The front-end stores role information in local storage and routes the user to the appropriate dashboard. The UI uses a role map to pick the dashboard path.
+    Rad->>UI: Inspect patient progression panel
+    UI->>Controller: GET /api/imaging/cases/{id}/progression/
+    Controller->>Service: compare_history(patient_id, threshold=0.05)
+    Service->>Service: Compute delta = current_score - previous_score
+    Service->>Service: Classify: stable (|delta| <= 0.05), decreased_risk, or increased_risk
+    Service-->>Controller: Return chronological progression array
+    Controller->>DB: Sync ProgressionStatus snapshots
+    Controller-->>UI: HTTP 200 OK (Progression history)
 
-**Front-end component(s)**
+    Rad->>UI: Disagree with AI delta -> Click "Override Status"
+    Rad->>UI: Select "decreased_risk" and enter clinical rationale note
+    UI->>Controller: POST /api/imaging/cases/{id}/progression/override/ {status, clinical_note}
+    Controller->>Controller: Validate clinical_note is non-empty
+    Controller->>ModelStat: Update snapshot (status, is_overridden=True, note)
+    ModelStat->>DB: UPDATE imaging_progressionstatus
+    Controller->>ModelAudit: Create ProgressionOverrideAuditLog entry
+    ModelAudit->>DB: INSERT into imaging_progressionoverrideauditlog
+    Controller-->>UI: HTTP 201 Created {status, is_overridden: true, audit_log_id}
+    UI-->>Rad: Update UI with Overridden badge & audit history
+```
 
+#### Data Design
+
+```mermaid
+erDiagram
+    PATIENT {
+        int patient_id PK
+        string first_name
+        string last_name
+    }
+
+    XRAY_RECORD {
+        uuid transaction_id PK
+        int patient_id FK
+        datetime upload_timestamp
+    }
+
+    PROGRESSION_STATUS {
+        int id PK
+        int patient_id FK
+        uuid xray_record_id FK
+        uuid previous_record_id FK
+        string status
+        float score
+        float previous_score
+        float delta
+        float abs_delta
+        float threshold
+        boolean comparison_available
+        string clinical_note
+        boolean is_overridden
+        int overridden_by_id FK
+        datetime override_timestamp
+    }
+
+    PROGRESSION_OVERRIDE_AUDIT_LOG {
+        int id PK
+        int patient_id FK
+        uuid xray_record_id FK
+        int radiologist_id FK
+        string previous_status
+        string new_status
+        string clinical_note
+        datetime created_at
+    }
+
+    USER {
+        int id PK
+        string username
+        string role
+    }
+
+    PATIENT ||--o{ PROGRESSION_STATUS : "tracks"
+    XRAY_RECORD ||--o| PROGRESSION_STATUS : "current_case"
+    XRAY_RECORD ||--o| PROGRESSION_STATUS : "prior_case"
+    USER ||--o{ PROGRESSION_STATUS : "overrides"
+    PROGRESSION_STATUS ||--o{ PROGRESSION_OVERRIDE_AUDIT_LOG : "audits"
+    USER ||--o{ PROGRESSION_OVERRIDE_AUDIT_LOG : "authorizes"
+```
+
+- **Table:** `imaging_progressionstatus`
+  - `id` (int, Primary Key)
+  - `patient_id` (int, FK -> `patients_patient`)
+  - `xray_record_id` (int, FK -> `imaging_xrayrecord`)
+  - `previous_record_id` (int, FK -> `imaging_xrayrecord`, Null=True)
+  - `status` (varchar(32), Choices: `no_prior`, `stable`, `decreased_risk`, `increased_risk`)
+  - `score` (float, Current risk score)
+  - `previous_score` (float, Prior risk score, Null=True)
+  - `delta` (float, Difference, Null=True)
+  - `abs_delta` (float, Absolute difference, Null=True)
+  - `threshold` (float, Default: 0.05)
+  - `comparison_available` (bool, True if prior record exists)
+  - `clinical_note` (text, Default: '')
+  - `is_overridden` (bool, Default: False)
+  - `overridden_by_id` (int, FK -> `accounts_user`, Null=True)
+  - `override_timestamp` (datetime, Null=True)
+- **Table:** `imaging_progressionoverrideauditlog`
+  - `id` (int, Primary Key)
+  - `patient_id` (int, FK -> `patients_patient`)
+  - `xray_record_id` (int, FK -> `imaging_xrayrecord`)
+  - `radiologist_id` (int, FK -> `accounts_user`, Null=True)
+  - `previous_status` (varchar(32))
+  - `new_status` (varchar(32))
+  - `clinical_note` (text, Required clinical justification)
+  - `created_at` (datetime, auto_now_add=True)
+
+---
+
+## Module 4: Clinical Dashboards and Reporting
+
+### 4.1 Role-Based Access and Authentication
+
+#### User Interface Design
+Users authenticate via the unified `LoginPage` (`LoginForm`). Upon submission, the backend authenticates credentials and returns the authorized user role. `AuthContext` persists the role and username in browser storage, configuring CSRF headers for subsequent requests. The client router immediately redirects the user to their designated dashboard (`/dashboard/technologist`, `/dashboard/radiologist`, or `/dashboard/physician`). Attempting to access unauthorized routes triggers `RoleGuard`, preventing access. Logging out releases any active review locks.
+
+#### Front-End Component(s)
 | Component Name | Description and Purpose | Component Type / Format |
-| --- | --- | --- |
-| LoginPage / LoginCard / LoginForm | Captures username/password and calls /accounts/login/. | React components |
-| AuthContext | Stores user role in local storage and provides ROLE_DASHBOARD map. | React context |
+| :--- | :--- | :--- |
+| `LoginPage` | Clean, responsive login view container. | React Page (`JSX`) |
+| `LoginForm` | Captures credentials and invokes session authentication API. | React Component (`JSX`) |
+| `AuthContext` | Global React context providing user identity, role, and logout actions. | React Context (`JSX`) |
+| `RoleGuard` | Route wrapper preventing unauthorized access based on role. | React Component (`JSX`) |
+| `Header` | Renders authenticated user name, role badge, notification bell, and logout button. | React Component (`JSX`) |
 
-**Back-end component(s)**
-
+#### Back-End Component(s)
 | Component Name | Description and Purpose | Component Type / Format |
-| --- | --- | --- |
-| login_view | Authenticates user and returns role + redirect. | Django view (POST /accounts/login/) |
-| logout_view | Ends session and redirects. | Django view (POST /accounts/logout/) |
-| csrf_token_view | Sets CSRF cookie for session-based auth. | Django view (GET /accounts/csrf-token/) |
-| role_required | Enforces role-based access control. | Django decorator |
-| User | Custom user model with role. | Django model |
+| :--- | :--- | :--- |
+| `login_view` | Validates credentials, starts Django session, and returns role redirect. | Django View (`POST /accounts/login/`) |
+| `logout_view` | Terminates session, flushes cookies, and releases any review locks. | Django View (`POST /accounts/logout/`) |
+| `csrf_token_view` | Sets the `csrftoken` cookie for session-authenticated clients. | Django View (`GET /accounts/csrf-token/`) |
+| `role_required` | View decorator rejecting unauthorized user roles with HTTP 403 Forbidden. | Python Decorator (`apps/accounts/decorators.py`) |
+| `User` | Custom user entity carrying clinical role enum. | Django Model (`ORM`) |
 
-**Object-Oriented Components**
+#### Object-Oriented Components
 
-- User (role: RADIOLOGIC_TECH, RADIOLOGIST, PHYSICIAN)
+```mermaid
+classDiagram
+    class User {
+        +int id
+        +string username
+        +string role
+        +get_role_display() string
+        +check_password(raw_password: str) bool
+    }
 
-**Sequence Diagram (text)**
+    class RoleRequiredDecorator {
+        +string name
+        +role_required(*allowed_roles)$ function
+    }
 
-1. LoginForm calls /accounts/csrf-token/ to set CSRF cookie.
-2. LoginForm POSTs username/password to /accounts/login/.
-3. login_view authenticates and returns role + redirect URL.
-4. AuthContext stores role and navigates to role dashboard.
+    class AuthController {
+        +string login_route
+        +string logout_route
+        +login_view(request: Request) JsonResponse
+        +logout_view(request: Request) JsonResponse
+        +csrf_token_view(request: Request) JsonResponse
+        +_parse_login_payload(request: Request) dict
+    }
 
-**Data Design**
+    class AuthContext {
+        +User currentUser
+        +string userRole
+        +bool isAuthenticated
+        +login(username: str, password: str) Promise
+        +logout() Promise
+    }
 
-- User
-  - username, password, first_name, last_name, email
-  - role (RADIOLOGIC_TECH, RADIOLOGIST, PHYSICIAN)
+    class RoleGuard {
+        +list allowedRoles
+        +render() JSX
+    }
 
+    AuthController ..> User : authenticates & authorizes
+    AuthController ..> RoleRequiredDecorator : enforces RBAC
+    AuthContext ..> AuthController : POST /accounts/login/ & logout/
+    RoleGuard ..> AuthContext : verifies permissions
+```
 
-#### ***4.2 Role-Specific Dashboards and Transaction Tracking***
+#### Sequence Diagram
 
-**User Interface Design**
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User as Clinical User
+    participant Form as LoginForm
+    participant Ctx as AuthContext
+    participant AuthAPI as AuthController
+    participant Guard as RoleGuard
+    participant DB as Relational Database
 
-Dashboards are tailored by role. Technologists see upload status and processing outcomes, radiologists see pending reviews with AI scores, and physicians see reviewed cases and alerts. Each dashboard includes stat cards, filters, and a paginated table.
+    User->>Form: Enter username and password
+    Form->>AuthAPI: GET /accounts/csrf-token/
+    AuthAPI-->>Form: Set-Cookie: csrftoken=...
+    Form->>AuthAPI: POST /accounts/login/ {username, password}
+    AuthAPI->>DB: Query User & verify password hash
+    DB-->>AuthAPI: User confirmed (Role: RADIOLOGIST)
+    AuthAPI->>AuthAPI: django.contrib.auth.login(request, user)
+    AuthAPI-->>Form: HTTP 200 OK {role: 'RADIOLOGIST', redirect: '/dashboard/radiologist'}
+    Form->>Ctx: Set user state and role
+    Ctx->>Guard: Evaluate route permissions
+    Guard-->>User: Navigate to /dashboard/radiologist
+```
 
-**Front-end component(s)**
+#### Data Design
 
+```mermaid
+erDiagram
+    USER {
+        int id PK
+        string username
+        string password
+        string role
+        string first_name
+        string last_name
+        string email
+        boolean is_active
+        boolean is_staff
+        datetime date_joined
+        datetime last_login
+    }
+```
+
+- **Table:** `accounts_user`
+  - `id` (int, Primary Key, Auto-increment)
+  - `username` (varchar(150), Unique, Not Null)
+  - `password` (varchar(128), Stored as PBKDF2/Argon2 cryptographic hash)
+  - `role` (varchar(20), Choices: `RADIOLOGIC_TECH`, `RADIOLOGIST`, `PHYSICIAN`, Default: `RADIOLOGIC_TECH`)
+  - Standard Django user fields: `first_name`, `last_name`, `email`, `is_active`, `is_staff`, `date_joined`, `last_login`.
+
+---
+
+### 4.2 Role-Specific Dashboards and Transaction Tracking
+
+#### User Interface Design
+The system provides three dedicated, role-tailored clinical dashboards:
+1. **Technologist Dashboard (`TechnologistDashboardPage`):** Tracks CXRs uploaded by the logged-in technologist, highlighting standardization outcomes, AI screening scores, and workflow statuses.
+2. **Radiologist Dashboard (`RadiologistDashboardPage`):** Prioritized review queue featuring full-text search, status tabs, and AI risk sorting.
+3. **Physician Dashboard (`PhysicianDashboardPage`):** Read-only clinical command center summarizing finalized reports (`Report.status='SUBMITTED'`), recent alerts, and patient progression tracking. Includes date range and severity filters (`CRITICAL`, `SEVERE`, `MODERATE`, `MILD`, `NORMAL`).
+
+Integrated across all dashboards is the **In-System Notification Center**: the application `Header` hosts a notification bell with an unread badge counter. Clicking the bell toggles `NotificationPanel`, displaying chronological clinical alerts (e.g., "Report ready for Patient X"). Clicking an alert marks it as read and deep-links the clinician directly to the associated case.
+
+#### Front-End Component(s)
 | Component Name | Description and Purpose | Component Type / Format |
-| --- | --- | --- |
-| TechnologistDashboardPage | Displays uploads for the logged-in technologist. | React page |
-| RadiologistDashboardPage | Displays pending records for review. | React page |
-| PhysicianDashboardPage | Displays reviewed cases, alerts, and report access. | React page |
-| TechnologistDashboardTable | Table of technologist records. | React component |
-| RadiologistDashboardTable | Table of pending review records. | React component |
-| PhysicianDashboardTable | Table of reviewed reports and follow-up status. | React component |
-| FilterBar, StatCard, StatusBadge | Search and filter UI with summary counts. | React components |
-| NotificationPanel / ReportList | In-system alerts and report links for physicians. | React components |
-| AppLayout / Sidebar / Header | Shared navigation and layout. | React components |
+| :--- | :--- | :--- |
+| `TechnologistDashboardPage` | Worklist for uploaded CXRs with quality status. | React Page (`JSX`) |
+| `RadiologistDashboardPage` | Queue interface prioritizing cases awaiting radiological review. | React Page (`JSX`) |
+| `PhysicianDashboardPage` | Clinical overview tracking finalized cases, alerts, and patient follow-up. | React Page (`JSX`) |
+| `TechnologistDashboardTable` | Tabular display of technologist uploads. | React Component (`JSX`) |
+| `PhysicianDashboardTable` | Tabular summary of finalized reports with severity tags. | React Component (`JSX`) |
+| `NotificationPanel` | Dropdown displaying unread and recent clinical notifications. | React Component (`JSX`) |
+| `Header` | Renders notification bell with live unread counter badge. | React Component (`JSX`) |
 
-**Back-end component(s)**
-
+#### Back-End Component(s)
 | Component Name | Description and Purpose | Component Type / Format |
-| --- | --- | --- |
-| technologist_dashboard | Returns records uploaded by the current technologist with filters. | Django REST view (GET /api/imaging/dashboard/technologist/) |
-| radiologist_queue | Returns PENDING records for review. | Django REST view (GET /api/imaging/queue/) |
-| physician_dashboard | Returns reviewed records and report summaries for physicians. | Django REST view (GET /api/reports/dashboard/physician/) |
-| notifications | Returns unread alerts and report notifications. | Django REST view (GET /api/notifications/) |
-| TechDashboardRecordSerializer | Serializes technologist dashboard rows. | DRF serializer |
-| RadiologistQueueSerializer | Serializes radiologist queue rows. | DRF serializer |
-| PhysicianReportSerializer | Serializes report rows and status fields. | DRF serializer |
+| :--- | :--- | :--- |
+| `technologist_dashboard` | Paginated CXR uploads filtered to the authenticated technologist. | DRF API View (`GET /api/imaging/dashboard/technologist/`) |
+| `radiologist_queue` | Worklist endpoint for radiologists. | DRF API View (`GET /api/imaging/queue/`) |
+| `physician_dashboard` | Summary endpoint providing counts, finalized cases, alerts, and progress. | DRF API View (`GET /api/physician/dashboard`) |
+| `notifications` | Lists notifications belonging to the authenticated user (newest first). | DRF API View (`GET /api/imaging/notifications/`) |
+| `notification_mark_read` | Marks a specified notification as read (`read_status=True`). | DRF API View (`POST /api/imaging/notifications/<id>/mark-read/`) |
+| `Notification` | Domain model storing message text, recipient, and read state. | Django Model (`ORM`) |
 
-**Object-Oriented Components**
+#### Object-Oriented Components
 
-- XrayRecord linked to Patient and User (uploader)
-- DiagnosticReport linked to XrayRecord and Physician
-- Notification linked to User and DiagnosticReport
+```mermaid
+classDiagram
+    class Notification {
+        +int id
+        +int recipient_id
+        +string message
+        +bool read_status
+        +mark_as_read() void
+        +__str__() string
+    }
 
-**Sequence Diagram (text)**
+    class DashboardController {
+        +string tech_route
+        +string rad_route
+        +string phys_route
+        +string notif_route
+        +technologist_dashboard(request: Request) Response
+        +radiologist_queue(request: Request) Response
+        +physician_dashboard(request: Request) Response
+        +notifications(request: Request) Response
+        +notification_mark_read(request: Request, notification_id: int) Response
+    }
 
-1. Dashboard page requests role endpoint with page/search/status.
-2. Backend filters and paginates XrayRecord or DiagnosticReport rows.
-3. Response drives table rows, AI scores, and stat cards.
+    class TechnologistDashboardPage {
+        +list uploads
+        +bool isLoading
+        +loadTechnologistUploads() void
+        +render() JSX
+    }
 
-**Data Design**
+    class RadiologistDashboardPage {
+        +list queueItems
+        +bool isLoading
+        +loadRadiologistQueue() void
+        +render() JSX
+    }
 
-- XrayRecord (see Module 1.1)
-- DiagnosticReport
-  - id (PK)
-  - xray_record_id (FK -> XrayRecord)
-  - physician_id (FK -> User)
-  - findings (text)
-  - impression (text)
-  - severity (enum)
-  - created_at (datetime)
-- Notification
-  - id (PK)
-  - user_id (FK -> User)
-  - report_id (FK -> DiagnosticReport)
-  - message (text)
-  - is_read (bool)
-  - created_at (datetime)
+    class PhysicianDashboardPage {
+        +dict summaryCounts
+        +list finalizedCases
+        +list pendingAlerts
+        +list patientProgress
+        +applyFilters(severity: str, dateFrom: date, dateTo: date) void
+        +render() JSX
+    }
 
-#### ***4.3  Consolidated Report Generation***
+    DashboardController ..> Notification : queries & updates
+    DashboardController ..> TechnologistDashboardPage : serves
+    DashboardController ..> RadiologistDashboardPage : serves
+    DashboardController ..> PhysicianDashboardPage : serves
+```
 
-**User Interface Design**
+#### Sequence Diagram
 
-Physicians generate consolidated reports using a filter panel with date range and severity options. Results appear as charts and tables, with an export button for PDF/CSV downloads.
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Phys as Attending Physician
+    participant Page as PhysicianDashboardPage
+    participant Header as Header (NotificationBell)
+    participant View as DashboardController
+    participant DB as Relational Database
 
-**Front-end component(s)**
+    Phys->>Page: Open Physician Dashboard
+    Page->>View: GET /api/physician/dashboard?severity=CRITICAL&date_from=2026-09-01
+    View->>DB: Query finalized Reports (status='SUBMITTED') matching filters
+    View->>DB: Query aggregate patient progress
+    DB-->>View: Aggregated QuerySets
+    View-->>Page: HTTP 200 OK {summary: {...}, finalized_cases: [...], patient_progress: [...]}
+    Page-->>Phys: Render summary cards and report tables
 
+    Header->>View: GET /api/imaging/notifications/
+    View->>DB: SELECT * FROM imaging_notification WHERE recipient=physician AND read_status=False
+    DB-->>View: Unread alert list
+    View-->>Header: HTTP 200 OK [{id: 91, message: "Report ready...", read_status: false}]
+    Header-->>Phys: Render unread badge "1"
+    Phys->>Header: Click alert #91 -> POST /api/imaging/notifications/91/mark-read/
+    Header->>View: POST /api/imaging/notifications/91/mark-read/
+    View->>DB: UPDATE imaging_notification SET read_status=True WHERE id=91
+    View-->>Header: HTTP 200 OK
+```
+
+#### Data Design
+
+```mermaid
+erDiagram
+    USER {
+        int id PK
+        string username
+        string role
+    }
+
+    NOTIFICATION {
+        int id PK
+        int recipient_id FK
+        string message
+        boolean read_status
+        datetime created_at
+        datetime updated_at
+    }
+
+    XRAY_RECORD {
+        uuid transaction_id PK
+        int uploader_id FK
+        string status
+        datetime upload_timestamp
+    }
+
+    REPORT {
+        int id PK
+        uuid xray_record_id FK
+        string severity
+        string status
+    }
+
+    USER ||--o{ NOTIFICATION : "receives"
+    USER ||--o{ XRAY_RECORD : "monitors_uploads"
+    XRAY_RECORD ||--o| REPORT : "summarizes"
+```
+
+- Queries aggregate data across `imaging_xrayrecord`, `imaging_report`, `imaging_notification`, and `patients_patient`.
+- **Table:** `imaging_notification`
+  - `id` (int, Primary Key, Auto-increment)
+  - `recipient_id` (int, Foreign Key -> `accounts_user.id`, CASCADE)
+  - `message` (text, Notification message body)
+  - `read_status` (boolean, Default: False)
+  - `created_at` (datetime, auto_now_add=True)
+  - `updated_at` (datetime, auto_now=True)
+
+---
+
+### 4.3 Consolidated Report Generation
+
+#### User Interface Design
+`AnalyticsDashboardPage` presents institutional screening metrics for radiologists, clinical supervisors, and administrators. The view features date range selectors and severity filters. Graphical charts illustrate CXR transaction volume by status, AI screening risk distributions (`LOW`, `MODERATE`, `HIGH`), and diagnostic severity breakdowns (`NORMAL`, `MILD`, `MODERATE`, `SEVERE`, `CRITICAL`). "Export CSV" and "Export PDF" buttons allow users to download consolidated analytical reports.
+
+Integrated into this reporting and operational infrastructure is the **Automated Backup and Restore Infrastructure** (`backup.py`, `restore.py`): automated database dumps, media tarballs, SHA-256 cryptographic manifests, and retention pruning for data durability and audit compliance.
+
+#### Front-End Component(s)
 | Component Name | Description and Purpose | Component Type / Format |
-| --- | --- | --- |
-| ReportFilters | Date range and severity controls. | React component |
-| ReportSummaryCharts | Visualizes aggregated metrics. | React component |
-| ReportTable | Displays aggregated rows and counts. | React component |
-| ExportButton | Triggers PDF/CSV export. | React component |
+| :--- | :--- | :--- |
+| `AnalyticsDashboardPage` | Analytics view rendering metric cards, distribution charts, and export actions. | React Page (`JSX`) |
+| `ReportSummaryCharts` | Visualizes case volumes and risk/severity distributions. | React Component (`JSX`) |
+| `ExportButton` | Triggers CSV or PDF download requests with active filter parameters. | React Component (`JSX`) |
+| `ReportFilters` | Date range and severity controls. | React Component (`JSX`) |
 
-**Back-end component(s)**
-
+#### Back-End Component(s)
 | Component Name | Description and Purpose | Component Type / Format |
-| --- | --- | --- |
-| aggregate_reports | Returns aggregated metrics for given parameters. | Django REST view (GET /api/reports/aggregate/) |
-| export_report | Generates and returns a PDF/CSV export. | Django REST view (POST /api/reports/export/) |
-| ReportAggregationService | Calculates totals and percentages. | Python/Django service |
+| :--- | :--- | :--- |
+| `analytics_summary` | Calculates aggregated case totals, AI risk totals, and report severity counts. | DRF API View (`GET /api/analytics/summary/`) |
+| `analytics_export` | Generates and streams CSV or Puppeteer-rendered PDF analytical reports. | DRF API View (`POST /api/analytics/export/`) |
+| `_get_analytics_data` | Core query service aggregating counts across cases and reports. | Python Service Function |
+| `BackupManager` | CLI and scheduled job creating database dumps, media tarballs, and manifests. | Python Script (`backend/scripts/backup.py`) |
+| `RestoreManager` | Disaster recovery utility verifying SHA-256 manifests and restoring data. | Python Script (`backend/scripts/restore.py`) |
 
-**Object-Oriented Components**
+#### Object-Oriented Components
 
-- DiagnosticReport linked to XrayRecord
-- ReportExport (tracks export requests)
+```mermaid
+classDiagram
+    class AnalyticsController {
+        +string summary_route
+        +string export_route
+        +list allowed_roles
+        +analytics_summary(request: Request) Response
+        +analytics_export(request: Request) Response
+        +_get_analytics_data(date_from: date, date_to: date, severity: str)$ dict
+        +_parse_date_param(val: str)$ date
+    }
 
-**Data Design**
+    class AnalyticsDashboardPage {
+        +dict dateFilters
+        +string selectedSeverity
+        +dict metrics
+        +loadAnalytics() void
+        +exportReport(format: str) void
+        +render() JSX
+    }
 
-- ReportExport
-  - id (PK)
-  - requested_by (FK -> User)
-  - parameters (JSON)
-  - format (PDF, CSV)
-  - created_at (datetime)
+    class BackupManager {
+        +Path backup_dir
+        +int retention_days
+        +string lock_file
+        +create_backup() str
+        +_dump_database(dest_path: Path) void
+        +_archive_media(dest_path: Path) void
+        +_generate_manifest(db_hash: str, media_hash: str) dict
+        +_prune_old_backups() int
+    }
 
-[image1]: <data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAApMAAAIVCAYAAACN/3Q4AABljklEQVR4Xuz9d5RV1f2Hj3//drlilsnPkl/UWL+WaOyxfNTYE429Yo8dKyqIUQg2bIggBAERFRAB6SBFeu8gICBFivQqTZqM7C+vTfaZffa9d2bOmcvA3HmetZ7Fvft96r4D9zX77HP4f3b8stMgIiIiIqbx/wkbEBERERHLKmESEREREVNLmERERETE1BImERERETG1hElERERETC1hEhERERFTS5hERERExNQSJhERERExtYRJRERERExt4jDZuUcfc+RJ5yf2hjsftuuPGD0hoyaPOfUic+ZF/zSXXVvN1HnjfbNw8dKMfZfkkmUrYtu79tYHzJZt2zOWGz5qfMa+XS3XscnL/1nN3P/4C/bYNv+8NWO7SfxxyTLTsEkr88Tzdc1JZ19uTj7nCnPNLQ+Yag8+Y5o0/9yMHDup3Psojx80/SSyQ5deGXVERERE534TJkOP+fP/JQ5U4Tbe+eCjjGXOv/ym2DLnXHJ9VCvrsZ1+wd/NWw2bZWy7LC5fscoG53Cbof9t2SZj3YrSP447//V0Rh0RERHRud+GSfnEc3XM9h2/ZBxDLv/1eK3Y+gqk4TLhPgYOHRXVkhybDLddmlu2bjPX3/FQxnaySZhERETEymDiMKmRNYUu36/7D44FkKdeqJexzOSpM+z6YWBr/1VP266gNW7iVFO77tux+r9fey/jGEqyz4ChsfV1WVrtq9asM2f837Wx2vqNm2Lrhscm3fG//m6TjFHN9p2TXQIOt33eZTeZT9t+ZQYNHW37QQHyjAv/YWuESURERKwMJg6T2Vy2fGUsgLzxXtOMZZxhYHNh0rlt+45Y/cZqj2RsozT99aX2+dgzL2e0h+uFxxYuM2T4mFit3luNMrZRkv66miepuZPhMgrVXXr0NV9/MyTreppbGa4j23XsHi1z5fV3x2o/b9lq7n74WXPVDfeYY0+72IZqhcRadeqbTz7vmHU/JRnuu1Gz1ubpmvXMzXc9Zv587pXmutsfsnM/w7Ceaz+a29q1V387sqx5s5o7+ukXnaPlBw8bY56p9ao5Zfe2b7v/CRvsw20iIiLivnG/CpOaI/lu4xZl3lYudek6DCy+l15zp9m0eUvGeuGxSb+uoKtL56722jsfZmyjJMNtKySFy2Tz1bcbx9Z75fU9o61Ojbr68zDXrltv23VT0tkXX5ex31B9ftmOL5duv9Vr1MmohbbywqozXEYBMWyT9d//r2n80acZ7VJhfPnKNRnbRkRExIp1n4fJK667y46S3XrfE/bOZr+mG12yjd6VxZqv1M8IIPJPp1xoJk75LmN5GR6b9OvhyOSIMRMztlGSfhB1vtmgqenSs1/Gsr4/LFhsj9utoxE6v+6PSvrH3ObLbrF27V+X/TWV4NS/XhW1uzCpz0H66+gzcO1Ot31/Oak78TVaqzvfXdvxp19i5i34MXa84Xq5POGMv8XOO5QRSkRExH3vPg+TJbnmfyNsvn0HDs3qtBmzM5btP3B4xjZLukM8ybHp0UPh+qWpy80PPfFixrZ8L7jiZtO6XeeM4wyDrGsPRyU1r9PVdBnbtSuUzflhYcYxZdPfT645k7qM7Za56a5HM+rhLwaz5y7Iun1510PPRDVdJg/rrqbQ7befdNZlGftFRETEinW/DpO6QWX+wsWx9cNlnP+p/0HGvv796rsZy02d8X3GckmP7aNW7bJeJi+rF111a8Y2Qx95+qWM9fz67Hl7wlk4KqlpAm75Fq3bx2oKeO992NI0b/WF2bjp54ztZ9tPrjBZo/br0TKaz+huVHJqKoG/Hd0YlW37slffQVFNc2T92rmX3BDVps+ck7FueFyIiIhYse7zMOnmTOoRQLocqvd+XTeN+OuHYcIZhslsDyd329MIYXhc2Y4tl+80ap5zG2VR5zp6/GTz73rvZNxh7huu59d0eVxt9zzyXKx9waIl0fL6XNzd4aG65K3g9mWWO9L95XKFybI+4sipkcxs25f+ZXCNUvq1B6vXimp6kH24bnhciIiIWLHuN2HSV3PlcgWGMEw4/TD5Yt23Muqh4ydPy9hveGxS7YuXLs96k0i4fnnUZe1wNC9cRv3q13v3GxR736nb1xnrSAXf+x573t60Ep6DfP6l12PL+7VcYfKWux/L2E5JaiQz2/al/z8VhdMA6r7ZMKrNnb8oY93wuBAREbFi3S/DpObClScwhIFD4fL0C6+JtSm4heuFx+bvW5e1dbOQX1O4CbdRkuE8yFDdpZ1t307djOTfkPLA4zVjy5d26V2hbdjIcaZ1m06x9RQy/YfD+7VcYdJ/Hmi2/2moJP3tS8IkIiJi5XW/CZO5LnMnDQzPvfRabF1d7na1R5/+d6w2ZvyU2LrhsWXb9z9v/VesXtIczFC3jp4DqYex9+wzMJpjqGczlrZvmevyfbblP/+yq73jOdvd6/7or27g2bBpc8ZxSt05/v2c+Rnr6+H1/nIa+VSbv4x+LjTn8eKrb4u1h8dNmERERKy87vMwWRbDbeQy2/Ml/frqtT/Fago5/oO1sx1buA/9bzV+XQ/aDpfJZbjtktRcx3B9p+Z9hsuHDyqXzT/5IqrrLvG7H65hn1l5273VY+tq/mNpx+keC+SPQobLaERZn/3LrzcwF+7en2snTCIiIhau+3WYbNikVaL/m9tfV5eDw5FHmW0+ZUnHFq4f7ifXMtlUmCvpuYlSl9K7f/1Nxrq+GkX019HNNCtWZT7A2w+TudRzIMP19L/vZHsmplTY85fV/1wTLuOr/3HHD4QyXIYwiYiIWHndr8Kkgs05l1xvR84UhMJ1SzL8P7lz/e80GonUI4f8Zd3oZLZjC9eX+m8D/WUmTJmesUwu9b/S6H+F0d3Yjz/7ijnr4n/aR/YoRIV3pJekv3/9V5FhXerGG82RfP/Dj80Ndz5s96MwqzvIdUOR/v/vbCFUzpw9zx6fHlru7ysMk1KflW7iueOBp6KwrNHTJ1/4T9bth31MmERERKy85iVMYsW6cvXaKEzpf53Rf/MYLoOIiIhYERImK5EaYXzoydr2phgXJrM9JxIRERGxoiRMViLDS7ySUUlERETclxImK5EuQJ7616vs/ErNvwyXQURERKxICZOIiIiImFrCJCIiIiKmljCJiIiIiKklTCIiIiJiagmTiIiIiJhawiQiIiIippYwiYiIiIipJUwiIiIiYmpThckX//Oeuf2BZ83QkeNN/8EjzUefdjDr1m/MWG5/8M33m2e07S9+0q6zafTRZ2b46AnmpdcaZtR95/ywyNx8z1Pm5Tc+iLWr7ZrbHjGffdktY51Q7S9sK6sv1mtgXnmzUUZ7qPZx631PZ7SXRf0sTZn+faxt67YdpkmLthnLhrbt0MP2RdheXks657sfqWW69PzGvl62cpU9hnCZR5+tG72eOOU7U+2h5037r3qb4WMmmtfebWauu/Mx06rtVxnryTsffM7U2t3v+nz7DBieUfet8e/65oP/fmrebfxJRu3a2x81PyxcktGOiIiYD1OFSX25jRo3OdamL/1wuf3B/TlMPvz0KxltuZw7/0cbFP55x2Nm9Zp1Ubva9Hl8Tpis8DCpz2L9xs32dWlh8uct28wD1WubB554KVZftHi5GTxibMZ6vmUJk85sYfLx5/5jmn7cLqMdERExH6YKkxrpeOTZOvYLMqwNGTnOfvkNGDra9OgzyNz3eG2zfccvtvZR6y/N9Xc+bj5s0cb07j/UjsyovVe/oWbD/76UpUbZXCBRu0ZztI5C1JZt2+0+/v36B3Yf2r6+LN0+Ql2YHDl2kj0ufalqJFAB5dMvupp7H3vRDBw2xjz38ltm889bY+t1/3qQafl5R3P3ozVj29T5/7fVFzY4PfT0y6ZD1z5RTfvQsblz17GFx+RUeOrUrW9GezYVJt0o8FO1XrdtCi8bNv0cC5P6v7rVd6p90OwzW9MI8sLFy8zbH3xsJk6ZYdWyy1eutseqvvmiUy9T7eEXzMbNP9va5Gmz7Hlq3c49+pu7HnkhClYlrad9KNRpH1NnzI6W/bLz13bZJ154NVo2tLQwqXPXSJ6O5af1G+2ooAtZYZjU56c+GbH7GHUerp/DY/ePJzxnBb9cYVLH9XmH7tH70sJkgyat7WeR5v9SL2+YnDB5ut3GtJlzM2qIiIjlNVWYVPjSF7esU/9DGwJcTV/0L732fvR+yfJVdnm91hfa199kfimWFiafrPlaVNuydZvdh799BQy3j9AwTPo1jSzNX7Tn8t+PS1fYS4/h+nL6rLl2BEmvNRLVqm3xCJ9CsQuTOrbw3HVs4fakwocuk+qYvureL2pXCMsWtlyY/H7ugug8FHbUP3rvLnN37z3Qhji3nkKMGwEtbWTytvufsZ+FXuvyqi6duppCVq5g5a9X2sikfgFxy4aWJUzqXBUQXf2+3b8MKKD5YXLm7Pmxz7rl553sMblRRF//eMJz1qXhXOesnwl/dL60MKlfVnSsYb0sljdMKniHP2eIiIj5MlWYlPqCev29ZuaOB2vYL6qly1fadr0eNnpCbFmNkOlPBRJ/9M9ZWpj05wOGQUE+W/vNaB+hJYVJ/5KjRjb9L9t2nXqaZ2q/YdeRo8dNse0Kat9+VxzWVq5eE4VJHVt47jo2/72z3ltN7Ijeu41bxY5Lr9W34fKaM+lC+yPP1DHfzZpnlw3DpMK9v96Y8d9G288WJjW6W+3h56Pz1Eis2hW0/XD04JP/jgWrXOtlC5Na1s3985cNLUuY1M+QP6VC21PQ98Nkhy597HJuGX1mWk4jdO54sh17eM4yV5jU56zPwL0vb5jUCLM+92yfvY6xPGFSXl+tumn2SfuMdkRExPKaOkyG6tKh/tQXny4/usupUqNpqoVBwKkQ4X+J6svdD5O6ZOxqbmTO376/j9CSwmT15+vF3vthwA+wM76fFwW5ksKkjiE8d3dJ2VejjDoWXa7Xe42sKcgMGj4mI4w6/TC5YtUaO12gR5/BGWFSITXcvzuGMEz+5+0mpmbdd6P3N979hHm/aWsbrDWi2rFr8SV4Xa53wSrXem4ffpgMl5Vu2dDZ8xaavgNHxNrmLfjRjv7qtQuT/pSGbGFSl6/9MKnz13JjJnxb4vGE5yxzhcmxE6aayVNnxto0Chwup8v++lOjqTqGXCPoOs9vdwdpuWzFqlitvGFS/aX+aP1Fl4waIiJiec1LmFy8dIX57/9GPTRP8J1Ge75AQ3N9KSqgaVTPvdcoVq4wqTmT2ke4jVymDZP+PEiFWxfkdKnUD2Wxy9y7jy3XufsqPCqAuaAhFQLD4/P1w6RUINId9GGY1Civgkm4vtS8Rf99nfqNY2FJ23HBSp+Bf4e5RrbcsiWtp33ccFf1nPvQCG+uMKnQo+X9Ns17XLlqrX3tLnPrs3T1bJe5FRr9vtTIpsK6gn9JxxOes0JdrjCpQN8nCL53/KtG7JelSd/OiP1y8Phz9TJuwNFldo0eh9v3zfX3JpvZwqTmy5YUZBEREctjqjDZrmNP+3ggfUHJ8K5kXf7TY01Ue+ipl23YdDWN/OgyrS6b6g5h115rdzhSCJGak5grTDpr1nnH7kPbb/FZx9g+fNOGybcatjC3PfCsvdStESg/yCngKMTo7lxt178bV+euY3PnrmPz9+GrOZp6xJKW1YimgohGHBWGwmXDMOkMw6T8uM1X9sagG+96ImNOqy67ulE77U99rfV1Pqr5QU9zAhXCbtn9Wfh3c5e2nh59o31oTqhb9v7qL9llFa5yhUk5buI0OzVAwUyjoV17DYhqCpO6PO0+Sz+YhTfgaL/6fNQH3XoPjLX7xx4ej3/OmvaQK0xK3YTmv9cIqUbodd76+c52B7V+Tv+1u6bjUrjUZ5Pr5jFdGnd/x6R/fs++VN/uw733l3O6mh4Z5K4cICIi5ttUYRKL1Z3h7iYe3Lu6MBm27ysVCP15k/ur+sUs2y8oiIiI+ZAwmUKNKLmRRz0iKKzj3nF/C5Or1/5UpofF72s15zdsQ0REzJeESURERERMLWESEREREVNLmERERETE1BImERERETG1hElERERETC1hEhERERFTS5hERERExNQSJhERERExtYRJREREREwtYRIRERERU0uYRERERMTUEiYRERERMbWESURERERMLWESEREREVObKkxOm/kDIiIiIlZyw4yXxlRhEhERERFREiYRERERMbWESURERERMLWESEREREVNLmERERETE1BImERERETG1hElERERETC1hEhERERFTS5hERERExNQSJhERERExtYRJREREREwtYRIRERERU0uYRERERMTUEiYRERERMbWESURERERMLWESEREREVNLmERERETE1BImERERETG1hElERERETC1hEhERERFTS5hERERExNQSJhERERExtYRJRERERExtqjD53az5ZtrMHxARERGxkrpx05aMjJfGVGFSB7Bk2WoDAAAAAJWLnTuLbI5bsGh5RsZLY+owCQAAAACVF+W5MOOlkTAJAAAAUAUhTAIAAABAagiTAAAAAJAawiQAAAAApIYwCQAAAACpIUwCAAAAQGoIkwAAAACQGsIkAAAAAKSGMAkAAAAAqSFMAgAAAEBqCJMAAAAAkBrCJAAAAACkhjAJAAAAAKkhTAIAAABAagiTAAAAAJCaggqT389daFq26R7Thxq1vVXz62F7odWy1alRo7Z3a349bK+MtWx1avumlg8KKkz++uuusAkAAAAA9iIFESZXr11vdu0iSAIAAACUhUlTvzeDR0wMm1NREGFybwzZAgAAABQq+bzkTZgEAAAAqGIQJgPy1RkAAAAAVQHCZECv/iPDJgAAAADIgeZMynxQEGESAAAAAPYNhEkAAAAASE1BhMllK9aETQAAAACQAy5zB+RrAikAAABAVYAbcALy1RkAAAAAVQHCZEC+OgMAAACgKkCYDODRQAAAAABlhzmTAAAAALBfQJgEAAAAgNQURJjM16OB1q5da/r06WP/BAAAAChUuMwdkI8JpAcccIC57LLLTJs2beyfep+U+vXrm8svv9wcfPDB5uSTTzZXXnmladq0qZk/f360jLbrrGjmzJljGjZsaI455pjoGD744INwsUT45yN/+9vfmr///e+mQ4cO4aKlkqtvNmzYELW3bNkyVssXbvtvv/12WMpKeN4HHnig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k0mv+e+rzgYAAADYWyTJN8yZDEjaGUk6GwAAAKAykCTfECYDknZGks4GAAAAqAwkyTeEyYCknZGks48++mjz4IMPhs0ZvPLKK2FTKrS/Aw44wB7jCSecYGrVqmU2btwYLpYXlixZYiZPnmxf33///Xa/p59+emyZunXr2naHO74DDzzQnHrqqWbEiBHe0nvqjRs3jrVVr1499j7k6quvNn/4wx/MF198EWv/6aefzE033WSOO+44889//tMMGzYsVn/22WfN+eefb8455xzzwgsvmB9//DFWF1u3brXH629b7311zA49o2vFihXRewAAgMpCknxDmCwnSTp7X4RJf38LFiwwf/7zn81JJ53kLVV+Vq9ebQOhQ2HyzDPPNFdddVXUpvCmZcIw6R+fan54POaYY8xBBx1k3nvvvaittDAppk2blhEmly9fHr1WKDzttNPMhRde6C1RTNeuXWPHKWbOnGk/a7W3b98+atd71bLRs2dPe/zqHwAAgMpEknyTTwiTpRCGp3vuucccf/zx5sorr7T/H6ZDYXLp0qXmiSeesKGsTZs2Ua1fv35m0KBB5uabb7ajjS+99JLZuXNnVPcJ9ye6dOkSC0rt2rUz5513ng1XNWvWNDt27IhqTZo0MX/9619t7dVXX835v/xoOf9J+S5MfvLJJ6aoqMi26VxuueWWUsNk7dq1o/cKk0899ZQ57LDDora0YTLk6aefNr/5zW/CZotGSP3j3LVrl7n00kvtsWUbmcwVJrdt22Z+//vfm+bNm4clAACAfUL9+vXNokWLYm3KAiFJ8k0+IUyWgh+eFDT+8pe/mI8//tjceuutdgRrwoQJtqYwecYZZ5h33nnH1hRYxo4da2sKk+eee67p1KmT6d27tw1xDRs2jPbhE4Y1oXCnfTm07Ro1apgGDRqYI4880lSrVi2qKWzpkq9GBrUfP+j53HDDDea6666L3rswuWHDBnu84vDDDzcdO3YsNUy2bNkyeq8wqVB98MEHR235CpOXXHJJ1pFJBfUrrrjCXnZ3KAwquG/atClrmDz22GNtXz355JOxEVBxzTXX2M8QAABgf0DfW/4VSgVLtYWBMkm+yScFESaTXvNP0tl+eLr99ttjNQVCF/IUJjUa5rjrrrvM9ddfb18rnI0fPz6qKXzlOoYwrDnOPvts++ekSZNicwe1T7ct/Sfvmmfo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IsqkcyYJkwFpOoN/rBExiWnCZBorYh+IWJgmgTAZkKYz+McaEZNImETE/d0kECbzAI8GQsQkEiYRcX826WXufFJlw2R4LIiIJUmYRMT92XyNMqahIMJkmg4MjwURsSR1F7cLenvraRDaLmESEdOYNAvxaKCApB0o9taXASIWpu7RQHLwiIl5/zdk3fpNsX2EdUTEkkyahdy/NfmgyoZJ/rFGxKT6YW9vqv2E+0ZELMmkcybdvzf5gDCJiFhGNXoYBr98S5BExLQmwf2bkw8Ik4iICRw/eeZeGaHUnEyCJCKWxyS4f3vyQUGEyTTwaCBEREQsFJNe5s4nVTZMhseCiIiIWFnN1yhjGgoiTKbpwPBYEBERESurSbMQjwYKSNqBIt+P9UBERETcVybNQsyZDEjTGVonPB5ERETEymjSOZOEyYA0nUGYRERExEIyCYTJgDSdQZhERETEQjIJhMk8wKOBEBERsVBMepk7n1TZMBkeCyIiImJlNV+jjGkoiDCZpgPDY0FERESsrCbNQjwaKCBpBwoeDYSIiIiFYtIsxJzJgDSdwQ04iIiIWCgmnTNJmAxI0xmESURERCwkk0CYzAOESURERCwkk7BsxRprPqiyYZJHAyEiImKhmPQydz6psmEyPBZERETEymq+LlmnoSDCZJoODI8FERERsbKaNAvxaKCApB0oeDQQVgUXrNxpXm6301z9apE59ekic90bRVHtqIeLXx92f5Fp1KP4fTYvfaXIPNC45GXkoG93mgbdSl8uXx7+QOnHXpLbduw0o2dltvs271tk/rB7P8c8WmTOen6neb71nva3O8f7cV/4zzseMx269slo3x+dMv17c81tj2S0Z7MynRfi/mDSLMQNOAFpOoMbcLDQnb5op6n2fpHZvDXePnb2nj+ThqCyhslXO+y0oSts31uWN0xu2bbTNOmde/3hM3aa/9+92euEyWQSJhH3nknnTBImA9J0BmESC937dwe/+StyB52SRibvaFBkTnm6yC7Tst+edj9Mbt+x0zzdcqfpPzlzuwpezj8/tWd5BbYXP99p/vhgkflrzcx1nFu37zQX/7vILnfu7uWmLiiuNe5ZZI54qMicXqPI1G1f3B6GyXnLisyJT+459ik/xLc/eOpOc9xjReb/faLI9J2406xaHz/eTwZm9pdfd+YamdQxnldrpz1OHaNGPcPt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>
+    class RestoreManager {
+        +Path backup_dir
+        +bool dry_run
+        +verify_manifest(backup_dir: Path)$ bool
+        +restore_database(db_dump_path: Path)$ void
+        +restore_media(media_tar_path: Path)$ void
+    }
 
-[image2]: <data:image/png;base64,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>
+    AnalyticsDashboardPage ..> AnalyticsController : GET summary & POST export
+    BackupManager ..> RestoreManager : creates verifiable artifacts
+```
 
-[image3]: <data:image/png;base64,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>
+#### Sequence Diagram
 
-[image4]: <data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAApkAAAExCAYAAAA3CLlMAABhd0lEQVR4XuzdB3QUd5ou/Hvu2Tvfzp18x/Z41jue9c7OemZ3J3jUqRRpJSRyzgKESDIZTI4CY0wOJtsyxoDJYBmEwUZkkZMAgUEIEEkJAQIkIVDr+Sp0V1dXt1pCNELA8zvnPXT/K4euerqqWvyvBw8egMVisVgsFovF8mX9L30Di8VisVgsFov1tMWQyWKxWCwWi8XyeTFkslgsFovFYrF8Xm4h8+jRoywWi8VisVgs1hOVPlN6DJlERERERFXFkElEREREPseQSUREREQ+x5BJRERERD7HkElEREREPseQSUREREQ+x5BJRERERD7HkElEREREPseQSUREREQ+x5BJRERERD7HkElEREREPseQSUREREQ+x5BJRERERD7HkElEREREPseQSUREREQ+x5BJRERERD7HkElEREREPseQSUREREQ+x5BJRERERD7HkElEREREPseQSUREREQ+x5BJRERERD7HkElEREREPseQSUREREQ+x5BJRERERD7HkElEREREPseQSUREREQ+x5BJRERERD7HkElEREREPseQSUREREQ+x5BJRERERD7HkElEREREPseQSUREREQ+98xDpu3ql/Dz81PLYDDCJASiZadeWL/vIu6W6YegKilLd1mvfgZ/2PT9vNJKsXrueDSNCkVwgAVBdSLQoGUsEjcdQtZ9rikiIqJnrcZDpmswMiKo6QcvRTgqS5+LFiZxmYQBSL6v7+p7j9Nm6danATdfhhXpA0UXkzGtR333/c2+nkzWNsjnlxsiIqJn6vmGTHsZG0zEgSL9kC+W6Y2MyvLUUMicXN8+PWMIDPb12Glplr63V0w57qROdNu/PJcRVxk0iYiInpkaDZlCn414XFqC+wXXkTi6rfOEb6iDYd/XQDJ7huoZ7ctSQyEz2j49Q52h8Dcor83tE/W9vVLKC3djbLQ9fEvrxhiKpH2ncelmPq5dOIaUVdPVQC5V95VXX4qr6ERERLVRDYfMJJduYY5g5mdA8OjdLt0yN01Ae6szMDgDaQBOFZZr+izDhUWOwGpCUeZ6lyChDBOENpP3oCB1htv4DOYolGjG5rBkYGME2MObS/8BjVGgTSaPz8PioT+pjFGTcPiRs9fC0ysxrHmQW3/SYwNJGcXOHitTtNs+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>
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Admin as Radiologist / Administrator
+    participant Page as AnalyticsDashboardPage
+    participant View as AnalyticsController
+    participant DB as Relational Database
+    participant Node as PuppeteerService
+    participant Backup as BackupManager (backup.py)
 
-[image5]: <data:image/png;base64,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ZkLJiiOPPDKYPHmyFKvIYn0E2Q8bNkyKVdhrNvbcc89g4sSJMktFoe1q7TZ17949mDNnjsyWGYsWLYrUJ8NWW20VfrZu3VqaNko016a/BQCgEGgmlKzI0nFXG7Jf3377beO00rL33nsHI0aMkGIV7LhtrrzyylB23XXXReSlkGWkRWvXWNAcv78FAKAQaCYUFyeddFLQrFmzYMyYMRG5LJ/S7IzYcW/YsCHYYYcdgqOOOiqWl7jxxhuD9u3bB59++mmY/uCDD4IWLVoEN910UySvXdc//vGPoHfv3kHnzp2DZcuWGXkpHdnLO+6hQ4cGO+20U6Qugut68MEHw7aUO26G5Js3b47Ihg8fHmy55ZaRLzFXX321OSa7rIULFwYHHXRQcMghhwRLly41csJZ5/+/btHluIl7773XKe/fv3+w8847B//5z3+MzG7PI488YuR33HFH0Lx58+D44483MomrDpLxHXevXr2CBQsWBOvXrw/78+STTzb5OnbsGBx33HEmzfB1ceqpp0pV1eE6/nL4WwAACoFmQpHYZZBTtdOyfErbjnuvvfYKZsyYEaZfeOGFmG259Jo1a2I6cgZjx441+fbdd9+SOnJeBOVhx71ixYpIXRMmTIjVLdODBw+OpF3885//NLr58+dH8pG9LNO+495ll12Cpk2bmvQWW2wRjBs3zqST6iSSHDdB8ieffDKMt2rVKtYGmbahNH25ITZt2hTTMy45ydhxn3DCCcHRRx8dLFmyxOjoi8A555wTpk855ZRYO6699towTteAq/xqQtM+fwsAQCHQTCg2999/f8kypI7StuN26fku2KW78847TfrQQw8NpkyZYnScX9rZlNOx46b4008/HdNv3LjRxNeuXWt0K1eujJRdrp4kZBm243bZuWQuSjluOg+HHXaYFIe8+uqrsTYx9ORAlklp+kIhkflYxo77xBNPDLbeemuje+ONN2I2nJ47d25MR8e33377RWTVhGxvGvwtAACFoNyE0qdPHxPoka4LerRJ5VB4/fXXIzpZPqVtxz1q1KiYfuTIkSYudTbnnntucMEFFxidred03759jaycjmS245aQjO8Ak/SuuMTW0V00t8d1DNJxu0IaSjlueupw2mmnmbQsX7aJoUfUMp/MzyTJbMd9xRVXxPSutKvPkuqtFjRt87cAABSCchOKPSnSb8KlIEcq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>
+    Admin->>Page: Set date filters (2026-01-01 to 2026-04-30)
+    Page->>View: GET /api/analytics/summary/?date_from=2026-01-01&date_to=2026-04-30
+    View->>DB: Aggregate count by status, risk_label, and severity
+    DB-->>View: Aggregated sums & distributions
+    View-->>Page: HTTP 200 OK {cases: {total, by_status, by_risk}, reports: {total, by_severity}}
+    Page-->>Admin: Render interactive summary charts
+
+    Admin->>Page: Click "Export PDF"
+    Page->>View: POST /api/analytics/export/ {format: 'pdf', filters: {...}}
+    View->>View: Compile HTML summary template
+    View->>Node: Execute generate_pdf.cjs with analytics payload
+    Node-->>View: Return PDF binary
+    View-->>Page: HTTP 200 OK (Content-Type: application/pdf)
+    Page-->>Admin: Download analytics_summary_20260430.pdf
+
+    opt Automated Backup Execution
+        Note over Backup, DB: Scheduled Cron Job triggers backup.py
+        Backup->>DB: Hot database dump -> db.sqlite3 / db_dump.sql
+        Backup->>Backup: Tarball media/ & compute SHA-256 manifest
+        Backup->>Backup: Prune backups older than 30 days
+    end
+```
+
+#### Data Design
+
+```mermaid
+erDiagram
+    XRAY_RECORD {
+        uuid transaction_id PK
+        string status
+        datetime upload_timestamp
+    }
+
+    AI_RESULT {
+        int id PK
+        uuid xray_record_id FK
+        float risk_score
+        string risk_label
+    }
+
+    REPORT {
+        int id PK
+        uuid xray_record_id FK
+        string severity
+        string status
+    }
+
+    BACKUP_MANIFEST {
+        string backup_id PK
+        string database_type
+        string db_checksum_sha256
+        string media_checksum_sha256
+        datetime created_at
+        int file_count
+    }
+
+    XRAY_RECORD ||--o| AI_RESULT : "aggregates"
+    XRAY_RECORD ||--o| REPORT : "aggregates"
+```
+
+- Aggregates relational records from `imaging_xrayrecord`, `imaging_airesult`, and `imaging_report`.
+- **Manifest File:** `backups/<timestamp>/manifest.json`
+  - `backup_id` (string, ISO timestamp format)
+  - `database_type` (string, `sqlite3` or `postgresql`)
+  - `db_checksum_sha256` (string, 64-character hex hash)
+  - `media_checksum_sha256` (string, 64-character hex hash)
+  - `created_at` (datetime)
+  - `file_count` (int)
+
+---
+
+# 4. Cross-Cutting Design Concerns
+
+## 4.1 Transaction and Entity Lifecycles
+
+The TB-XR platform coordinates four interrelated status lifecycles ensuring deterministic state transitions across ingestion, AI inference, radiological review, and diagnostic delivery:
+
+```mermaid
+stateDiagram-v2
+    [*] --> PENDING : Technologist Uploads CXR
+    PENDING --> AI_REVIEWED : Auto-Inference Succeeds
+    PENDING --> MANUAL_REVIEW : Quality Gate / AI Error
+    MANUAL_REVIEW --> AI_REVIEWED : Force Proceed / Manual Re-run
+    AI_REVIEWED --> IN_REVIEW : Radiologist Opens Case (Lock Acquired)
+    IN_REVIEW --> PENDING : Lock Expires (60m) / Lock Released
+    IN_REVIEW --> COMPLETED : Radiologist Submits Final Report
+    COMPLETED --> [*]
+```
+
+### Report Lifecycle
+```mermaid
+stateDiagram-v2
+    [*] --> DRAFT : Radiologist Saves Incomplete Findings
+    DRAFT --> DRAFT : Radiologist Updates Notes
+    DRAFT --> SUBMITTED : All Required Fields Validated & Submitted
+    SUBMITTED --> [*] : Report Becomes Immutable
+```
+
+---
+
+## 4.2 Concurrency Management & Review Lock Protocol
+
+To eliminate race conditions and prevent two radiologists from overwriting annotations or diagnoses on the same radiograph, TB-XR enforces an active review locking protocol:
+
+```mermaid
+graph TD
+    A[Radiologist requests Case Detail] --> B{Active Reviewer Assigned?}
+    B -- No --> C[Assign Lock: active_reviewer = Current User, lock_timestamp = Now]
+    C --> D[Advance status to IN_REVIEW]
+    D --> E[Return HTTP 200: Full Edit Mode]
+
+    B -- Yes --> F{Is Current User the Lock Holder?}
+    F -- Yes --> G[Update lock_timestamp = Now]
+    G --> E
+
+    F -- No --> H{Has Lock Expired? > 60 min}
+    H -- Yes --> I[Release stale lock & Reassign to Current User]
+    I --> D
+    H -- No --> J[Return HTTP 409 Conflict: Read-Only Mode]
+```
+
+---
+
+## 4.3 Role-Based Access Control (RBAC) Matrix
+
+| Endpoint Route | HTTP Method | Permitted Roles | Failure Mode |
+| :--- | :--- | :--- | :--- |
+| `/accounts/login/` | `POST` | Public (Unauthenticated) | 400 Bad Request / 401 Unauthorized |
+| `/accounts/logout/` | `POST` | Session Authenticated | 302 / 200 OK |
+| `/api/patients/` | `GET` | `RADIOLOGIC_TECH`, `RADIOLOGIST`, `PHYSICIAN` | 403 Forbidden |
+| `/api/patients/register/` | `POST` | `RADIOLOGIC_TECH` | 403 Forbidden |
+| `/api/patients/<id>/` | `GET` | `RADIOLOGIC_TECH`, `RADIOLOGIST`, `PHYSICIAN` | 403 Forbidden |
+| `/api/patients/search/` | `GET` | `RADIOLOGIC_TECH`, `RADIOLOGIST`, `PHYSICIAN` | 403 Forbidden |
+| `/api/imaging/patients/<id>/xray/upload/` | `POST` | `RADIOLOGIC_TECH` | 403 Forbidden |
+| `/api/imaging/dashboard/technologist/` | `GET` | `RADIOLOGIC_TECH` | 403 Forbidden |
+| `/api/imaging/queue/` | `GET` | `RADIOLOGIST` | 403 Forbidden |
+| `/api/imaging/xray/<id>/` | `GET` | `RADIOLOGIC_TECH`, `RADIOLOGIST`, `PHYSICIAN` | 409 Conflict (Locked) / 403 |
+| `/api/imaging/xray/<id>/lock/release/` | `POST` | `RADIOLOGIST` (Lock Holder) | 403 Forbidden |
+| `/api/imaging/xray/<id>/annotate/` | `POST` | `RADIOLOGIST` | 403 Forbidden |
+| `/api/imaging/xray/<id>/report/` | `GET`, `POST`, `PATCH` | `RADIOLOGIST` | 403 Forbidden |
+| `/api/imaging/xray/<id>/report/generate/` | `GET` | `RADIOLOGIST`, `PHYSICIAN` | 403 Forbidden |
+| `/api/imaging/cases/<id>/progression/override/` | `POST` | `RADIOLOGIST` | 403 Forbidden |
+| `/api/physician/dashboard` | `GET` | `PHYSICIAN` | 403 Forbidden |
+| `/api/imaging/notifications/` | `GET` | Authenticated User | 401 Unauthorized |
+| `/api/analytics/summary/` | `GET` | `RADIOLOGIST`, `PHYSICIAN` | 403 Forbidden |
+| `/api/analytics/export/` | `POST` | `RADIOLOGIST`, `PHYSICIAN` | 403 Forbidden |
+
+---
+
+## 4.4 Ethical AI and Clinical Safeguards
+1. **Mandatory Clinical Disclaimer:**
+   In compliance with WHO and DOH teleradiology recommendations, all screens, exported analytical summaries, low-quality prompts, and generated PDF reports prominently feature the following frozen clinical disclaimer:
+   > *"The AI risk screening score and visual heatmaps provided by TB-XR are intended solely for triaging and clinical decision support. They do not constitute a definitive medical diagnosis. Final diagnostic decisions and clinical treatment plans must always be validated by a licensed physician or radiologist."*
+2. **Deterministic Fallbacks:**
+   AI inference failure paths trigger immediate status transition to `MANUAL_REVIEW`, routing the case to the human radiologist worklist with visual failure alerts, ensuring no patient is lost in the diagnostic workflow.
+3. **Audit Trail Accountability:**
+   Manual overrides of AI longitudinal progression classifications require mandatory clinical text justification, which is immutably logged in `imaging_progressionoverrideauditlog` alongside the radiologist's identity and timestamp.
+
+---
+
+# 5. Appendix: System API Endpoint Catalog
+
+| Module | Endpoint | Method | Role | Description |
+| :--- | :--- | :--- | :--- | :--- |
+| **Accounts** | `/accounts/csrf-token/` | `GET` | Public | Obtains CSRF protection cookie. |
+| **Accounts** | `/accounts/login/` | `POST` | Public | Authenticates credentials and returns role redirect. |
+| **Accounts** | `/accounts/logout/` | `POST` | Authenticated | Clears session and frees held review locks. |
+| **Patients** | `/api/patients/` | `GET` | All Roles | Lists all patients ordered alphabetically. |
+| **Patients** | `/api/patients/register/` | `POST` | Technologist | Registers patient with E.164 phone validation. |
+| **Patients** | `/api/patients/<id>/` | `GET` | All Roles | Retrieves demographic record for a single patient. |
+| **Patients** | `/api/patients/search/` | `GET` | All Roles | Searches patients by first name, last name, or ID. |
+| **Imaging** | `/api/imaging/patients/<id>/xray/upload/` | `POST` | Technologist | Uploads raw CXR, validates quality, triggers AI. |
+| **Imaging** | `/api/imaging/patients/<id>/xray/` | `GET` | All Roles | Lists all X-ray transactions for a patient. |
+| **Imaging** | `/api/imaging/patients/<id>/history/` | `GET` | All Roles | Chronological patient history with AI and annotations. |
+| **Imaging** | `/api/imaging/dashboard/technologist/` | `GET` | Technologist | Paginated worklist of technologist uploads. |
+| **Imaging** | `/api/imaging/queue/` | `GET` | Radiologist | Prioritized review queue with expired lock clearing. |
+| **Imaging** | `/api/imaging/xray/<id>/` | `GET` | All Roles | Retrieves record detail, handling review locks. |
+| **Imaging** | `/api/imaging/xray/<id>/lock/renew/` | `POST` | Radiologist | Renews active review lock timestamp. |
+| **Imaging** | `/api/imaging/xray/<id>/lock/release/` | `POST` | Radiologist | Releases review lock and restores status. |
+| **Imaging** | `/api/imaging/xray/<id>/analyse/` | `POST` | Technologist | Re-runs AI inference (supports `force_proceed`). |
+| **Imaging** | `/api/imaging/xray/<id>/annotate/` | `POST` | Radiologist | Persists radiologist vector annotations and notes. |
+| **Imaging** | `/api/imaging/xray/<id>/report/` | `GET` | Radiologist | Reads diagnostic report draft or submission. |
+| **Imaging** | `/api/imaging/xray/<id>/report/` | `POST` | Radiologist | Saves or updates draft diagnostic report. |
+| **Imaging** | `/api/imaging/xray/<id>/report/` | `PATCH` | Radiologist | Submits final report, completing transaction. |
+| **Imaging** | `/api/imaging/xray/<id>/report/generate/` | `GET` | Radiologist, Physician | Generates and streams vector diagnostic PDF. |
+| **Imaging** | `/api/imaging/cases/<id>/progression/` | `GET` | All Roles | Computes and returns longitudinal progression trend. |
+| **Imaging** | `/api/imaging/cases/<id>/progression/override/` | `POST` | Radiologist | Submits clinical progression override and audit note. |
+| **Physician** | `/api/physician/dashboard` | `GET` | Physician | Overview of finalized cases, alerts, and progress. |
+| **Imaging** | `/api/imaging/physician/dashboard/` | `GET` | Physician | Imaging-scoped alias of physician dashboard. |
+| **Imaging** | `/api/imaging/notifications/` | `GET` | Authenticated | Lists notifications for the authenticated user. |
+| **Imaging** | `/api/imaging/notifications/<id>/mark-read/` | `POST` | Authenticated | Marks a specific notification as read. |
+| **Analytics** | `/api/analytics/summary/` | `GET` | Radiologist, Physician | Aggregated case and report metrics with filters. |
+| **Analytics** | `/api/analytics/export/` | `POST` | Radiologist, Physician | Exports analytics metrics as CSV or PDF. |
+| **Schema** | `/api/schema/` | `GET` | Debug / Staff | OpenAPI 3.0 schema generation. |
+| **Docs** | `/api/docs/` | `GET` | Debug / Staff | Swagger interactive API documentation UI. |
